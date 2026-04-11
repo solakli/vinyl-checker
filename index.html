@@ -27,6 +27,7 @@
     --ttlab: #be4bdb;
     --uvs: #20c997;
     --yoyaku: #ffd43b;
+    --discogs: #ff6200;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -590,6 +591,7 @@ function startScan() {
   var username = document.getElementById('usernameInput').value.trim();
   if (!username || isScanning) return;
 
+  localStorage.setItem('vinyl-checker-username', username);
   isScanning = true;
   resultsData = [];
 
@@ -625,13 +627,18 @@ function startScan() {
 
   evtSource.addEventListener('item-done', function(e) {
     var data = JSON.parse(e.data);
-    resultsData.push({ item: data.item, stores: data.stores });
+    // Avoid duplicates from cache + live
+    var exists = resultsData.some(function(r) { return r.item.id === data.item.id; });
+    if (!exists) {
+      resultsData.push({ item: data.item, stores: data.stores, discogsPrice: data.discogsPrice || null });
+    }
 
     // Update progress
     var pct = ((data.index + 1) / data.total * 100).toFixed(1);
     document.getElementById('progressFill').style.width = pct + '%';
     document.getElementById('progressCount').textContent = (data.index + 1) + ' / ' + data.total;
-    document.getElementById('progressCurrent').textContent = data.item.artist + ' - ' + data.item.title + (data.inStock ? ' ✓' : '');
+    var suffix = data.fromCache ? ' (cached)' : (data.inStock ? ' ✓' : '');
+    document.getElementById('progressCurrent').textContent = data.item.artist + ' - ' + data.item.title + suffix;
 
     updateStats();
     render();
@@ -668,16 +675,21 @@ function startScan() {
   });
 }
 
-// Try to load existing results on page load
+// Try to load cached results from DB on page load
 async function loadExisting() {
+  var savedUser = localStorage.getItem('vinyl-checker-username');
+  if (!savedUser) return;
+  document.getElementById('usernameInput').value = savedUser;
   try {
-    var res = await fetch('results.json');
+    var res = await fetch('/api/results/' + encodeURIComponent(savedUser));
     if (res.ok) {
-      resultsData = await res.json();
-      if (resultsData.length > 0) {
+      var data = await res.json();
+      if (data.results && data.results.length > 0) {
+        resultsData = data.results;
         document.getElementById('welcome').style.display = 'none';
         document.getElementById('controls').style.display = 'flex';
-        document.getElementById('timestamp').textContent = 'Showing cached results';
+        var lastScan = data.lastScan ? new Date(data.lastScan).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'unknown';
+        document.getElementById('timestamp').textContent = 'Cached · Last full scan: ' + lastScan;
         updateStats();
         render();
       }
@@ -805,10 +817,25 @@ function render() {
     var lowest = getLowestPrice(item);
     var bestPriceHtml = lowest < Infinity
       ? '<div class="price-compare">' +
-          '<span class="best-price-label">Best Price</span>' +
+          '<span class="best-price-label">Best Store Price</span>' +
           '<span class="best-price-value">' + lowest.toFixed(2).replace('.', ',') + '</span>' +
         '</div>'
       : '';
+
+    // Discogs marketplace price
+    var discogsPriceHtml = '';
+    if (item.discogsPrice && item.discogsPrice.lowestPrice) {
+      discogsPriceHtml = '<a href="' + (item.discogsPrice.marketplaceUrl || '#') + '" target="_blank" class="store-row discogs">' +
+        '<span class="store-name">Discogs</span>' +
+        '<span class="match-info">' + item.discogsPrice.numForSale + ' for sale</span>' +
+        '<span class="price">$' + item.discogsPrice.lowestPrice.toFixed(2) + '</span>' +
+        '<span class="arrow">&rarr;</span></a>';
+    } else if (item.discogsPrice) {
+      discogsPriceHtml = '<a href="' + (item.discogsPrice.marketplaceUrl || '#') + '" target="_blank" class="store-row discogs out-of-stock">' +
+        '<span class="store-name">Discogs</span>' +
+        '<span class="match-info"><span class="not-found">None for sale</span></span>' +
+        '<span class="arrow">&rarr;</span></a>';
+    }
 
     return '<div class="card">' +
       '<div class="card-header">' +
@@ -820,7 +847,7 @@ function render() {
           (item.item.catno ? '<span>' + escapeHtml(item.item.catno) + '</span>' : '') +
         '</div>' +
       '</div>' +
-      '<div class="store-results">' + storeRows + '</div>' +
+      '<div class="store-results">' + storeRows + discogsPriceHtml + '</div>' +
       bestPriceHtml +
     '</div>';
   }).join('');

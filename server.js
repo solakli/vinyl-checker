@@ -13,6 +13,7 @@
 const express = require('express');
 const puppeteer = require('puppeteer');
 const https = require('https');
+const db = require('./db');
 
 // Prevent unhandled errors from crashing the server
 process.on('uncaughtException', function (e) { console.error('Uncaught:', e.message); });
@@ -444,6 +445,39 @@ async function checkItem(workerPages, item) {
     return results;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// DISCOGS MARKETPLACE PRICES (via API)
+// ═══════════════════════════════════════════════════════════════
+
+function fetchMarketplaceStats(discogsId) {
+    return new Promise(function (resolve, reject) {
+        https.get({
+            hostname: 'api.discogs.com',
+            path: '/marketplace/stats/' + discogsId + '?curr_abbr=USD',
+            headers: { 'User-Agent': 'VinylWantlistChecker/1.0' }
+        }, function (res) {
+            if (res.statusCode === 429) return reject(new Error('Rate limit'));
+            var data = '';
+            res.on('data', function (chunk) { data += chunk; });
+            res.on('end', function () {
+                try {
+                    var json = JSON.parse(data);
+                    resolve({
+                        lowestPrice: json.lowest_price ? json.lowest_price.value : null,
+                        currency: json.lowest_price ? json.lowest_price.currency : 'USD',
+                        numForSale: json.num_for_sale || 0,
+                        marketplaceUrl: 'https://www.discogs.com/sell/release/' + discogsId + '?currency=USD'
+                    });
+                } catch (e) { resolve({ lowestPrice: null, numForSale: 0 }); }
+            });
+        }).on('error', function () { resolve({ lowestPrice: null, numForSale: 0 }); });
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SCAN LOGIC (with DB caching)
+// ═══════════════════════════════════════════════════════════════
+
 async function runScan(username, sendEvent) {
     if (activeScan) {
         sendEvent('error', { message: 'A scan is already in progress' });
@@ -452,10 +486,9 @@ async function runScan(username, sendEvent) {
     activeScan = username;
 
     try {
-        // Step 1: Fetch wantlist
+        // Step 1: Fetch wantlist from Discogs
         sendEvent('status', { phase: 'fetching', message: 'Fetching wantlist for ' + username + '...' });
         var wantlist = await fetchWantlist(username);
-        sendEvent('wantlist', { total: wantlist.length, username: username });
 
         if (wantlist.length === 0) {
             sendEvent('done', { message: 'Wantlist is empty', total: 0, inStock: 0, results: [] });
@@ -463,67 +496,145 @@ async function runScan(username, sendEvent) {
             return;
         }
 
-        // Step 2: Launch browser with parallel workers
-        sendEvent('status', { phase: 'launching', message: 'Launching ' + NUM_WORKERS + ' parallel workers...' });
+        // Step 2: Sync to database
+        var user = db.getOrCreateUser(username);
+        var syncResult = db.syncWantlistItems(user.id, wantlist);
+        console.log('Synced wantlist: ' + syncResult.totalActive + ' active, ' + syncResult.newItems.length + ' new, ' + syncResult.removedCount + ' removed');
+
+        // Step 3: Determine what needs checking
+        var allDbItems = db.getActiveWantlist(user.id);
+        var itemsToCheck = db.getItemsNeedingCheck(user.id);
+        var cachedCount = allDbItems.length - itemsToCheck.length;
+
+        sendEvent('wantlist', {
+            total: allDbItems.length,
+            toCheck: itemsToCheck.length,
+            cached: cachedCount,
+            username: username
+        });
+
+        // Send cached items immediately
+        if (cachedCount > 0) {
+            sendEvent('status', { phase: 'cached', message: 'Loaded ' + cachedCount + ' cached results' });
+            var cachedItems = allDbItems.filter(function (w) {
+                return !itemsToCheck.some(function (tc) { return tc.id === w.id; });
+            });
+            cachedItems.forEach(function (w, idx) {
+                var stores = db.getStoreResults(w.id);
+                var price = db.getDiscogsPrice(w.id);
+                var hasStock = stores.some(function (s) { return s.inStock; });
+                sendEvent('item-done', {
+                    index: idx,
+                    total: allDbItems.length,
+                    item: {
+                        id: w.discogs_id, artist: w.artist, title: w.title,
+                        year: w.year, label: w.label, catno: w.catno,
+                        thumb: w.thumb, searchQuery: w.search_query
+                    },
+                    stores: stores,
+                    discogsPrice: price ? {
+                        lowestPrice: price.lowest_price,
+                        currency: price.currency,
+                        numForSale: price.num_for_sale,
+                        marketplaceUrl: price.marketplace_url
+                    } : null,
+                    inStock: hasStock,
+                    totalInStock: 0, // will be recalculated
+                    fromCache: true
+                });
+            });
+        }
+
+        if (itemsToCheck.length === 0) {
+            // Everything is cached
+            var fullResults = db.getFullResults(user.id);
+            var totalInStock = fullResults.filter(function (r) { return r.stores.some(function (s) { return s.inStock; }); }).length;
+            sendEvent('done', {
+                message: 'All results from cache (checked within 24h)',
+                total: allDbItems.length,
+                inStock: totalInStock,
+                username: username
+            });
+            activeScan = null;
+            return;
+        }
+
+        // Step 4: Launch browser for items that need checking
+        sendEvent('status', { phase: 'launching', message: 'Checking ' + itemsToCheck.length + ' items...' });
         var browser = await puppeteer.launch({
             headless: 'new',
             protocolTimeout: 60000,
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
-                   '--disable-gpu', '--disable-extensions', '--js-flags=--max-old-space-size=512']
+                   '--disable-gpu', '--disable-extensions']
         });
         var workers = await createWorkerPages(browser);
 
-        // Step 3: Process items with parallel workers
-        sendEvent('status', { phase: 'checking', message: 'Checking ' + wantlist.length + ' items across 9 stores (' + NUM_WORKERS + 'x parallel)...' });
-        var allItems = new Array(wantlist.length);
-        var inStockCount = 0;
-        var completedCount = 0;
-        var itemIndex = 0; // next item to assign
+        // Step 5: Process unchecked items
+        sendEvent('status', { phase: 'checking', message: 'Checking ' + itemsToCheck.length + ' items across stores...' });
+        var completedCount = cachedCount;
+        var itemIndex = 0;
 
-        // Worker loop: each worker grabs next available item
         async function workerLoop(workerIdx) {
             var pages = workers[workerIdx];
             while (true) {
                 var myIdx = itemIndex++;
-                if (myIdx >= wantlist.length) break;
+                if (myIdx >= itemsToCheck.length) break;
 
-                var item = wantlist[myIdx];
+                var w = itemsToCheck[myIdx];
+                var item = {
+                    id: w.discogs_id, artist: w.artist, title: w.title,
+                    year: w.year, label: w.label, catno: w.catno,
+                    thumb: w.thumb, searchQuery: w.search_query
+                };
+
                 try {
                     var results = await checkItem(pages, item);
-                    var entry = { item: item, stores: results };
-                    allItems[myIdx] = entry;
+
+                    // Save to DB
+                    db.saveStoreResults(w.id, results);
+
+                    // Fetch Discogs marketplace price
+                    if (w.discogs_id) {
+                        try {
+                            var priceData = await fetchMarketplaceStats(w.discogs_id);
+                            db.saveDiscogsPrice(w.id, priceData);
+                        } catch (e) { /* price fetch failed, not critical */ }
+                    }
 
                     var hasStock = results.some(function (r) { return r.inStock; });
-                    if (hasStock) inStockCount++;
                     completedCount++;
 
+                    var price = db.getDiscogsPrice(w.id);
                     sendEvent('item-done', {
                         index: completedCount - 1,
-                        total: wantlist.length,
+                        total: allDbItems.length,
                         item: item,
                         stores: results,
+                        discogsPrice: price ? {
+                            lowestPrice: price.lowest_price,
+                            currency: price.currency,
+                            numForSale: price.num_for_sale,
+                            marketplaceUrl: price.marketplace_url
+                        } : null,
                         inStock: hasStock,
-                        totalInStock: inStockCount
+                        totalInStock: 0,
+                        fromCache: false
                     });
                 } catch (e) {
-                    // Item failed, still count it
-                    allItems[myIdx] = { item: item, stores: [
-                        getDecksLink(item), getPhonicaLink(item), getYoyakuLink(item)
-                    ]};
                     completedCount++;
                     sendEvent('item-done', {
                         index: completedCount - 1,
-                        total: wantlist.length,
+                        total: allDbItems.length,
                         item: item,
                         stores: [],
                         inStock: false,
-                        totalInStock: inStockCount
+                        totalInStock: 0,
+                        fromCache: false
                     });
                 }
             }
         }
 
-        // Launch all workers in parallel
         var workerPromises = [];
         for (var w = 0; w < NUM_WORKERS; w++) {
             workerPromises.push(workerLoop(w));
@@ -532,19 +643,18 @@ async function runScan(username, sendEvent) {
 
         await browser.close();
 
-        // Filter out any undefined entries
-        allItems = allItems.filter(function (x) { return !!x; });
+        db.updateUserFullScanTime(user.id);
 
-        // Save results
-        var resultsPath = path.join(__dirname, 'results-' + username + '.json');
-        fs.writeFileSync(resultsPath, JSON.stringify(allItems, null, 2));
-        fs.writeFileSync(path.join(__dirname, 'results.json'), JSON.stringify(allItems, null, 2));
+        var fullResults = db.getFullResults(user.id);
+        var totalInStock = fullResults.filter(function (r) { return r.stores.some(function (s) { return s.inStock; }); }).length;
 
         sendEvent('done', {
             message: 'Scan complete!',
-            total: wantlist.length,
-            inStock: inStockCount,
-            username: username
+            total: allDbItems.length,
+            inStock: totalInStock,
+            username: username,
+            checked: itemsToCheck.length,
+            cached: cachedCount
         });
 
     } catch (e) {
@@ -598,16 +708,20 @@ app.get('/api/scan/:username', function (req, res) {
     });
 });
 
-// Get saved results
+// Get cached results from DB (instant)
 app.get('/api/results/:username', function (req, res) {
-    var filePath = path.join(__dirname, 'results-' + req.params.username + '.json');
-    if (fs.existsSync(filePath)) {
-        res.sendFile(filePath);
-    } else {
-        // Fall back to default results.json
-        var defaultPath = path.join(__dirname, 'results.json');
-        if (fs.existsSync(defaultPath)) res.sendFile(defaultPath);
-        else res.json([]);
+    try {
+        var user = db.getOrCreateUser(req.params.username.trim());
+        var results = db.getFullResults(user.id);
+        res.json({
+            username: req.params.username,
+            total: results.length,
+            inStock: results.filter(function (r) { return r.stores.some(function (s) { return s.inStock; }); }).length,
+            lastScan: user.last_full_scan,
+            results: results
+        });
+    } catch (e) {
+        res.json({ username: req.params.username, total: 0, inStock: 0, results: [] });
     }
 });
 
@@ -621,6 +735,17 @@ app.get('/', function (req, res) {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// Graceful shutdown
+process.on('SIGINT', function () { db.close(); process.exit(0); });
+process.on('SIGTERM', function () { db.close(); process.exit(0); });
+
 app.listen(PORT, function () {
     console.log('\n\u2728 Vinyl Checker running at http://localhost:' + PORT + '\n');
+
+    // Background sync: check for wantlist changes every 15 minutes
+    setInterval(function () {
+        console.log('[sync] Background sync check...');
+        // This will be triggered per-user in the future
+        // For now, it's a placeholder — scans are triggered by user action
+    }, 15 * 60 * 1000);
 });
