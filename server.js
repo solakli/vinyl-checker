@@ -1,0 +1,626 @@
+#!/usr/bin/env node
+
+/**
+ * Vinyl Checker Web App
+ *
+ * Serves a web UI where users enter a Discogs username,
+ * then checks 9 stores in batches with real-time progress via SSE.
+ *
+ * Run: node server.js
+ * Open: http://localhost:3000
+ */
+
+const express = require('express');
+const puppeteer = require('puppeteer');
+const https = require('https');
+
+// Prevent unhandled errors from crashing the server
+process.on('uncaughtException', function (e) { console.error('Uncaught:', e.message); });
+process.on('unhandledRejection', function (e) { console.error('Unhandled:', e && e.message); });
+const fs = require('fs');
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Serve static files
+app.use(express.static(__dirname));
+app.use(express.json());
+
+// ═══════════════════════════════════════════════════════════════
+// FUZZY MATCHING (same as vinyl-checker-puppeteer.js)
+// ═══════════════════════════════════════════════════════════════
+
+function similarity(s1, s2) {
+    const longer = s1.length > s2.length ? s1 : s2;
+    const shorter = s1.length > s2.length ? s2 : s1;
+    if (longer.length === 0) return 1.0;
+    const editDistance = levenshtein(longer.toLowerCase(), shorter.toLowerCase());
+    return (longer.length - editDistance) / longer.length;
+}
+
+function levenshtein(s1, s2) {
+    const costs = [];
+    for (let i = 0; i <= s1.length; i++) {
+        let lastValue = i;
+        for (let j = 0; j <= s2.length; j++) {
+            if (i === 0) { costs[j] = j; }
+            else if (j > 0) {
+                let newValue = costs[j - 1];
+                if (s1.charAt(i - 1) !== s2.charAt(j - 1))
+                    newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+                costs[j - 1] = lastValue;
+                lastValue = newValue;
+            }
+        }
+        if (i > 0) costs[s2.length] = lastValue;
+    }
+    return costs[s2.length];
+}
+
+function normalize(str) {
+    return str.toLowerCase().replace(/^the\s+/i, '').replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function recordsMatch(wanted, found, threshold) {
+    threshold = threshold || 0.7;
+    var artistSim = similarity(normalize(wanted.artist), normalize(found.artist));
+    var titleSim = similarity(normalize(wanted.title), normalize(found.title));
+    if (artistSim >= 0.85) return titleSim >= 0.65;
+    return artistSim >= threshold && titleSim >= threshold;
+}
+
+function recordsMatchCombined(wanted, combinedTitle) {
+    var norm = normalize(combinedTitle);
+    var wantedArtist = normalize(wanted.artist);
+    var wantedTitle = normalize(wanted.title);
+    var artistSim = similarity(wantedArtist, norm.substring(0, wantedArtist.length + 5));
+    if (norm.indexOf(wantedArtist) !== -1 || artistSim >= 0.7) {
+        var remainder = norm.replace(wantedArtist, '').trim();
+        var titleSim = similarity(wantedTitle, remainder);
+        if (titleSim >= 0.5) return true;
+    }
+    var fullWanted = normalize(wanted.artist + ' ' + wanted.title);
+    return similarity(fullWanted, norm) >= 0.75;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DISCOGS WANTLIST
+// ═══════════════════════════════════════════════════════════════
+
+function getArtistName(w) {
+    var artists = w.basic_information && w.basic_information.artists;
+    return (artists && artists[0] && artists[0].name) || 'Unknown';
+}
+
+function getLabelName(w) {
+    var labels = w.basic_information && w.basic_information.labels;
+    return (labels && labels[0] && labels[0].name) || '';
+}
+
+function getCatno(w) {
+    var labels = w.basic_information && w.basic_information.labels;
+    return (labels && labels[0] && labels[0].catno) || '';
+}
+
+async function fetchWantlist(username) {
+    return new Promise(function (resolve, reject) {
+        var fetchPage = function (page, allWants) {
+            allWants = allWants || [];
+            https.get({
+                hostname: 'api.discogs.com',
+                path: '/users/' + username + '/wants?per_page=100&page=' + page,
+                headers: { 'User-Agent': 'VinylWantlistChecker/1.0' }
+            }, function (res) {
+                if (res.statusCode === 404) return reject(new Error('Username not found'));
+                if (res.statusCode === 429) return reject(new Error('Rate limit reached'));
+                if (res.statusCode < 200 || res.statusCode >= 300) return reject(new Error('API error: ' + res.statusCode));
+                var data = '';
+                res.on('data', function (chunk) { data += chunk; });
+                res.on('end', function () {
+                    try { var json = JSON.parse(data); } catch (e) { return reject(new Error('Parse error')); }
+                    if (!json.wants || json.wants.length === 0) return resolve(allWants);
+                    var wants = json.wants.map(function (w) {
+                        var artist = getArtistName(w);
+                        return {
+                            id: w.id, artist: artist, title: w.basic_information.title,
+                            year: w.basic_information.year, label: getLabelName(w), catno: getCatno(w),
+                            thumb: w.basic_information.thumb || '',
+                            searchQuery: (artist + ' ' + w.basic_information.title).trim()
+                        };
+                    });
+                    allWants = allWants.concat(wants);
+                    if (page < json.pagination.pages) setTimeout(function () { fetchPage(page + 1, allWants); }, 500);
+                    else resolve(allWants);
+                });
+            }).on('error', reject);
+        };
+        fetchPage(1);
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STORE CHECKERS
+// ═══════════════════════════════════════════════════════════════
+
+// Link-only stores
+function getPhonicaLink(item) {
+    return { store: 'Phonica', inStock: false, matches: [], searchUrl: 'https://www.phonicarecords.com/search/' + encodeURIComponent(item.searchQuery), linkOnly: true };
+}
+function getYoyakuLink(item) {
+    return { store: 'Yoyaku', inStock: false, matches: [], searchUrl: 'https://yoyaku.co/search?q=' + encodeURIComponent(item.searchQuery), linkOnly: true };
+}
+function getDecksLink(item) {
+    return { store: 'Decks.de', inStock: false, matches: [], searchUrl: 'https://www.decks.de/decks/workfloor/search_db.php?such=' + encodeURIComponent(item.searchQuery) + '&wosuch=vi&wassuch=atl', linkOnly: true };
+}
+
+// Deejay.de
+async function checkDeejay(page, item) {
+    var searchUrl = 'https://www.deejay.de/' + encodeURIComponent(item.searchQuery);
+    try {
+        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+        await page.waitForSelector('.product h2.artist, .product h3.title', { timeout: 5000 }).catch(function () {});
+        var products = await page.evaluate(function () {
+            var items = [];
+            document.querySelectorAll('.product').forEach(function (el) {
+                if (el.classList.contains('equip')) return;
+                var artistEl = el.querySelector('h2.artist');
+                var titleEl = el.querySelector('h3.title');
+                var kaufenEl = el.querySelector('.kaufen');
+                var artist = artistEl ? artistEl.textContent.trim() : '';
+                var title = titleEl ? titleEl.textContent.trim() : '';
+                var priceText = kaufenEl ? kaufenEl.textContent : '';
+                var priceMatch = priceText.match(/([\d,]+)\s*\u20AC/);
+                var price = priceMatch ? priceMatch[0].trim() : '';
+                var text = el.textContent.toLowerCase();
+                var isSoldOut = text.indexOf('sold out') !== -1 || text.indexOf('ausverkauft') !== -1;
+                if ((artist || title) && !isSoldOut) items.push({ artist: artist, title: title, price: price });
+            });
+            return items;
+        });
+        var matches = products.filter(function (p) { return recordsMatch(item, p); });
+        return { store: 'Deejay.de', inStock: matches.length > 0, matches: matches, searchUrl: searchUrl };
+    } catch (e) {
+        return { store: 'Deejay.de', inStock: false, error: e.message, searchUrl: searchUrl };
+    }
+}
+
+// HHV
+async function checkHHV(page, item) {
+    var searchUrl = 'https://www.hhv.de/katalog/filter/suche-S11?af=true&term=' + encodeURIComponent(item.searchQuery);
+    try {
+        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+        await page.waitForSelector('.items--shared--gallery-entry--base-component span.artist', { timeout: 3000 }).catch(function () {});
+        var products = await page.evaluate(function () {
+            var items = [];
+            document.querySelectorAll('.items--shared--gallery-entry--base-component:not(.overlay)').forEach(function (el) {
+                var artistEl = el.querySelector('span.artist');
+                var titleEl = el.querySelector('span.title');
+                var priceEl = el.querySelector('span.price');
+                var artist = artistEl ? artistEl.textContent.trim() : '';
+                var title = titleEl ? titleEl.textContent.trim() : '';
+                var price = priceEl ? priceEl.textContent.trim() : '';
+                if (artist || title) items.push({ artist: artist, title: title, price: price });
+            });
+            return items;
+        });
+        var matches = products.filter(function (p) { return recordsMatch(item, p); });
+        return { store: 'HHV', inStock: matches.length > 0, matches: matches, searchUrl: searchUrl };
+    } catch (e) {
+        return { store: 'HHV', inStock: false, error: e.message, searchUrl: searchUrl };
+    }
+}
+
+// Hardwax
+async function checkHardwax(page, item) {
+    var searchUrl = 'https://hardwax.com/?search=' + encodeURIComponent(item.searchQuery);
+    try {
+        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 8000 });
+        await page.waitForSelector('article a[href*="/act/"]', { timeout: 3000 }).catch(function () {});
+        var products = await page.evaluate(function () {
+            var items = [];
+            document.querySelectorAll('article').forEach(function (art) {
+                var actLink = art.querySelector('a[href*="/act/"]');
+                if (!actLink) return;
+                var artist = actLink.textContent.replace(/:$/, '').trim();
+                var title = '';
+                var recordLinks = [];
+                art.querySelectorAll('a').forEach(function (a) { if (a.href.match(/hardwax\.com\/\d+\//)) recordLinks.push(a); });
+                if (recordLinks.length > 0) {
+                    var m = recordLinks[0].href.match(/\/\d+\/[^/]+\/([^/?]+)/);
+                    if (m) title = m[1].replace(/-/g, ' ');
+                }
+                var text = art.textContent;
+                var outOfStock = text.indexOf('out of stock') !== -1;
+                var price = '';
+                art.querySelectorAll('a[href*="#add/"]').forEach(function (pl) {
+                    var t = pl.textContent;
+                    if (t.indexOf('\u20AC') !== -1 && t.indexOf('MP3') === -1 && t.indexOf('AIFF') === -1) {
+                        var pm = t.match(/\u20AC\s*([\d.]+)/);
+                        if (pm) price = '\u20AC' + pm[1];
+                    }
+                });
+                if (!price) {
+                    art.querySelectorAll('a[href*="#add/"]').forEach(function (pl) {
+                        var pm = pl.textContent.match(/\u20AC\s*([\d.]+)/);
+                        if (pm && !price) price = '\u20AC' + pm[1];
+                    });
+                }
+                if ((artist || title) && !outOfStock) items.push({ artist: artist, title: title, price: price });
+            });
+            return items;
+        });
+        var matches = products.filter(function (p) { return recordsMatch(item, p); });
+        return { store: 'Hardwax', inStock: matches.length > 0, matches: matches, searchUrl: searchUrl };
+    } catch (e) {
+        return { store: 'Hardwax', inStock: false, error: e.message, searchUrl: searchUrl };
+    }
+}
+
+// Juno
+async function checkJuno(page, item) {
+    var searchUrl = 'https://www.juno.co.uk/search/?q%5Ball%5D%5B%5D=' + encodeURIComponent(item.searchQuery);
+    try {
+        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+        await page.waitForSelector('.dv-item .vi-text', { timeout: 3000 }).catch(function () {});
+        var products = await page.evaluate(function () {
+            var items = [];
+            document.querySelectorAll('.dv-item').forEach(function (el) {
+                var viTexts = el.querySelectorAll('.vi-text');
+                var artist = viTexts[0] ? viTexts[0].textContent.trim() : '';
+                var title = viTexts[1] ? viTexts[1].textContent.trim() : '';
+                title = title.replace(/\s*\([^)]*\)\s*$/, '').trim();
+                var priceEl = el.querySelector('.pl-big-price');
+                var price = '';
+                if (priceEl) {
+                    var priceText = priceEl.textContent.trim();
+                    var m = priceText.match(/[\$\u00A3\u20AC][\d.]+/);
+                    price = m ? m[0] : priceText.replace('in stock', '').trim();
+                }
+                var text = el.textContent.toLowerCase();
+                var isSoldOut = text.indexOf('out of stock') !== -1 || text.indexOf('sold out') !== -1;
+                if ((artist || title) && !isSoldOut) items.push({ artist: artist, title: title, price: price });
+            });
+            return items;
+        });
+        var matches = products.filter(function (p) { return recordsMatch(item, p); });
+        return { store: 'Juno', inStock: matches.length > 0, matches: matches, searchUrl: searchUrl };
+    } catch (e) {
+        return { store: 'Juno', inStock: false, error: e.message, searchUrl: searchUrl };
+    }
+}
+
+// Turntable Lab
+async function checkTurntableLab(page, item) {
+    var searchUrl = 'https://www.turntablelab.com/search?type=product&q=' + encodeURIComponent(item.searchQuery);
+    try {
+        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+        await page.waitForSelector('.product-item, .product-item__product-title', { timeout: 3000 }).catch(function () {});
+        var products = await page.evaluate(function () {
+            var items = [];
+            document.querySelectorAll('.product-item').forEach(function (el) {
+                var titleEl = el.querySelector('.product-item__product-title, h3');
+                var priceEl = el.querySelector('.product-item__price-main span, .product-item__price');
+                var combined = titleEl ? titleEl.textContent.trim() : '';
+                var price = priceEl ? priceEl.textContent.trim().replace(/\s+/g, ' ') : '';
+                // Extract just the price amount
+                var pm = price.match(/\$[\d.]+/);
+                price = pm ? pm[0] : price.substring(0, 20);
+                var artist = '', title = '';
+                if (combined.indexOf(':') !== -1) {
+                    var parts = combined.split(':');
+                    artist = parts[0].trim();
+                    title = parts.slice(1).join(':').trim();
+                } else if (combined.indexOf(' - ') !== -1) {
+                    var parts2 = combined.split(' - ');
+                    artist = parts2[0].trim();
+                    title = parts2.slice(1).join(' - ').trim();
+                } else { title = combined; }
+                title = title.replace(/\s*(Vinyl\s*(LP|12"|7"|10"|2xLP|2LP|3xLP)?)$/i, '').trim();
+                var text = el.textContent.toLowerCase();
+                var isSoldOut = text.indexOf('sold out') !== -1;
+                if (combined && !isSoldOut) items.push({ artist: artist, title: title, price: price });
+            });
+            return items;
+        });
+        var matches = products.filter(function (p) {
+            if (p.artist) return recordsMatch(item, p);
+            return recordsMatchCombined(item, p.title);
+        });
+        return { store: 'Turntable Lab', inStock: matches.length > 0, matches: matches, searchUrl: searchUrl };
+    } catch (e) {
+        return { store: 'Turntable Lab', inStock: false, error: e.message, searchUrl: searchUrl };
+    }
+}
+
+// Underground Vinyl Source
+async function checkUndergroundVinyl(page, item) {
+    var searchUrl = 'https://undergroundvinylsource.com/search?q=' + encodeURIComponent(item.searchQuery) + '&type=product';
+    try {
+        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+        await page.waitForSelector('.product-card.product-grid, .product-card__name', { timeout: 3000 }).catch(function () {});
+        var products = await page.evaluate(function () {
+            var items = [];
+            document.querySelectorAll('.product-card.product-grid').forEach(function (el) {
+                var titleEl = el.querySelector('h6.product-card__name, .product-card__name');
+                var priceEl = el.querySelector('.product-price');
+                var combined = titleEl ? titleEl.textContent.trim() : '';
+                var price = priceEl ? priceEl.textContent.trim().replace(/\s+/g, ' ') : '';
+                var pm = price.match(/\$[\d.]+/);
+                price = pm ? pm[0] : price.substring(0, 20);
+                var artist = '', title = '';
+                if (combined.indexOf(' - ') !== -1) {
+                    var parts = combined.split(' - ');
+                    artist = parts[0].trim();
+                    title = parts.slice(1).join(' - ').trim();
+                } else { title = combined; }
+                var text = el.textContent.toLowerCase();
+                var isSoldOut = text.indexOf('sold out') !== -1;
+                if (combined && !isSoldOut) items.push({ artist: artist, title: title, price: price });
+            });
+            return items;
+        });
+        var matches = products.filter(function (p) {
+            if (p.artist) return recordsMatch(item, p);
+            return recordsMatchCombined(item, p.title);
+        });
+        return { store: 'Underground Vinyl', inStock: matches.length > 0, matches: matches, searchUrl: searchUrl };
+    } catch (e) {
+        return { store: 'Underground Vinyl', inStock: false, error: e.message, searchUrl: searchUrl };
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PARALLEL WORKER PROCESSOR
+// ═══════════════════════════════════════════════════════════════
+
+const NUM_WORKERS = 2; // 2 items checked simultaneously
+const STORES_PER_WORKER = 3; // 3 scraped stores: Deejay.de, HHV, Juno
+let activeScan = null;
+
+// ═══════════════════════════════════════════════════════════════
+// LINK-ONLY STORES — click goes directly to search results page
+// ═══════════════════════════════════════════════════════════════
+
+function getHardwaxLink(item) {
+    // hardwax.com/?search= redirects to /?find= with results
+    return { store: 'Hardwax', inStock: false, matches: [], searchUrl: 'https://hardwax.com/?search=' + encodeURIComponent(item.searchQuery), linkOnly: true };
+}
+function getTurntableLabLink(item) {
+    return { store: 'Turntable Lab', inStock: false, matches: [], searchUrl: 'https://www.turntablelab.com/search?type=product&q=' + encodeURIComponent(item.searchQuery), linkOnly: true };
+}
+function getUndergroundVinylLink(item) {
+    return { store: 'Underground Vinyl', inStock: false, matches: [], searchUrl: 'https://undergroundvinylsource.com/search?q=' + encodeURIComponent(item.searchQuery) + '&type=product', linkOnly: true };
+}
+
+async function createWorkerPages(browser) {
+    var UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    var workers = [];
+
+    for (var w = 0; w < NUM_WORKERS; w++) {
+        var pages = [];
+        for (var p = 0; p < STORES_PER_WORKER; p++) pages.push(await browser.newPage());
+
+        for (var pi = 0; pi < pages.length; pi++) {
+            pages[pi].setDefaultNavigationTimeout(10000);
+            pages[pi].setDefaultTimeout(10000);
+            await pages[pi].setUserAgent(UA);
+            await pages[pi].setRequestInterception(true);
+        }
+        // pages[0] = Deejay.de - block stylesheets
+        pages[0].on('request', function (req) {
+            var type = req.resourceType();
+            (type === 'image' || type === 'media' || type === 'font' || type === 'stylesheet') ? req.abort() : req.continue();
+        });
+        // pages[1] = HHV - keep stylesheets (SPA needs CSS)
+        pages[1].on('request', function (req) {
+            var type = req.resourceType();
+            (type === 'image' || type === 'media' || type === 'font') ? req.abort() : req.continue();
+        });
+        // pages[2] = Juno
+        pages[2].on('request', function (req) {
+            var type = req.resourceType();
+            (type === 'image' || type === 'media' || type === 'font') ? req.abort() : req.continue();
+        });
+        workers.push(pages);
+    }
+    return workers;
+}
+
+async function checkItem(workerPages, item) {
+    // Scrape 3 stores in parallel
+    var results = await Promise.all([
+        checkDeejay(workerPages[0], item),
+        checkHHV(workerPages[1], item),
+        checkJuno(workerPages[2], item)
+    ]);
+    // Add 6 link-only stores (instant, no scraping)
+    results.push(getHardwaxLink(item));
+    results.push(getTurntableLabLink(item));
+    results.push(getUndergroundVinylLink(item));
+    results.push(getDecksLink(item));
+    results.push(getPhonicaLink(item));
+    results.push(getYoyakuLink(item));
+    return results;
+}
+
+async function runScan(username, sendEvent) {
+    if (activeScan) {
+        sendEvent('error', { message: 'A scan is already in progress' });
+        return;
+    }
+    activeScan = username;
+
+    try {
+        // Step 1: Fetch wantlist
+        sendEvent('status', { phase: 'fetching', message: 'Fetching wantlist for ' + username + '...' });
+        var wantlist = await fetchWantlist(username);
+        sendEvent('wantlist', { total: wantlist.length, username: username });
+
+        if (wantlist.length === 0) {
+            sendEvent('done', { message: 'Wantlist is empty', total: 0, inStock: 0, results: [] });
+            activeScan = null;
+            return;
+        }
+
+        // Step 2: Launch browser with parallel workers
+        sendEvent('status', { phase: 'launching', message: 'Launching ' + NUM_WORKERS + ' parallel workers...' });
+        var browser = await puppeteer.launch({
+            headless: 'new',
+            protocolTimeout: 60000,
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
+                   '--disable-gpu', '--disable-extensions', '--js-flags=--max-old-space-size=512']
+        });
+        var workers = await createWorkerPages(browser);
+
+        // Step 3: Process items with parallel workers
+        sendEvent('status', { phase: 'checking', message: 'Checking ' + wantlist.length + ' items across 9 stores (' + NUM_WORKERS + 'x parallel)...' });
+        var allItems = new Array(wantlist.length);
+        var inStockCount = 0;
+        var completedCount = 0;
+        var itemIndex = 0; // next item to assign
+
+        // Worker loop: each worker grabs next available item
+        async function workerLoop(workerIdx) {
+            var pages = workers[workerIdx];
+            while (true) {
+                var myIdx = itemIndex++;
+                if (myIdx >= wantlist.length) break;
+
+                var item = wantlist[myIdx];
+                try {
+                    var results = await checkItem(pages, item);
+                    var entry = { item: item, stores: results };
+                    allItems[myIdx] = entry;
+
+                    var hasStock = results.some(function (r) { return r.inStock; });
+                    if (hasStock) inStockCount++;
+                    completedCount++;
+
+                    sendEvent('item-done', {
+                        index: completedCount - 1,
+                        total: wantlist.length,
+                        item: item,
+                        stores: results,
+                        inStock: hasStock,
+                        totalInStock: inStockCount
+                    });
+                } catch (e) {
+                    // Item failed, still count it
+                    allItems[myIdx] = { item: item, stores: [
+                        getDecksLink(item), getPhonicaLink(item), getYoyakuLink(item)
+                    ]};
+                    completedCount++;
+                    sendEvent('item-done', {
+                        index: completedCount - 1,
+                        total: wantlist.length,
+                        item: item,
+                        stores: [],
+                        inStock: false,
+                        totalInStock: inStockCount
+                    });
+                }
+            }
+        }
+
+        // Launch all workers in parallel
+        var workerPromises = [];
+        for (var w = 0; w < NUM_WORKERS; w++) {
+            workerPromises.push(workerLoop(w));
+        }
+        await Promise.all(workerPromises);
+
+        await browser.close();
+
+        // Filter out any undefined entries
+        allItems = allItems.filter(function (x) { return !!x; });
+
+        // Save results
+        var resultsPath = path.join(__dirname, 'results-' + username + '.json');
+        fs.writeFileSync(resultsPath, JSON.stringify(allItems, null, 2));
+        fs.writeFileSync(path.join(__dirname, 'results.json'), JSON.stringify(allItems, null, 2));
+
+        sendEvent('done', {
+            message: 'Scan complete!',
+            total: wantlist.length,
+            inStock: inStockCount,
+            username: username
+        });
+
+    } catch (e) {
+        sendEvent('error', { message: e.message });
+    } finally {
+        activeScan = null;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// API ROUTES
+// ═══════════════════════════════════════════════════════════════
+
+// Force-reset scan lock
+app.get('/api/reset', function (req, res) {
+    activeScan = null;
+    res.json({ ok: true });
+});
+
+// SSE endpoint for real-time scan progress
+app.get('/api/scan/:username', function (req, res) {
+    var username = req.params.username.trim();
+    if (!username) return res.status(400).json({ error: 'Username required' });
+
+    // Set up SSE
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no'
+    });
+
+    function sendEvent(type, data) {
+        res.write('event: ' + type + '\n');
+        res.write('data: ' + JSON.stringify(data) + '\n\n');
+    }
+
+    // Keep connection alive
+    var keepAlive = setInterval(function () {
+        res.write(': keepalive\n\n');
+    }, 15000);
+
+    req.on('close', function () {
+        clearInterval(keepAlive);
+    });
+
+    // Start the scan
+    runScan(username, sendEvent).then(function () {
+        clearInterval(keepAlive);
+        res.end();
+    });
+});
+
+// Get saved results
+app.get('/api/results/:username', function (req, res) {
+    var filePath = path.join(__dirname, 'results-' + req.params.username + '.json');
+    if (fs.existsSync(filePath)) {
+        res.sendFile(filePath);
+    } else {
+        // Fall back to default results.json
+        var defaultPath = path.join(__dirname, 'results.json');
+        if (fs.existsSync(defaultPath)) res.sendFile(defaultPath);
+        else res.json([]);
+    }
+});
+
+// Check scan status
+app.get('/api/status', function (req, res) {
+    res.json({ scanning: !!activeScan, username: activeScan });
+});
+
+// Serve the app
+app.get('/', function (req, res) {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+app.listen(PORT, function () {
+    console.log('\n\u2728 Vinyl Checker running at http://localhost:' + PORT + '\n');
+});

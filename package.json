@@ -1,0 +1,19 @@
+{
+  "name": "discogs-vinyl-checker",
+  "version": "1.0.0",
+  "description": "Check if your Discogs wantlist items are in stock at vinyl stores",
+  "main": "vinyl-checker-puppeteer.js",
+  "scripts": {
+    "check": "node vinyl-checker-puppeteer.js",
+    "install-deps": "npm install"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "puppeteer": "^21.0.0"
+  },
+  "bin": {
+    "vinyl-check": "./vinyl-checker-puppeteer.js"
+  },
+  "author": "",
+  "license": "MIT"
+}

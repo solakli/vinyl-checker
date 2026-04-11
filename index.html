@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vinyl Checker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #1a1a1a;
+    --card: #2a2a2a;
+    --border: #444;
+    --text: #fff;
+    --text-sec: #ccc;
+    --text-muted: #888;
+    --gold: #d4a32a;
+    --red: #ff0000;
+    --red-soft: #ff6b6b;
+    --green: #6bff6b;
+    --hhv: #d4a32a;
+    --deejay: #fff;
+    --phonica: #ff6b6b;
+    --hardwax: #e07020;
+    --juno: #4dabf7;
+    --decks: #a0d911;
+    --ttlab: #be4bdb;
+    --uvs: #20c997;
+    --yoyaku: #ffd43b;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Oswald', sans-serif;
+    min-height: 100vh;
+  }
+
+  /* HEADER */
+  .header {
+    background: #000;
+    border-bottom: 2px solid var(--gold);
+    padding: 14px 24px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .header h1 {
+    font-size: 24px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    color: var(--text);
+  }
+
+  .header h1 span { color: var(--gold); }
+
+  .live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--red);
+    color: #fff;
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+
+  .live-dot {
+    width: 6px; height: 6px;
+    background: #fff;
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+  }
+
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .stats {
+    display: flex;
+    gap: 20px;
+    font-size: 13px;
+    font-weight: 300;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .stats .stat-value { color: var(--gold); font-weight: 500; margin-right: 4px; }
+
+  .timestamp {
+    font-size: 11px; font-weight: 300;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  /* USERNAME INPUT */
+  .scan-section {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .username-input {
+    background: transparent;
+    border: 1px solid var(--border);
+    padding: 8px 14px;
+    color: var(--text);
+    font-family: 'Oswald', sans-serif;
+    font-size: 14px;
+    font-weight: 300;
+    width: 240px;
+    outline: none;
+    letter-spacing: 1px;
+    transition: border-color 0.2s;
+  }
+
+  .username-input::placeholder {
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 2px;
+  }
+
+  .username-input:focus { border-color: var(--gold); }
+
+  .scan-btn {
+    background: var(--gold);
+    border: none;
+    color: #000;
+    font-family: 'Oswald', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 24px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .scan-btn:hover { background: #e8b830; }
+  .scan-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* PROGRESS BAR */
+  .progress-section {
+    display: none;
+    margin-bottom: 10px;
+  }
+
+  .progress-section.active { display: block; }
+
+  .progress-bar-track {
+    background: #333;
+    height: 4px;
+    width: 100%;
+    margin-bottom: 6px;
+  }
+
+  .progress-bar-fill {
+    background: var(--gold);
+    height: 100%;
+    width: 0%;
+    transition: width 0.3s ease;
+  }
+
+  .progress-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    font-weight: 300;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .progress-current {
+    color: var(--text-sec);
+    font-size: 11px;
+    font-weight: 300;
+    margin-top: 4px;
+    letter-spacing: 0.5px;
+  }
+
+  /* CONTROLS */
+  .controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .search-box {
+    background: transparent;
+    border: 1px solid var(--border);
+    padding: 7px 14px;
+    color: var(--text);
+    font-family: 'Oswald', sans-serif;
+    font-size: 14px;
+    font-weight: 300;
+    width: 220px;
+    outline: none;
+    letter-spacing: 1px;
+    transition: border-color 0.2s;
+  }
+
+  .search-box::placeholder {
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 2px;
+  }
+
+  .search-box:focus { border-color: var(--gold); }
+
+  .sort-select {
+    background: transparent;
+    border: 1px solid var(--border);
+    padding: 7px 12px;
+    color: var(--text);
+    font-family: 'Oswald', sans-serif;
+    font-size: 12px;
+    font-weight: 300;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .sort-select option { background: #000; color: var(--text); }
+
+  .filter-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    color: var(--text-muted);
+    font-family: 'Oswald', sans-serif;
+    font-size: 12px;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .filter-btn:hover { border-color: var(--text); color: var(--text); }
+  .filter-btn.active { border-color: var(--gold); color: var(--gold); }
+
+  .store-filter {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .store-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+  }
+
+  .store-badge.hhv { color: var(--hhv); }
+  .store-badge.deejay { color: var(--deejay); }
+  .store-badge.phonica { color: var(--phonica); }
+  .store-badge.hardwax { color: var(--hardwax); }
+  .store-badge.juno { color: var(--juno); }
+  .store-badge.decks { color: var(--decks); }
+  .store-badge.ttlab { color: var(--ttlab); }
+  .store-badge.uvs { color: var(--uvs); }
+  .store-badge.yoyaku { color: var(--yoyaku); }
+  .store-badge.active { border-color: currentColor; }
+  .store-badge .count { opacity: 0.5; font-weight: 300; }
+
+  /* CONTAINER */
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+  /* GRID */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 12px;
+  }
+
+  /* CARD */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 20px;
+    transition: all 0.15s;
+    position: relative;
+  }
+
+  .card:hover {
+    border-color: var(--gold);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  }
+
+  .card-header { margin-bottom: 14px; }
+
+  .card-artist {
+    font-size: 16px; font-weight: 500;
+    color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 2px;
+  }
+
+  .card-title {
+    font-size: 14px; font-weight: 300;
+    color: var(--text-sec);
+    letter-spacing: 0.5px;
+  }
+
+  .card-meta {
+    display: flex; gap: 10px; margin-top: 6px;
+    font-size: 11px; font-weight: 300;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .card-meta span::after { content: '/'; margin-left: 10px; color: #444; }
+  .card-meta span:last-child::after { content: ''; margin: 0; }
+
+  /* STORE RESULTS */
+  .store-results { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+
+  .store-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 5px 10px;
+    text-decoration: none; color: inherit;
+    transition: background 0.15s;
+  }
+
+  .store-row:hover { background: rgba(255,255,255,0.05); }
+
+  .store-row .store-name {
+    font-size: 10px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    min-width: 90px;
+  }
+
+  .store-row.hhv .store-name { color: var(--hhv); }
+  .store-row.deejay .store-name { color: var(--deejay); }
+  .store-row.phonica .store-name { color: var(--phonica); }
+  .store-row.hardwax .store-name { color: var(--hardwax); }
+  .store-row.juno .store-name { color: var(--juno); }
+  .store-row.decks .store-name { color: var(--decks); }
+  .store-row.ttlab .store-name { color: var(--ttlab); }
+  .store-row.uvs .store-name { color: var(--uvs); }
+  .store-row.yoyaku .store-name { color: var(--yoyaku); }
+
+  .store-row .match-info {
+    font-size: 12px; font-weight: 300;
+    color: var(--text-muted); flex: 1;
+    margin: 0 10px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    letter-spacing: 0.5px;
+  }
+
+  .store-row .price {
+    font-size: 13px; font-weight: 500;
+    color: var(--gold);
+    white-space: nowrap;
+    letter-spacing: 0.5px;
+  }
+
+  .store-row .link-only {
+    font-size: 10px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+
+  .store-row .not-found {
+    font-size: 10px; color: #555;
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+
+  .store-row.out-of-stock { opacity: 0.3; }
+
+  .arrow {
+    color: var(--text-muted);
+    font-size: 14px; margin-left: 6px;
+    font-weight: 300;
+    transition: color 0.15s;
+  }
+
+  .store-row:hover .arrow { color: var(--gold); }
+
+  /* BEST PRICE */
+  .price-compare {
+    margin-top: 8px; padding-top: 8px;
+    border-top: 1px solid #333;
+    display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+  }
+
+  .best-price-label {
+    font-size: 10px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 2px; font-weight: 300;
+  }
+
+  .best-price-value {
+    font-size: 18px; font-weight: 600;
+    color: var(--gold); letter-spacing: 1px;
+  }
+
+  .no-results {
+    text-align: center; padding: 80px 20px;
+    color: var(--text-muted); font-size: 18px;
+    font-weight: 300; text-transform: uppercase; letter-spacing: 3px;
+  }
+
+  /* WELCOME */
+  .welcome {
+    text-align: center;
+    padding: 100px 20px;
+  }
+
+  .welcome h2 {
+    font-size: 28px; font-weight: 300;
+    text-transform: uppercase; letter-spacing: 4px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+
+  .welcome p {
+    font-size: 14px; font-weight: 300;
+    color: #555; letter-spacing: 1px;
+  }
+
+  /* THEME TOGGLE */
+  .theme-toggle {
+    position: fixed; top: 14px; right: 24px; z-index: 200;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-family: 'Oswald', sans-serif;
+    font-size: 11px; padding: 4px 10px;
+    cursor: pointer;
+    text-transform: uppercase; letter-spacing: 1px;
+    transition: all 0.2s;
+  }
+
+  .theme-toggle:hover { border-color: var(--gold); color: var(--gold); }
+
+  /* LIGHT MODE */
+  body.light {
+    --bg: #f4f4f4; --card: #fff; --border: #ddd;
+    --text: #000; --text-sec: #333; --text-muted: #666;
+    --gold: #d4a32a; --hhv: #b8891e; --deejay: #222; --phonica: #cc4444;
+    --hardwax: #c06020; --juno: #3793d6; --decks: #7ba800;
+    --ttlab: #a030c0; --uvs: #18a080; --yoyaku: #d4a32a;
+  }
+
+  body.light .header { background: #fff; }
+  body.light .card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+  body.light .store-row:hover { background: rgba(0,0,0,0.03); }
+  body.light .sort-select option { background: #fff; color: #000; }
+
+  @media (max-width: 768px) {
+    .header { padding: 12px 16px; }
+    .header-top { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .controls { flex-direction: column; align-items: stretch; }
+    .search-box, .username-input { width: 100%; }
+    .grid { grid-template-columns: 1fr; }
+    .stats { flex-wrap: wrap; }
+    .theme-toggle { top: 12px; right: 16px; }
+    .scan-section { flex-direction: column; align-items: stretch; }
+    .store-filter { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+
+<button class="theme-toggle" id="themeToggle">Light</button>
+
+<div class="header">
+  <div class="header-top">
+    <div class="header-left">
+      <h1><span>Vinyl</span> Checker</h1>
+      <div class="live-badge" id="liveBadge" style="display:none"><div class="live-dot"></div> Scanning</div>
+      <div class="stats" id="stats"></div>
+    </div>
+    <div class="timestamp" id="timestamp"></div>
+  </div>
+
+  <div class="scan-section">
+    <input type="text" class="username-input" id="usernameInput" placeholder="Discogs username..." value="">
+    <button class="scan-btn" id="scanBtn">Check Wantlist</button>
+  </div>
+
+  <div class="progress-section" id="progressSection">
+    <div class="progress-bar-track"><div class="progress-bar-fill" id="progressFill"></div></div>
+    <div class="progress-info">
+      <span id="progressText">Starting...</span>
+      <span id="progressCount">0 / 0</span>
+    </div>
+    <div class="progress-current" id="progressCurrent"></div>
+  </div>
+
+  <div class="controls" id="controls" style="display:none">
+    <input type="text" class="search-box" id="search" placeholder="Search...">
+    <select class="sort-select" id="sort">
+      <option value="artist">Artist A-Z</option>
+      <option value="price-low">Price Low-High</option>
+      <option value="price-high">Price High-Low</option>
+      <option value="stores">Most Stores</option>
+    </select>
+    <div class="store-filter" id="storeFilter">
+      <div class="store-badge hhv active" data-store="HHV">HHV <span class="count"></span></div>
+      <div class="store-badge deejay active" data-store="Deejay.de">Deejay <span class="count"></span></div>
+      <div class="store-badge hardwax active" data-store="Hardwax">Hardwax <span class="count"></span></div>
+      <div class="store-badge juno active" data-store="Juno">Juno <span class="count"></span></div>
+      <div class="store-badge ttlab active" data-store="Turntable Lab">TT Lab <span class="count"></span></div>
+      <div class="store-badge uvs active" data-store="Underground Vinyl">UVS <span class="count"></span></div>
+      <div class="store-badge decks active" data-store="Decks.de">Decks <span class="count"></span></div>
+      <div class="store-badge phonica active" data-store="Phonica">Phonica <span class="count"></span></div>
+      <div class="store-badge yoyaku active" data-store="Yoyaku">Yoyaku <span class="count"></span></div>
+    </div>
+    <label class="filter-btn active" id="inStockOnly">
+      <input type="checkbox" style="display:none" checked> In Stock Only
+    </label>
+  </div>
+</div>
+
+<div class="container">
+  <div id="welcome" class="welcome">
+    <h2>Enter a Discogs username</h2>
+    <p>We'll check their wantlist across 9 vinyl stores worldwide</p>
+  </div>
+  <div class="grid" id="grid"></div>
+  <div class="no-results" id="noResults" style="display:none">No items match your filters</div>
+</div>
+
+<script>
+let resultsData = [];
+let isScanning = false;
+
+// Store class map
+const storeClassMap = {
+  'HHV': 'hhv', 'Deejay.de': 'deejay', 'Hardwax': 'hardwax',
+  'Juno': 'juno', 'Turntable Lab': 'ttlab', 'Underground Vinyl': 'uvs',
+  'Decks.de': 'decks', 'Phonica': 'phonica', 'Yoyaku': 'yoyaku'
+};
+
+const storeDisplayName = {
+  'HHV': 'HHV', 'Deejay.de': 'Deejay', 'Hardwax': 'Hardwax',
+  'Juno': 'Juno', 'Turntable Lab': 'TT Lab', 'Underground Vinyl': 'UVS',
+  'Decks.de': 'Decks', 'Phonica': 'Phonica', 'Yoyaku': 'Yoyaku'
+};
+
+// Theme toggle
+document.getElementById('themeToggle').addEventListener('click', function() {
+  document.body.classList.toggle('light');
+  this.textContent = document.body.classList.contains('light') ? 'Dark' : 'Light';
+});
+
+// Scan button
+document.getElementById('scanBtn').addEventListener('click', startScan);
+document.getElementById('usernameInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') startScan();
+});
+
+function startScan() {
+  var username = document.getElementById('usernameInput').value.trim();
+  if (!username || isScanning) return;
+
+  isScanning = true;
+  resultsData = [];
+
+  // UI updates
+  document.getElementById('scanBtn').disabled = true;
+  document.getElementById('scanBtn').textContent = 'Scanning...';
+  document.getElementById('liveBadge').style.display = 'inline-flex';
+  document.getElementById('progressSection').classList.add('active');
+  document.getElementById('welcome').style.display = 'none';
+  document.getElementById('controls').style.display = 'flex';
+  document.getElementById('grid').innerHTML = '';
+  document.getElementById('noResults').style.display = 'none';
+
+  // Connect to SSE
+  var evtSource = new EventSource('/api/scan/' + encodeURIComponent(username));
+
+  evtSource.addEventListener('status', function(e) {
+    var data = JSON.parse(e.data);
+    document.getElementById('progressText').textContent = data.message;
+  });
+
+  evtSource.addEventListener('wantlist', function(e) {
+    var data = JSON.parse(e.data);
+    document.getElementById('progressCount').textContent = '0 / ' + data.total;
+    updateStats();
+  });
+
+  evtSource.addEventListener('batch-start', function(e) {
+    var data = JSON.parse(e.data);
+    document.getElementById('progressText').textContent = 'Batch ' + data.batch + '/' + data.totalBatches;
+    document.getElementById('progressCurrent').textContent = data.items.join(' | ');
+  });
+
+  evtSource.addEventListener('item-done', function(e) {
+    var data = JSON.parse(e.data);
+    resultsData.push({ item: data.item, stores: data.stores });
+
+    // Update progress
+    var pct = ((data.index + 1) / data.total * 100).toFixed(1);
+    document.getElementById('progressFill').style.width = pct + '%';
+    document.getElementById('progressCount').textContent = (data.index + 1) + ' / ' + data.total;
+    document.getElementById('progressCurrent').textContent = data.item.artist + ' - ' + data.item.title + (data.inStock ? ' ✓' : '');
+
+    updateStats();
+    render();
+  });
+
+  evtSource.addEventListener('batch-done', function(e) {
+    var data = JSON.parse(e.data);
+    document.getElementById('progressText').textContent = 'Batch ' + data.batch + '/' + data.totalBatches + ' done';
+  });
+
+  evtSource.addEventListener('done', function(e) {
+    var data = JSON.parse(e.data);
+    evtSource.close();
+    isScanning = false;
+    document.getElementById('scanBtn').disabled = false;
+    document.getElementById('scanBtn').textContent = 'Check Wantlist';
+    document.getElementById('liveBadge').style.display = 'none';
+    document.getElementById('progressSection').classList.remove('active');
+    document.getElementById('timestamp').textContent = 'Last checked: ' + new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    updateStats();
+    render();
+  });
+
+  evtSource.addEventListener('error', function(e) {
+    try {
+      var data = JSON.parse(e.data);
+      document.getElementById('progressText').textContent = 'Error: ' + data.message;
+    } catch(err) {}
+    evtSource.close();
+    isScanning = false;
+    document.getElementById('scanBtn').disabled = false;
+    document.getElementById('scanBtn').textContent = 'Check Wantlist';
+    document.getElementById('liveBadge').style.display = 'none';
+  });
+}
+
+// Try to load existing results on page load
+async function loadExisting() {
+  try {
+    var res = await fetch('results.json');
+    if (res.ok) {
+      resultsData = await res.json();
+      if (resultsData.length > 0) {
+        document.getElementById('welcome').style.display = 'none';
+        document.getElementById('controls').style.display = 'flex';
+        document.getElementById('timestamp').textContent = 'Showing cached results';
+        updateStats();
+        render();
+      }
+    }
+  } catch(e) {}
+}
+
+function parsePrice(priceStr) {
+  if (!priceStr) return Infinity;
+  var match = priceStr.replace(',', '.').match(/([\d.]+)/);
+  return match ? parseFloat(match[1]) : Infinity;
+}
+
+function getLowestPrice(item) {
+  var lowest = Infinity;
+  item.stores.forEach(function(s) {
+    if (s.matches) {
+      s.matches.forEach(function(m) {
+        var p = parsePrice(m.price);
+        if (p < lowest) lowest = p;
+      });
+    }
+  });
+  return lowest;
+}
+
+function getStoreCount(item) {
+  return item.stores.filter(function(s) { return s.inStock; }).length;
+}
+
+function updateStats() {
+  var total = resultsData.length;
+  var inStock = resultsData.filter(function(i) { return i.stores.some(function(s) { return s.inStock; }); }).length;
+
+  document.getElementById('stats').innerHTML =
+    '<div><span class="stat-value">' + total + '</span> wantlist</div>' +
+    '<div><span class="stat-value">' + inStock + '</span> in stock</div>';
+
+  // Update store counts
+  document.querySelectorAll('.store-badge').forEach(function(badge) {
+    var store = badge.dataset.store;
+    var count = resultsData.filter(function(i) {
+      return i.stores.some(function(s) { return s.store === store && s.inStock; });
+    }).length;
+    badge.querySelector('.count').textContent = '(' + count + ')';
+  });
+}
+
+function getActiveStores() {
+  return [].slice.call(document.querySelectorAll('.store-badge.active')).map(function(el) { return el.dataset.store; });
+}
+
+function render() {
+  var search = document.getElementById('search').value.toLowerCase();
+  var sort = document.getElementById('sort').value;
+  var activeStores = getActiveStores();
+  var inStockOnly = document.querySelector('#inStockOnly input').checked;
+
+  var filtered = resultsData.filter(function(item) {
+    if (search) {
+      var haystack = (item.item.artist + ' ' + item.item.title + ' ' + item.item.label + ' ' + item.item.catno).toLowerCase();
+      if (haystack.indexOf(search) === -1) return false;
+    }
+    if (inStockOnly) {
+      var hasStockInActiveStore = item.stores.some(function(s) {
+        return activeStores.indexOf(s.store) !== -1 && (s.inStock || s.linkOnly);
+      });
+      if (!hasStockInActiveStore) return false;
+    }
+    return true;
+  });
+
+  filtered.sort(function(a, b) {
+    switch(sort) {
+      case 'artist': return a.item.artist.localeCompare(b.item.artist);
+      case 'price-low': return getLowestPrice(a) - getLowestPrice(b);
+      case 'price-high': return getLowestPrice(b) - getLowestPrice(a);
+      case 'stores': return getStoreCount(b) - getStoreCount(a);
+      default: return 0;
+    }
+  });
+
+  var grid = document.getElementById('grid');
+  var noResults = document.getElementById('noResults');
+
+  if (filtered.length === 0) {
+    grid.innerHTML = '';
+    noResults.style.display = 'block';
+    return;
+  }
+
+  noResults.style.display = 'none';
+
+  grid.innerHTML = filtered.map(function(item) {
+    var storeRows = item.stores
+      .filter(function(s) { return activeStores.indexOf(s.store) !== -1; })
+      .map(function(s) {
+        var cls = storeClassMap[s.store] || '';
+        var name = storeDisplayName[s.store] || s.store;
+
+        if (s.linkOnly) {
+          return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + '">' +
+            '<span class="store-name">' + name + '</span>' +
+            '<span class="match-info"><span class="link-only">Search manually</span></span>' +
+            '<span class="arrow">&rarr;</span></a>';
+        }
+
+        if (!s.inStock || !s.matches || s.matches.length === 0) {
+          return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' out-of-stock">' +
+            '<span class="store-name">' + name + '</span>' +
+            '<span class="match-info"><span class="not-found">Not found</span></span>' +
+            '<span class="arrow">&rarr;</span></a>';
+        }
+
+        var cheapest = s.matches.reduce(function(min, m) { return parsePrice(m.price) < parsePrice(min.price) ? m : min; }, s.matches[0]);
+        var extras = s.matches.length > 1 ? ' +' + (s.matches.length - 1) + ' more' : '';
+
+        return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + '">' +
+          '<span class="store-name">' + name + '</span>' +
+          '<span class="match-info">' + escapeHtml(cheapest.title || '') + extras + '</span>' +
+          '<span class="price">' + escapeHtml(cheapest.price || '') + '</span>' +
+          '<span class="arrow">&rarr;</span></a>';
+      }).join('');
+
+    var lowest = getLowestPrice(item);
+    var bestPriceHtml = lowest < Infinity
+      ? '<div class="price-compare">' +
+          '<span class="best-price-label">Best Price</span>' +
+          '<span class="best-price-value">' + lowest.toFixed(2).replace('.', ',') + '</span>' +
+        '</div>'
+      : '';
+
+    return '<div class="card">' +
+      '<div class="card-header">' +
+        '<div class="card-artist">' + escapeHtml(item.item.artist) + '</div>' +
+        '<div class="card-title">' + escapeHtml(item.item.title) + '</div>' +
+        '<div class="card-meta">' +
+          (item.item.year ? '<span>' + item.item.year + '</span>' : '') +
+          (item.item.label ? '<span>' + escapeHtml(item.item.label) + '</span>' : '') +
+          (item.item.catno ? '<span>' + escapeHtml(item.item.catno) + '</span>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div class="store-results">' + storeRows + '</div>' +
+      bestPriceHtml +
+    '</div>';
+  }).join('');
+}
+
+function escapeHtml(str) {
+  var div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+// Event listeners
+document.getElementById('search').addEventListener('input', render);
+document.getElementById('sort').addEventListener('change', render);
+
+document.querySelectorAll('.store-badge').forEach(function(el) {
+  el.addEventListener('click', function() {
+    el.classList.toggle('active');
+    render();
+  });
+});
+
+document.getElementById('inStockOnly').addEventListener('click', function() {
+  var cb = this.querySelector('input');
+  cb.checked = !cb.checked;
+  this.classList.toggle('active', cb.checked);
+  render();
+});
+
+// Init
+loadExisting();
+</script>
+
+</body>
+</html>
