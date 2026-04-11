@@ -531,6 +531,13 @@
       <option value="price-low">Price Low-High</option>
       <option value="price-high">Price High-Low</option>
       <option value="stores">Most Stores</option>
+      <option value="discogs-low">Discogs Price Low</option>
+    </select>
+    <select class="sort-select" id="genreFilter">
+      <option value="">All Genres</option>
+    </select>
+    <select class="sort-select" id="styleFilter">
+      <option value="">All Styles</option>
     </select>
     <div class="store-filter" id="storeFilter">
       <div class="store-badge hhv active" data-store="HHV">HHV <span class="count"></span></div>
@@ -543,8 +550,8 @@
       <div class="store-badge phonica active" data-store="Phonica">Phonica <span class="count"></span></div>
       <div class="store-badge yoyaku active" data-store="Yoyaku">Yoyaku <span class="count"></span></div>
     </div>
-    <label class="filter-btn active" id="inStockOnly">
-      <input type="checkbox" style="display:none" checked> In Stock Only
+    <label class="filter-btn" id="inStockOnly">
+      <input type="checkbox" style="display:none"> In Stock Only
     </label>
   </div>
 </div>
@@ -722,7 +729,7 @@ function getStoreCount(item) {
 
 function updateStats() {
   var total = resultsData.length;
-  var inStock = resultsData.filter(function(i) { return i.stores.some(function(s) { return s.inStock; }); }).length;
+  var inStock = resultsData.filter(function(i) { return i.stores.some(function(s) { return s.inStock && !s.linkOnly; }); }).length;
 
   document.getElementById('stats').innerHTML =
     '<div><span class="stat-value">' + total + '</span> wantlist</div>' +
@@ -732,14 +739,44 @@ function updateStats() {
   document.querySelectorAll('.store-badge').forEach(function(badge) {
     var store = badge.dataset.store;
     var count = resultsData.filter(function(i) {
-      return i.stores.some(function(s) { return s.store === store && s.inStock; });
+      return i.stores.some(function(s) { return s.store === store && s.inStock && !s.linkOnly; });
     }).length;
     badge.querySelector('.count').textContent = '(' + count + ')';
   });
+
+  // Populate genre/style dropdowns
+  var genres = new Set();
+  var styles = new Set();
+  resultsData.forEach(function(item) {
+    if (item.item.genres) item.item.genres.split(', ').forEach(function(g) { if (g) genres.add(g); });
+    if (item.item.styles) item.item.styles.split(', ').forEach(function(s) { if (s) styles.add(s); });
+  });
+
+  var genreSelect = document.getElementById('genreFilter');
+  var styleSelect = document.getElementById('styleFilter');
+  var currentGenre = genreSelect.value;
+  var currentStyle = styleSelect.value;
+
+  genreSelect.innerHTML = '<option value="">All Genres</option>';
+  Array.from(genres).sort().forEach(function(g) {
+    genreSelect.innerHTML += '<option value="' + escapeHtml(g) + '">' + escapeHtml(g) + '</option>';
+  });
+  genreSelect.value = currentGenre;
+
+  styleSelect.innerHTML = '<option value="">All Styles</option>';
+  Array.from(styles).sort().forEach(function(s) {
+    styleSelect.innerHTML += '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>';
+  });
+  styleSelect.value = currentStyle;
 }
 
 function getActiveStores() {
   return [].slice.call(document.querySelectorAll('.store-badge.active')).map(function(el) { return el.dataset.store; });
+}
+
+function getDiscogsPrice(item) {
+  if (item.discogsPrice && item.discogsPrice.lowestPrice) return item.discogsPrice.lowestPrice;
+  return Infinity;
 }
 
 function render() {
@@ -747,15 +784,19 @@ function render() {
   var sort = document.getElementById('sort').value;
   var activeStores = getActiveStores();
   var inStockOnly = document.querySelector('#inStockOnly input').checked;
+  var genreFilter = document.getElementById('genreFilter').value;
+  var styleFilter = document.getElementById('styleFilter').value;
 
   var filtered = resultsData.filter(function(item) {
     if (search) {
       var haystack = (item.item.artist + ' ' + item.item.title + ' ' + item.item.label + ' ' + item.item.catno).toLowerCase();
       if (haystack.indexOf(search) === -1) return false;
     }
+    if (genreFilter && (!item.item.genres || item.item.genres.indexOf(genreFilter) === -1)) return false;
+    if (styleFilter && (!item.item.styles || item.item.styles.indexOf(styleFilter) === -1)) return false;
     if (inStockOnly) {
       var hasStockInActiveStore = item.stores.some(function(s) {
-        return activeStores.indexOf(s.store) !== -1 && (s.inStock || s.linkOnly);
+        return activeStores.indexOf(s.store) !== -1 && s.inStock && !s.linkOnly;
       });
       if (!hasStockInActiveStore) return false;
     }
@@ -768,6 +809,7 @@ function render() {
       case 'price-low': return getLowestPrice(a) - getLowestPrice(b);
       case 'price-high': return getLowestPrice(b) - getLowestPrice(a);
       case 'stores': return getStoreCount(b) - getStoreCount(a);
+      case 'discogs-low': return getDiscogsPrice(a) - getDiscogsPrice(b);
       default: return 0;
     }
   });
@@ -862,6 +904,8 @@ function escapeHtml(str) {
 // Event listeners
 document.getElementById('search').addEventListener('input', render);
 document.getElementById('sort').addEventListener('change', render);
+document.getElementById('genreFilter').addEventListener('change', render);
+document.getElementById('styleFilter').addEventListener('change', render);
 
 document.querySelectorAll('.store-badge').forEach(function(el) {
   el.addEventListener('click', function() {

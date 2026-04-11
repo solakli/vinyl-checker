@@ -123,11 +123,14 @@ async function fetchWantlist(username) {
                     if (!json.wants || json.wants.length === 0) return resolve(allWants);
                     var wants = json.wants.map(function (w) {
                         var artist = getArtistName(w);
+                        var bi = w.basic_information;
                         return {
-                            id: w.id, artist: artist, title: w.basic_information.title,
-                            year: w.basic_information.year, label: getLabelName(w), catno: getCatno(w),
-                            thumb: w.basic_information.thumb || '',
-                            searchQuery: (artist + ' ' + w.basic_information.title).trim()
+                            id: w.id, artist: artist, title: bi.title,
+                            year: bi.year, label: getLabelName(w), catno: getCatno(w),
+                            thumb: bi.thumb || '',
+                            genres: (bi.genres || []).join(', '),
+                            styles: (bi.styles || []).join(', '),
+                            searchQuery: (artist + ' ' + bi.title).trim()
                         };
                     });
                     allWants = allWants.concat(wants);
@@ -529,7 +532,7 @@ async function runScan(username, sendEvent) {
                     item: {
                         id: w.discogs_id, artist: w.artist, title: w.title,
                         year: w.year, label: w.label, catno: w.catno,
-                        thumb: w.thumb, searchQuery: w.search_query
+                        thumb: w.thumb, genres: w.genres || '', styles: w.styles || '', searchQuery: w.search_query
                     },
                     stores: stores,
                     discogsPrice: price ? {
@@ -739,13 +742,146 @@ app.get('/', function (req, res) {
 process.on('SIGINT', function () { db.close(); process.exit(0); });
 process.on('SIGTERM', function () { db.close(); process.exit(0); });
 
+// ═══════════════════════════════════════════════════════════════
+// BACKGROUND SYNC — checks for new wantlist items periodically
+// ═══════════════════════════════════════════════════════════════
+
+var SYNC_INTERVAL = parseInt(process.env.SYNC_INTERVAL) || (60 * 60 * 1000); // default 1 hour
+var NOTIFICATION_EMAIL = process.env.NOTIFICATION_EMAIL || '';
+var NOTIFICATION_WEBHOOK = process.env.NOTIFICATION_WEBHOOK || ''; // Discord/Slack webhook
+
+async function backgroundSync() {
+    var d = db.getDb();
+    var users = d.prepare('SELECT * FROM users WHERE last_full_scan IS NOT NULL').all();
+    if (users.length === 0) return;
+
+    for (var i = 0; i < users.length; i++) {
+        var user = users[i];
+        if (activeScan) { console.log('[sync] Scan in progress, skipping ' + user.username); continue; }
+
+        console.log('[sync] Syncing wantlist for ' + user.username + '...');
+        try {
+            var wantlist = await fetchWantlist(user.username);
+            var syncResult = db.syncWantlistItems(user.id, wantlist);
+
+            if (syncResult.newItems.length === 0) {
+                console.log('[sync] ' + user.username + ': no new items');
+                continue;
+            }
+
+            console.log('[sync] ' + user.username + ': ' + syncResult.newItems.length + ' new items, checking stores...');
+
+            // Check new items
+            activeScan = user.username + '-bg';
+            var browser = await puppeteer.launch({
+                headless: 'new',
+                protocolTimeout: 60000,
+                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+            });
+            var workers = await createWorkerPages(browser);
+
+            var newDbItems = db.getActiveWantlist(user.id).filter(function (w) {
+                return syncResult.newItems.some(function (n) { return n.id === w.discogs_id; });
+            });
+
+            var notifications = [];
+            var itemIdx = 0;
+
+            async function bgWorker(workerIdx) {
+                var pages = workers[workerIdx];
+                while (true) {
+                    var myIdx = itemIdx++;
+                    if (myIdx >= newDbItems.length) break;
+                    var w = newDbItems[myIdx];
+                    var item = {
+                        id: w.discogs_id, artist: w.artist, title: w.title,
+                        year: w.year, label: w.label, catno: w.catno,
+                        thumb: w.thumb, searchQuery: w.search_query
+                    };
+                    try {
+                        var results = await checkItem(pages, item);
+                        db.saveStoreResults(w.id, results);
+
+                        if (w.discogs_id) {
+                            try {
+                                var priceData = await fetchMarketplaceStats(w.discogs_id);
+                                db.saveDiscogsPrice(w.id, priceData);
+                            } catch (e) {}
+                        }
+
+                        var inStockStores = results.filter(function (r) { return r.inStock && !r.linkOnly; });
+                        if (inStockStores.length > 0) {
+                            var dp = db.getDiscogsPrice(w.id);
+                            notifications.push({
+                                artist: w.artist, title: w.title,
+                                stores: inStockStores.map(function (s) {
+                                    var cheapest = s.matches && s.matches[0] ? s.matches[0].price : '';
+                                    return { name: s.store, price: cheapest, url: s.searchUrl };
+                                }),
+                                discogsPrice: dp ? '$' + (dp.lowest_price || '?') : null
+                            });
+                        }
+                    } catch (e) { console.log('[sync] Error checking ' + w.artist + ': ' + e.message); }
+                }
+            }
+
+            var bgPromises = [];
+            for (var w = 0; w < NUM_WORKERS; w++) bgPromises.push(bgWorker(w));
+            await Promise.all(bgPromises);
+            await browser.close();
+            activeScan = null;
+
+            // Send notifications if any items found in stock
+            if (notifications.length > 0) {
+                await sendNotifications(user.username, notifications);
+            }
+
+            console.log('[sync] ' + user.username + ': done, ' + notifications.length + ' new items in stock');
+        } catch (e) {
+            console.log('[sync] Error syncing ' + user.username + ': ' + e.message);
+            activeScan = null;
+        }
+    }
+}
+
+async function sendNotifications(username, items) {
+    var lines = items.map(function (item) {
+        var storeList = item.stores.map(function (s) {
+            return s.name + ' ' + s.price + ' ' + s.url;
+        }).join('\n  ');
+        var discogs = item.discogsPrice ? ' (Discogs: ' + item.discogsPrice + ')' : '';
+        return item.artist + ' - ' + item.title + discogs + '\n  ' + storeList;
+    });
+
+    var message = 'Vinyl Checker: ' + items.length + ' new item(s) in stock for ' + username + '!\n\n' + lines.join('\n\n');
+    console.log('[notify]\n' + message);
+
+    // Discord/Slack webhook
+    if (NOTIFICATION_WEBHOOK) {
+        try {
+            var url = new URL(NOTIFICATION_WEBHOOK);
+            var payload = JSON.stringify({ content: message });
+            var options = {
+                hostname: url.hostname, path: url.pathname, method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+            };
+            await new Promise(function (resolve) {
+                var req = (url.protocol === 'https:' ? https : require('http')).request(options, resolve);
+                req.write(payload);
+                req.end();
+            });
+            console.log('[notify] Webhook sent');
+        } catch (e) { console.log('[notify] Webhook error: ' + e.message); }
+    }
+}
+
 app.listen(PORT, function () {
     console.log('\n\u2728 Vinyl Checker running at http://localhost:' + PORT + '\n');
 
-    // Background sync: check for wantlist changes every 15 minutes
+    // Background sync
+    console.log('[sync] Background sync every ' + (SYNC_INTERVAL / 60000).toFixed(0) + ' minutes');
+    if (NOTIFICATION_WEBHOOK) console.log('[sync] Notifications enabled (webhook)');
     setInterval(function () {
-        console.log('[sync] Background sync check...');
-        // This will be triggered per-user in the future
-        // For now, it's a placeholder — scans are triggered by user action
-    }, 15 * 60 * 1000);
+        backgroundSync().catch(function (e) { console.error('[sync] Fatal:', e.message); activeScan = null; });
+    }, SYNC_INTERVAL);
 });

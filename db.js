@@ -40,6 +40,8 @@ function initTables() {
             label TEXT,
             catno TEXT,
             thumb TEXT,
+            genres TEXT DEFAULT '',
+            styles TEXT DEFAULT '',
             search_query TEXT,
             date_added TEXT,
             active INTEGER DEFAULT 1,
@@ -131,17 +133,18 @@ function syncWantlistItems(userId, items) {
 
     // Upsert all items
     var upsert = d.prepare(`
-        INSERT INTO wantlist (user_id, discogs_id, artist, title, year, label, catno, thumb, search_query, active)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        INSERT INTO wantlist (user_id, discogs_id, artist, title, year, label, catno, thumb, genres, styles, search_query, active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
         ON CONFLICT(user_id, discogs_id) DO UPDATE SET
             artist = excluded.artist, title = excluded.title, year = excluded.year,
             label = excluded.label, catno = excluded.catno, thumb = excluded.thumb,
+            genres = excluded.genres, styles = excluded.styles,
             search_query = excluded.search_query, active = 1
     `);
 
     var upsertMany = d.transaction(function (items) {
         items.forEach(function (item) {
-            upsert.run(userId, item.id, item.artist, item.title, item.year, item.label, item.catno, item.thumb, item.searchQuery);
+            upsert.run(userId, item.id, item.artist, item.title, item.year, item.label, item.catno, item.thumb, item.genres || '', item.styles || '', item.searchQuery);
         });
     });
     upsertMany(items);
@@ -290,6 +293,8 @@ function getFullResults(userId) {
                 label: w.label,
                 catno: w.catno,
                 thumb: w.thumb,
+                genres: w.genres || '',
+                styles: w.styles || '',
                 searchQuery: w.search_query
             },
             stores: stores,
