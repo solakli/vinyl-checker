@@ -458,89 +458,27 @@ async function checkItem(workerPages, item) {
 // ═══════════════════════════════════════════════════════════════
 
 function fetchMarketplaceStats(discogsId) {
-    var marketplaceUrl = 'https://www.discogs.com/sell/release/' + discogsId + '?ev=rb&destination=United+States&sort=price%2Casc';
+    var marketplaceUrl = 'https://www.discogs.com/sell/release/' + discogsId + '?ev=rb&destination=United+States';
     return new Promise(function (resolve, reject) {
-        // Scrape the marketplace page directly — gives us price + shipping for US-available listings
         https.get({
-            hostname: 'www.discogs.com',
-            path: '/sell/release/' + discogsId + '?destination=United+States&sort=price%2Casc',
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html',
-                'Accept-Language': 'en-US,en;q=0.9'
-            }
+            hostname: 'api.discogs.com',
+            path: '/marketplace/stats/' + discogsId,
+            headers: { 'User-Agent': 'VinylWantlistChecker/1.0' }
         }, function (res) {
             if (res.statusCode === 429) return reject(new Error('Rate limit'));
-            // Follow redirects
-            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                return resolve({ lowestPrice: null, numForSale: 0, marketplaceUrl: marketplaceUrl });
-            }
             var data = '';
             res.on('data', function (chunk) { data += chunk; });
             res.on('end', function () {
                 try {
-                    // Extract number for sale
-                    var numMatch = data.match(/of\s+(\d+)\s+for sale/i) || data.match(/(\d+)\s+for sale/i);
-                    var numForSale = numMatch ? parseInt(numMatch[1]) : 0;
-
-                    // Find listings that are available (have "Add to Cart" or price, NOT "Unavailable")
-                    // Look for price items in the shortcut_navigable items
-                    var prices = [];
-                    // Match price spans like €6.50 or $10.00 or £8.00
-                    var itemBlocks = data.split(/class="shortcut_navigable/g);
-                    for (var i = 1; i < itemBlocks.length; i++) {
-                        var block = itemBlocks[i];
-                        // Skip if unavailable in US
-                        if (block.indexOf('Unavailable') !== -1) continue;
-
-                        // Extract item price — look for the price value in span.price
-                        var priceMatch = block.match(/class="price"[^>]*>([^<]+)</);
-                        if (!priceMatch) priceMatch = block.match(/about\s*([€$£¥][\d,.]+)/);
-                        if (!priceMatch) continue;
-
-                        var priceText = priceMatch[1].trim();
-
-                        // Extract shipping price
-                        var shippingMatch = block.match(/\+([€$£¥][\d,.]+)\s*shipping/i) || block.match(/\+([\d,.]+)\s*shipping/i);
-                        var shippingText = shippingMatch ? shippingMatch[1].trim() : null;
-                        // Add currency symbol if missing
-                        if (shippingText && !shippingText.match(/^[€$£¥]/)) {
-                            var curr = priceText.match(/^[€$£¥]/);
-                            if (curr) shippingText = curr[0] + shippingText;
-                        }
-
-                        // Extract "about" total if present (Discogs shows "about €29.86" for converted total)
-                        var aboutMatch = block.match(/about\s*([€$£¥][\d,.]+)/);
-                        var aboutTotal = aboutMatch ? aboutMatch[1].trim() : null;
-
-                        prices.push({
-                            price: priceText,
-                            shipping: shippingText,
-                            aboutTotal: aboutTotal
-                        });
-                    }
-
-                    if (prices.length > 0) {
-                        var best = prices[0];
-                        // Parse numeric value from price
-                        var numericPrice = parseFloat(best.price.replace(/[^0-9.,]/g, '').replace(',', '.'));
-                        var currency = best.price.match(/^[€$£¥]/) ? best.price[0] : '€';
-                        var currName = currency === '$' ? 'USD' : currency === '£' ? 'GBP' : currency === '¥' ? 'JPY' : 'EUR';
-
-                        resolve({
-                            lowestPrice: numericPrice || null,
-                            currency: currName,
-                            numForSale: numForSale,
-                            shipping: best.shipping || null,
-                            marketplaceUrl: marketplaceUrl
-                        });
-                    } else {
-                        resolve({ lowestPrice: null, numForSale: numForSale, marketplaceUrl: marketplaceUrl });
-                    }
-                } catch (e) {
-                    console.log('[Discogs] Parse error for ' + discogsId + ': ' + e.message);
-                    resolve({ lowestPrice: null, numForSale: 0, marketplaceUrl: marketplaceUrl });
-                }
+                    var json = JSON.parse(data);
+                    resolve({
+                        lowestPrice: json.lowest_price ? json.lowest_price.value : null,
+                        currency: json.lowest_price ? json.lowest_price.currency : 'USD',
+                        numForSale: json.num_for_sale || 0,
+                        shipping: null,
+                        marketplaceUrl: marketplaceUrl
+                    });
+                } catch (e) { resolve({ lowestPrice: null, numForSale: 0, marketplaceUrl: marketplaceUrl }); }
             });
         }).on('error', function () { resolve({ lowestPrice: null, numForSale: 0, marketplaceUrl: marketplaceUrl }); });
     });
