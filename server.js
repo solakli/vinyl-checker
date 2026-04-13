@@ -389,7 +389,7 @@ async function checkUndergroundVinyl(page, item) {
 
 const NUM_WORKERS = 2; // 2 items checked simultaneously
 const STORES_PER_WORKER = 3; // 3 scraped stores: Deejay.de, HHV, Juno
-let activeScan = null;
+let activeScans = {}; // track scans per username
 
 // ═══════════════════════════════════════════════════════════════
 // LINK-ONLY STORES — click goes directly to search results page
@@ -492,11 +492,11 @@ function fetchMarketplaceStats(discogsId) {
 // ═══════════════════════════════════════════════════════════════
 
 async function runScan(username, sendEvent, force) {
-    if (activeScan) {
-        sendEvent('error', { message: 'A scan is already in progress' });
+    if (activeScans[username]) {
+        sendEvent('error', { message: 'A scan is already running for ' + username });
         return;
     }
-    activeScan = username;
+    activeScans[username] = true;
 
     try {
         // Step 1: Fetch wantlist from Discogs
@@ -505,7 +505,7 @@ async function runScan(username, sendEvent, force) {
 
         if (wantlist.length === 0) {
             sendEvent('done', { message: 'Wantlist is empty', total: 0, inStock: 0, results: [] });
-            activeScan = null;
+            delete activeScans[username];
             return;
         }
 
@@ -569,7 +569,7 @@ async function runScan(username, sendEvent, force) {
                 inStock: totalInStock,
                 username: username
             });
-            activeScan = null;
+            delete activeScans[username];
             return;
         }
 
@@ -674,7 +674,7 @@ async function runScan(username, sendEvent, force) {
     } catch (e) {
         sendEvent('error', { message: e.message });
     } finally {
-        activeScan = null;
+        delete activeScans[username];
     }
 }
 
@@ -684,7 +684,7 @@ async function runScan(username, sendEvent, force) {
 
 // Force-reset scan lock
 app.get('/api/reset', function (req, res) {
-    activeScan = null;
+    activeScans = {};
     res.json({ ok: true });
 });
 
@@ -785,7 +785,7 @@ app.get('/api/results/:username', function (req, res) {
 
 // Check scan status
 app.get('/api/status', function (req, res) {
-    res.json({ scanning: !!activeScan, username: activeScan });
+    res.json({ scanning: Object.keys(activeScans).length > 0, users: Object.keys(activeScans) });
 });
 
 // Serve the app
@@ -812,7 +812,7 @@ async function backgroundSync() {
 
     for (var i = 0; i < users.length; i++) {
         var user = users[i];
-        if (activeScan) { console.log('[sync] Scan in progress, skipping ' + user.username); continue; }
+        if (activeScans[user.username]) { console.log('[sync] Scan in progress, skipping ' + user.username); continue; }
 
         console.log('[sync] Syncing wantlist for ' + user.username + '...');
         try {
@@ -827,7 +827,7 @@ async function backgroundSync() {
             console.log('[sync] ' + user.username + ': ' + syncResult.newItems.length + ' new items, checking stores...');
 
             // Check new items
-            activeScan = user.username + '-bg';
+            activeScans[user.username] = 'bg';
             var browser = await puppeteer.launch({
                 headless: 'new',
                 protocolTimeout: 60000,
@@ -884,7 +884,7 @@ async function backgroundSync() {
             for (var w = 0; w < NUM_WORKERS; w++) bgPromises.push(bgWorker(w));
             await Promise.all(bgPromises);
             await browser.close();
-            activeScan = null;
+            delete activeScans[user.username];
 
             // Send notifications if any items found in stock
             if (notifications.length > 0) {
@@ -894,7 +894,7 @@ async function backgroundSync() {
             console.log('[sync] ' + user.username + ': done, ' + notifications.length + ' new items in stock');
         } catch (e) {
             console.log('[sync] Error syncing ' + user.username + ': ' + e.message);
-            activeScan = null;
+            delete activeScans[user.username];
         }
     }
 }
@@ -937,6 +937,6 @@ app.listen(PORT, function () {
     console.log('[sync] Background sync every ' + (SYNC_INTERVAL / 60000).toFixed(0) + ' minutes');
     if (NOTIFICATION_WEBHOOK) console.log('[sync] Notifications enabled (webhook)');
     setInterval(function () {
-        backgroundSync().catch(function (e) { console.error('[sync] Fatal:', e.message); activeScan = null; });
+        backgroundSync().catch(function (e) { console.error('[sync] Fatal:', e.message); });
     }, SYNC_INTERVAL);
 });
