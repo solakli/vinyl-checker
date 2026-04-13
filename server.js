@@ -391,6 +391,10 @@ const NUM_WORKERS = 2; // 2 items checked simultaneously
 const STORES_PER_WORKER = 3; // 3 scraped stores: Deejay.de, HHV, Juno
 let activeScans = {}; // track scans per username
 
+// In-memory scan progress for resume on refresh
+// scanProgress[username] = { events: [{type, data}], listeners: [sendEvent, ...], done: bool }
+let scanProgress = {};
+
 // ═══════════════════════════════════════════════════════════════
 // LINK-ONLY STORES — click goes directly to search results page
 // ═══════════════════════════════════════════════════════════════
@@ -491,12 +495,38 @@ function fetchMarketplaceStats(discogsId) {
 // SCAN LOGIC (with DB caching)
 // ═══════════════════════════════════════════════════════════════
 
-async function runScan(username, sendEvent, force) {
+async function runScan(username, initialSendEvent, force) {
+    // Check if scan is running or recently finished — replay + attach
+    if (scanProgress[username]) {
+        // Replay all past events
+        scanProgress[username].events.forEach(function (ev) {
+            initialSendEvent(ev.type, ev.data);
+        });
+        // If not done yet, subscribe to future events
+        if (!scanProgress[username].done) {
+            scanProgress[username].listeners.push(initialSendEvent);
+        }
+        return;
+    }
     if (activeScans[username]) {
-        sendEvent('error', { message: 'A scan is already running for ' + username });
+        initialSendEvent('error', { message: 'A scan is already running for ' + username });
         return;
     }
     activeScans[username] = true;
+
+    // Set up progress tracking with broadcast
+    scanProgress[username] = { events: [], listeners: [initialSendEvent], done: false };
+
+    function sendEvent(type, data) {
+        // Store event for replay
+        if (scanProgress[username]) {
+            scanProgress[username].events.push({ type: type, data: data });
+            // Broadcast to all connected listeners
+            scanProgress[username].listeners.forEach(function (fn) {
+                try { fn(type, data); } catch (e) {}
+            });
+        }
+    }
 
     try {
         // Step 1: Fetch wantlist from Discogs
@@ -675,6 +705,11 @@ async function runScan(username, sendEvent, force) {
         sendEvent('error', { message: e.message });
     } finally {
         delete activeScans[username];
+        // Keep progress for 30s so late-refreshers can still get results
+        if (scanProgress[username]) {
+            scanProgress[username].done = true;
+            setTimeout(function () { delete scanProgress[username]; }, 30000);
+        }
     }
 }
 
@@ -745,25 +780,38 @@ app.get('/api/scan/:username', function (req, res) {
         'X-Accel-Buffering': 'no'
     });
 
+    var closed = false;
     function sendEvent(type, data) {
-        res.write('event: ' + type + '\n');
-        res.write('data: ' + JSON.stringify(data) + '\n\n');
+        if (closed) return;
+        try {
+            res.write('event: ' + type + '\n');
+            res.write('data: ' + JSON.stringify(data) + '\n\n');
+            // End response when scan is done or errors
+            if (type === 'done' || type === 'error') {
+                clearInterval(keepAlive);
+                closed = true;
+                res.end();
+            }
+        } catch (e) { closed = true; }
     }
 
     // Keep connection alive
     var keepAlive = setInterval(function () {
-        res.write(': keepalive\n\n');
+        if (closed) return clearInterval(keepAlive);
+        try { res.write(': keepalive\n\n'); } catch (e) { closed = true; clearInterval(keepAlive); }
     }, 15000);
 
     req.on('close', function () {
+        closed = true;
         clearInterval(keepAlive);
+        // Remove this listener from scanProgress
+        if (scanProgress[username]) {
+            scanProgress[username].listeners = scanProgress[username].listeners.filter(function (fn) { return fn !== sendEvent; });
+        }
     });
 
-    // Start the scan
-    runScan(username, sendEvent, force).then(function () {
-        clearInterval(keepAlive);
-        res.end();
-    });
+    // Start or attach to existing scan
+    runScan(username, sendEvent, force);
 });
 
 // Get cached results from DB (instant)
