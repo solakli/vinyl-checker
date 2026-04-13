@@ -456,7 +456,7 @@ function fetchMarketplaceStats(discogsId) {
     return new Promise(function (resolve, reject) {
         https.get({
             hostname: 'api.discogs.com',
-            path: '/marketplace/stats/' + discogsId + '?curr_abbr=USD',
+            path: '/marketplace/stats/' + discogsId,
             headers: { 'User-Agent': 'VinylWantlistChecker/1.0' }
         }, function (res) {
             if (res.statusCode === 429) return reject(new Error('Rate limit'));
@@ -469,7 +469,7 @@ function fetchMarketplaceStats(discogsId) {
                         lowestPrice: json.lowest_price ? json.lowest_price.value : null,
                         currency: json.lowest_price ? json.lowest_price.currency : 'USD',
                         numForSale: json.num_for_sale || 0,
-                        marketplaceUrl: 'https://www.discogs.com/sell/release/' + discogsId + '?currency=USD'
+                        marketplaceUrl: 'https://www.discogs.com/sell/release/' + discogsId
                     });
                 } catch (e) { resolve({ lowestPrice: null, numForSale: 0 }); }
             });
