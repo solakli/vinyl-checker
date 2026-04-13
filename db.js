@@ -69,6 +69,7 @@ function initTables() {
             lowest_price REAL,
             currency TEXT DEFAULT 'USD',
             num_for_sale INTEGER DEFAULT 0,
+            shipping TEXT,
             marketplace_url TEXT,
             checked_at TEXT,
             FOREIGN KEY (wantlist_id) REFERENCES wantlist(id),
@@ -240,17 +241,19 @@ function getItemsNeedingCheck(userId, stores) {
 
 function saveDiscogsPrice(wantlistId, priceData) {
     getDb().prepare(`
-        INSERT INTO discogs_prices (wantlist_id, lowest_price, currency, num_for_sale, marketplace_url, checked_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO discogs_prices (wantlist_id, lowest_price, currency, num_for_sale, shipping, marketplace_url, checked_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(wantlist_id) DO UPDATE SET
             lowest_price = excluded.lowest_price, currency = excluded.currency,
-            num_for_sale = excluded.num_for_sale, marketplace_url = excluded.marketplace_url,
+            num_for_sale = excluded.num_for_sale, shipping = excluded.shipping,
+            marketplace_url = excluded.marketplace_url,
             checked_at = excluded.checked_at
     `).run(
         wantlistId,
         priceData.lowestPrice || null,
         priceData.currency || 'USD',
         priceData.numForSale || 0,
+        priceData.shipping || null,
         priceData.marketplaceUrl || '',
         new Date().toISOString()
     );

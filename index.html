@@ -392,6 +392,12 @@
     letter-spacing: 0.5px;
   }
 
+  .store-row .shipping {
+    font-size: 10px; color: var(--text-muted);
+    white-space: nowrap;
+    letter-spacing: 0.3px;
+  }
+
   .store-row .link-only {
     font-size: 10px; color: var(--text-muted);
     text-transform: uppercase; letter-spacing: 1px;
@@ -832,10 +838,13 @@ function render() {
         var cls = storeClassMap[s.store] || '';
         var name = storeDisplayName[s.store] || s.store;
 
+        var shippingHtml = s.usShipping ? '<span class="shipping">+' + s.usShipping + ' US ship</span>' : '';
+
         if (s.linkOnly) {
           return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + '">' +
             '<span class="store-name">' + name + '</span>' +
             '<span class="match-info"><span class="link-only">Search manually</span></span>' +
+            shippingHtml +
             '<span class="arrow">&rarr;</span></a>';
         }
 
@@ -853,6 +862,7 @@ function render() {
           '<span class="store-name">' + name + '</span>' +
           '<span class="match-info">' + escapeHtml(cheapest.title || '') + extras + '</span>' +
           '<span class="price">' + escapeHtml(cheapest.price || '') + '</span>' +
+          shippingHtml +
           '<span class="arrow">&rarr;</span></a>';
       }).join('');
 
@@ -867,10 +877,13 @@ function render() {
     // Discogs marketplace price
     var discogsPriceHtml = '';
     if (item.discogsPrice && item.discogsPrice.lowestPrice) {
+      var dShipping = item.discogsPrice.shipping ? '<span class="shipping">+' + item.discogsPrice.shipping + ' ship</span>' : '';
+      var currSymbol = item.discogsPrice.currency === 'USD' ? '$' : item.discogsPrice.currency === 'GBP' ? '£' : item.discogsPrice.currency === 'JPY' ? '¥' : '€';
       discogsPriceHtml = '<a href="' + (item.discogsPrice.marketplaceUrl || '#') + '" target="_blank" class="store-row discogs">' +
         '<span class="store-name">Discogs</span>' +
-        '<span class="match-info">' + item.discogsPrice.numForSale + ' for sale</span>' +
-        '<span class="price">$' + item.discogsPrice.lowestPrice.toFixed(2) + '</span>' +
+        '<span class="match-info">' + item.discogsPrice.numForSale + ' for sale (ships to US)</span>' +
+        '<span class="price">' + currSymbol + item.discogsPrice.lowestPrice.toFixed(2) + '</span>' +
+        dShipping +
         '<span class="arrow">&rarr;</span></a>';
     } else if (item.discogsPrice) {
       discogsPriceHtml = '<a href="' + (item.discogsPrice.marketplaceUrl || '#') + '" target="_blank" class="store-row discogs out-of-stock">' +

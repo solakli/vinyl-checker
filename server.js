@@ -147,15 +147,15 @@ async function fetchWantlist(username) {
 // STORE CHECKERS
 // ═══════════════════════════════════════════════════════════════
 
-// Link-only stores
+// Link-only stores (with known US shipping rates)
 function getPhonicaLink(item) {
-    return { store: 'Phonica', inStock: false, matches: [], searchUrl: 'https://www.phonicarecords.com/search/' + encodeURIComponent(item.searchQuery), linkOnly: true };
+    return { store: 'Phonica', inStock: false, matches: [], searchUrl: 'https://www.phonicarecords.com/search/' + encodeURIComponent(item.searchQuery), linkOnly: true, usShipping: '£6.50' };
 }
 function getYoyakuLink(item) {
-    return { store: 'Yoyaku', inStock: false, matches: [], searchUrl: 'https://yoyaku.co/search?q=' + encodeURIComponent(item.searchQuery), linkOnly: true };
+    return { store: 'Yoyaku', inStock: false, matches: [], searchUrl: 'https://yoyaku.co/search?q=' + encodeURIComponent(item.searchQuery), linkOnly: true, usShipping: '€15.00' };
 }
 function getDecksLink(item) {
-    return { store: 'Decks.de', inStock: false, matches: [], searchUrl: 'https://www.decks.de/decks/workfloor/search_db.php?such=' + encodeURIComponent(item.searchQuery) + '&wosuch=vi&wassuch=atl', linkOnly: true };
+    return { store: 'Decks.de', inStock: false, matches: [], searchUrl: 'https://www.decks.de/decks/workfloor/search_db.php?such=' + encodeURIComponent(item.searchQuery) + '&wosuch=vi&wassuch=atl', linkOnly: true, usShipping: '€9.90' };
 }
 
 // Deejay.de
@@ -184,10 +184,10 @@ async function checkDeejay(page, item) {
         });
         console.log('[Deejay] "' + item.searchQuery + '" → ' + products.length + ' products, ' + products.filter(function (p) { return recordsMatch(item, p); }).length + ' matches');
         var matches = products.filter(function (p) { return recordsMatch(item, p); });
-        return { store: 'Deejay.de', inStock: matches.length > 0, matches: matches, searchUrl: searchUrl };
+        return { store: 'Deejay.de', inStock: matches.length > 0, matches: matches, searchUrl: searchUrl, usShipping: '€12.99' };
     } catch (e) {
         console.log('[Deejay] ERROR "' + item.searchQuery + '": ' + e.message);
-        return { store: 'Deejay.de', inStock: false, error: e.message, searchUrl: searchUrl };
+        return { store: 'Deejay.de', inStock: false, error: e.message, searchUrl: searchUrl, usShipping: '€12.99' };
     }
 }
 
@@ -212,10 +212,10 @@ async function checkHHV(page, item) {
         });
         console.log('[HHV] "' + item.searchQuery + '" → ' + products.length + ' products, ' + products.filter(function (p) { return recordsMatch(item, p); }).length + ' matches');
         var matches = products.filter(function (p) { return recordsMatch(item, p); });
-        return { store: 'HHV', inStock: matches.length > 0, matches: matches, searchUrl: searchUrl };
+        return { store: 'HHV', inStock: matches.length > 0, matches: matches, searchUrl: searchUrl, usShipping: '€11.99' };
     } catch (e) {
         console.log('[HHV] ERROR "' + item.searchQuery + '": ' + e.message);
-        return { store: 'HHV', inStock: false, error: e.message, searchUrl: searchUrl };
+        return { store: 'HHV', inStock: false, error: e.message, searchUrl: searchUrl, usShipping: '€11.99' };
     }
 }
 
@@ -293,10 +293,10 @@ async function checkJuno(page, item) {
         });
         console.log('[Juno] "' + item.searchQuery + '" → ' + products.length + ' products, ' + products.filter(function (p) { return recordsMatch(item, p); }).length + ' matches');
         var matches = products.filter(function (p) { return recordsMatch(item, p); });
-        return { store: 'Juno', inStock: matches.length > 0, matches: matches, searchUrl: searchUrl };
+        return { store: 'Juno', inStock: matches.length > 0, matches: matches, searchUrl: searchUrl, usShipping: '£7.99' };
     } catch (e) {
         console.log('[Juno] ERROR "' + item.searchQuery + '": ' + e.message);
-        return { store: 'Juno', inStock: false, error: e.message, searchUrl: searchUrl };
+        return { store: 'Juno', inStock: false, error: e.message, searchUrl: searchUrl, usShipping: '£7.99' };
     }
 }
 
@@ -393,14 +393,13 @@ let activeScan = null;
 // ═══════════════════════════════════════════════════════════════
 
 function getHardwaxLink(item) {
-    // hardwax.com/?search= redirects to /?find= with results
-    return { store: 'Hardwax', inStock: false, matches: [], searchUrl: 'https://hardwax.com/?search=' + encodeURIComponent(item.searchQuery), linkOnly: true };
+    return { store: 'Hardwax', inStock: false, matches: [], searchUrl: 'https://hardwax.com/?search=' + encodeURIComponent(item.searchQuery), linkOnly: true, usShipping: '€12.00' };
 }
 function getTurntableLabLink(item) {
-    return { store: 'Turntable Lab', inStock: false, matches: [], searchUrl: 'https://www.turntablelab.com/search?type=product&q=' + encodeURIComponent(item.searchQuery), linkOnly: true };
+    return { store: 'Turntable Lab', inStock: false, matches: [], searchUrl: 'https://www.turntablelab.com/search?type=product&q=' + encodeURIComponent(item.searchQuery), linkOnly: true, usShipping: '$5.99' };
 }
 function getUndergroundVinylLink(item) {
-    return { store: 'Underground Vinyl', inStock: false, matches: [], searchUrl: 'https://undergroundvinylsource.com/search?q=' + encodeURIComponent(item.searchQuery) + '&type=product', linkOnly: true };
+    return { store: 'Underground Vinyl', inStock: false, matches: [], searchUrl: 'https://undergroundvinylsource.com/search?q=' + encodeURIComponent(item.searchQuery) + '&type=product', linkOnly: true, usShipping: '$5.00' };
 }
 
 async function createWorkerPages(browser) {
@@ -459,27 +458,91 @@ async function checkItem(workerPages, item) {
 // ═══════════════════════════════════════════════════════════════
 
 function fetchMarketplaceStats(discogsId) {
+    var marketplaceUrl = 'https://www.discogs.com/sell/release/' + discogsId + '?ev=rb&destination=United+States&sort=price%2Casc';
     return new Promise(function (resolve, reject) {
+        // Scrape the marketplace page directly — gives us price + shipping for US-available listings
         https.get({
-            hostname: 'api.discogs.com',
-            path: '/marketplace/stats/' + discogsId,
-            headers: { 'User-Agent': 'VinylWantlistChecker/1.0' }
+            hostname: 'www.discogs.com',
+            path: '/sell/release/' + discogsId + '?destination=United+States&sort=price%2Casc',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html',
+                'Accept-Language': 'en-US,en;q=0.9'
+            }
         }, function (res) {
             if (res.statusCode === 429) return reject(new Error('Rate limit'));
+            // Follow redirects
+            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                return resolve({ lowestPrice: null, numForSale: 0, marketplaceUrl: marketplaceUrl });
+            }
             var data = '';
             res.on('data', function (chunk) { data += chunk; });
             res.on('end', function () {
                 try {
-                    var json = JSON.parse(data);
-                    resolve({
-                        lowestPrice: json.lowest_price ? json.lowest_price.value : null,
-                        currency: json.lowest_price ? json.lowest_price.currency : 'USD',
-                        numForSale: json.num_for_sale || 0,
-                        marketplaceUrl: 'https://www.discogs.com/sell/release/' + discogsId + '?ev=rb&destination=United+States'
-                    });
-                } catch (e) { resolve({ lowestPrice: null, numForSale: 0 }); }
+                    // Extract number for sale
+                    var numMatch = data.match(/of\s+(\d+)\s+for sale/i) || data.match(/(\d+)\s+for sale/i);
+                    var numForSale = numMatch ? parseInt(numMatch[1]) : 0;
+
+                    // Find listings that are available (have "Add to Cart" or price, NOT "Unavailable")
+                    // Look for price items in the shortcut_navigable items
+                    var prices = [];
+                    // Match price spans like €6.50 or $10.00 or £8.00
+                    var itemBlocks = data.split(/class="shortcut_navigable/g);
+                    for (var i = 1; i < itemBlocks.length; i++) {
+                        var block = itemBlocks[i];
+                        // Skip if unavailable in US
+                        if (block.indexOf('Unavailable') !== -1) continue;
+
+                        // Extract item price — look for the price value in span.price
+                        var priceMatch = block.match(/class="price"[^>]*>([^<]+)</);
+                        if (!priceMatch) priceMatch = block.match(/about\s*([€$£¥][\d,.]+)/);
+                        if (!priceMatch) continue;
+
+                        var priceText = priceMatch[1].trim();
+
+                        // Extract shipping price
+                        var shippingMatch = block.match(/\+([€$£¥][\d,.]+)\s*shipping/i) || block.match(/\+([\d,.]+)\s*shipping/i);
+                        var shippingText = shippingMatch ? shippingMatch[1].trim() : null;
+                        // Add currency symbol if missing
+                        if (shippingText && !shippingText.match(/^[€$£¥]/)) {
+                            var curr = priceText.match(/^[€$£¥]/);
+                            if (curr) shippingText = curr[0] + shippingText;
+                        }
+
+                        // Extract "about" total if present (Discogs shows "about €29.86" for converted total)
+                        var aboutMatch = block.match(/about\s*([€$£¥][\d,.]+)/);
+                        var aboutTotal = aboutMatch ? aboutMatch[1].trim() : null;
+
+                        prices.push({
+                            price: priceText,
+                            shipping: shippingText,
+                            aboutTotal: aboutTotal
+                        });
+                    }
+
+                    if (prices.length > 0) {
+                        var best = prices[0];
+                        // Parse numeric value from price
+                        var numericPrice = parseFloat(best.price.replace(/[^0-9.,]/g, '').replace(',', '.'));
+                        var currency = best.price.match(/^[€$£¥]/) ? best.price[0] : '€';
+                        var currName = currency === '$' ? 'USD' : currency === '£' ? 'GBP' : currency === '¥' ? 'JPY' : 'EUR';
+
+                        resolve({
+                            lowestPrice: numericPrice || null,
+                            currency: currName,
+                            numForSale: numForSale,
+                            shipping: best.shipping || null,
+                            marketplaceUrl: marketplaceUrl
+                        });
+                    } else {
+                        resolve({ lowestPrice: null, numForSale: numForSale, marketplaceUrl: marketplaceUrl });
+                    }
+                } catch (e) {
+                    console.log('[Discogs] Parse error for ' + discogsId + ': ' + e.message);
+                    resolve({ lowestPrice: null, numForSale: 0, marketplaceUrl: marketplaceUrl });
+                }
             });
-        }).on('error', function () { resolve({ lowestPrice: null, numForSale: 0 }); });
+        }).on('error', function () { resolve({ lowestPrice: null, numForSale: 0, marketplaceUrl: marketplaceUrl }); });
     });
 }
 
@@ -545,6 +608,7 @@ async function runScan(username, sendEvent) {
                         lowestPrice: price.lowest_price,
                         currency: price.currency,
                         numForSale: price.num_for_sale,
+                        shipping: price.shipping || null,
                         marketplaceUrl: price.marketplace_url
                     } : null,
                     inStock: hasStock,
