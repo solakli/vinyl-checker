@@ -475,7 +475,7 @@ function fetchMarketplaceStats(discogsId) {
                         lowestPrice: json.lowest_price ? json.lowest_price.value : null,
                         currency: json.lowest_price ? json.lowest_price.currency : 'USD',
                         numForSale: json.num_for_sale || 0,
-                        marketplaceUrl: 'https://www.discogs.com/sell/release/' + discogsId
+                        marketplaceUrl: 'https://www.discogs.com/sell/release/' + discogsId + '?ev=rb&destination=United+States'
                     });
                 } catch (e) { resolve({ lowestPrice: null, numForSale: 0 }); }
             });
