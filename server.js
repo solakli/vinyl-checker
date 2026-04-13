@@ -182,9 +182,11 @@ async function checkDeejay(page, item) {
             });
             return items;
         });
+        console.log('[Deejay] "' + item.searchQuery + '" → ' + products.length + ' products, ' + products.filter(function (p) { return recordsMatch(item, p); }).length + ' matches');
         var matches = products.filter(function (p) { return recordsMatch(item, p); });
         return { store: 'Deejay.de', inStock: matches.length > 0, matches: matches, searchUrl: searchUrl };
     } catch (e) {
+        console.log('[Deejay] ERROR "' + item.searchQuery + '": ' + e.message);
         return { store: 'Deejay.de', inStock: false, error: e.message, searchUrl: searchUrl };
     }
 }
@@ -193,8 +195,8 @@ async function checkDeejay(page, item) {
 async function checkHHV(page, item) {
     var searchUrl = 'https://www.hhv.de/katalog/filter/suche-S11?af=true&term=' + encodeURIComponent(item.searchQuery);
     try {
-        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
-        await page.waitForSelector('.items--shared--gallery-entry--base-component span.artist', { timeout: 3000 }).catch(function () {});
+        await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 15000 });
+        await page.waitForSelector('.items--shared--gallery-entry--base-component span.artist', { timeout: 5000 }).catch(function () {});
         var products = await page.evaluate(function () {
             var items = [];
             document.querySelectorAll('.items--shared--gallery-entry--base-component:not(.overlay)').forEach(function (el) {
@@ -208,9 +210,11 @@ async function checkHHV(page, item) {
             });
             return items;
         });
+        console.log('[HHV] "' + item.searchQuery + '" → ' + products.length + ' products, ' + products.filter(function (p) { return recordsMatch(item, p); }).length + ' matches');
         var matches = products.filter(function (p) { return recordsMatch(item, p); });
         return { store: 'HHV', inStock: matches.length > 0, matches: matches, searchUrl: searchUrl };
     } catch (e) {
+        console.log('[HHV] ERROR "' + item.searchQuery + '": ' + e.message);
         return { store: 'HHV', inStock: false, error: e.message, searchUrl: searchUrl };
     }
 }
@@ -287,9 +291,11 @@ async function checkJuno(page, item) {
             });
             return items;
         });
+        console.log('[Juno] "' + item.searchQuery + '" → ' + products.length + ' products, ' + products.filter(function (p) { return recordsMatch(item, p); }).length + ' matches');
         var matches = products.filter(function (p) { return recordsMatch(item, p); });
         return { store: 'Juno', inStock: matches.length > 0, matches: matches, searchUrl: searchUrl };
     } catch (e) {
+        console.log('[Juno] ERROR "' + item.searchQuery + '": ' + e.message);
         return { store: 'Juno', inStock: false, error: e.message, searchUrl: searchUrl };
     }
 }
@@ -675,6 +681,49 @@ async function runScan(username, sendEvent) {
 app.get('/api/reset', function (req, res) {
     activeScan = null;
     res.json({ ok: true });
+});
+
+// Diagnostic: test a single store with a known query
+app.get('/api/test-stores', async function (req, res) {
+    var testItem = { artist: 'Aphex Twin', title: 'Selected Ambient Works 85-92', searchQuery: 'Aphex Twin Selected Ambient Works' };
+    try {
+        var browser = await puppeteer.launch({
+            headless: 'new',
+            protocolTimeout: 30000,
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+        });
+        var results = {};
+
+        // Test Deejay.de
+        var p1 = await browser.newPage();
+        await p1.setRequestInterception(true);
+        p1.on('request', function (r) { var t = r.resourceType(); (t === 'image' || t === 'media' || t === 'font' || t === 'stylesheet') ? r.abort() : r.continue(); });
+        var d = await checkDeejay(p1, testItem);
+        results.deejay = { products: d.matches.length, inStock: d.inStock, error: d.error || null };
+        await p1.close();
+
+        // Test HHV
+        var p2 = await browser.newPage();
+        await p2.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36');
+        await p2.setRequestInterception(true);
+        p2.on('request', function (r) { var t = r.resourceType(); (t === 'image' || t === 'media' || t === 'font') ? r.abort() : r.continue(); });
+        var h = await checkHHV(p2, testItem);
+        results.hhv = { products: h.matches.length, inStock: h.inStock, error: h.error || null };
+        await p2.close();
+
+        // Test Juno
+        var p3 = await browser.newPage();
+        await p3.setRequestInterception(true);
+        p3.on('request', function (r) { var t = r.resourceType(); (t === 'image' || t === 'media' || t === 'font') ? r.abort() : r.continue(); });
+        var j = await checkJuno(p3, testItem);
+        results.juno = { products: j.matches.length, inStock: j.inStock, error: j.error || null };
+        await p3.close();
+
+        await browser.close();
+        res.json({ testQuery: testItem.searchQuery, results: results });
+    } catch (e) {
+        res.json({ error: e.message });
+    }
 });
 
 // SSE endpoint for real-time scan progress
