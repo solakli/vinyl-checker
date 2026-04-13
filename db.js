@@ -57,6 +57,7 @@ function initTables() {
             matches TEXT DEFAULT '[]',
             search_url TEXT,
             link_only INTEGER DEFAULT 0,
+            us_shipping TEXT,
             error TEXT,
             checked_at TEXT,
             FOREIGN KEY (wantlist_id) REFERENCES wantlist(id),
@@ -177,11 +178,12 @@ function getWantlistItem(wantlistId) {
 function saveStoreResult(wantlistId, result) {
     var d = getDb();
     d.prepare(`
-        INSERT INTO store_results (wantlist_id, store, in_stock, matches, search_url, link_only, error, checked_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO store_results (wantlist_id, store, in_stock, matches, search_url, link_only, us_shipping, error, checked_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(wantlist_id, store) DO UPDATE SET
             in_stock = excluded.in_stock, matches = excluded.matches,
             search_url = excluded.search_url, link_only = excluded.link_only,
+            us_shipping = excluded.us_shipping,
             error = excluded.error, checked_at = excluded.checked_at
     `).run(
         wantlistId,
@@ -190,6 +192,7 @@ function saveStoreResult(wantlistId, result) {
         JSON.stringify(result.matches || []),
         result.searchUrl || '',
         result.linkOnly ? 1 : 0,
+        result.usShipping || null,
         result.error || null,
         new Date().toISOString()
     );
@@ -212,25 +215,23 @@ function getStoreResults(wantlistId) {
             matches: JSON.parse(r.matches || '[]'),
             searchUrl: r.search_url,
             linkOnly: !!r.link_only,
+            usShipping: r.us_shipping || null,
             error: r.error,
             checkedAt: r.checked_at
         };
     });
 }
 
-function getItemsNeedingCheck(userId, stores) {
+function getItemsNeedingCheck(userId) {
     var d = getDb();
-    var cutoff = new Date(Date.now() - CACHE_TTL).toISOString();
 
-    // Items that have never been checked, or were checked more than 24h ago
+    // Only items that have NEVER been checked (no store_results at all)
     var items = d.prepare(`
         SELECT w.* FROM wantlist w
         WHERE w.user_id = ? AND w.active = 1
-        AND (
-            NOT EXISTS (SELECT 1 FROM store_results sr WHERE sr.wantlist_id = w.id AND sr.link_only = 0 AND sr.checked_at > ?)
-        )
+        AND NOT EXISTS (SELECT 1 FROM store_results sr WHERE sr.wantlist_id = w.id AND sr.link_only = 0)
         ORDER BY w.id
-    `).all(userId, cutoff);
+    `).all(userId);
 
     return items;
 }
@@ -264,15 +265,12 @@ function getDiscogsPrice(wantlistId) {
 }
 
 function getPricesNeedingCheck(userId) {
-    var cutoff = new Date(Date.now() - CACHE_TTL).toISOString();
     return getDb().prepare(`
         SELECT w.* FROM wantlist w
         WHERE w.user_id = ? AND w.active = 1
-        AND (
-            NOT EXISTS (SELECT 1 FROM discogs_prices dp WHERE dp.wantlist_id = w.id AND dp.checked_at > ?)
-        )
+        AND NOT EXISTS (SELECT 1 FROM discogs_prices dp WHERE dp.wantlist_id = w.id)
         ORDER BY w.id
-    `).all(userId, cutoff);
+    `).all(userId);
 }
 
 // ═══════════════════════════════════════════════════════════

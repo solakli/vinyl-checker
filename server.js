@@ -195,8 +195,11 @@ async function checkDeejay(page, item) {
 async function checkHHV(page, item) {
     var searchUrl = 'https://www.hhv.de/katalog/filter/suche-S11?af=true&term=' + encodeURIComponent(item.searchQuery);
     try {
+        // HHV is an SPA — navigate to about:blank first to ensure clean state
+        await page.goto('about:blank', { waitUntil: 'load', timeout: 3000 }).catch(function () {});
         await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 15000 });
-        await page.waitForSelector('.items--shared--gallery-entry--base-component span.artist', { timeout: 5000 }).catch(function () {});
+        // Wait for SPA to render products
+        await page.waitForSelector('.items--shared--gallery-entry--base-component span.artist', { timeout: 8000 }).catch(function () {});
         var products = await page.evaluate(function () {
             var items = [];
             document.querySelectorAll('.items--shared--gallery-entry--base-component:not(.overlay)').forEach(function (el) {
@@ -488,7 +491,7 @@ function fetchMarketplaceStats(discogsId) {
 // SCAN LOGIC (with DB caching)
 // ═══════════════════════════════════════════════════════════════
 
-async function runScan(username, sendEvent) {
+async function runScan(username, sendEvent, force) {
     if (activeScan) {
         sendEvent('error', { message: 'A scan is already in progress' });
         return;
@@ -513,7 +516,7 @@ async function runScan(username, sendEvent) {
 
         // Step 3: Determine what needs checking
         var allDbItems = db.getActiveWantlist(user.id);
-        var itemsToCheck = db.getItemsNeedingCheck(user.id);
+        var itemsToCheck = force ? allDbItems : db.getItemsNeedingCheck(user.id);
         var cachedCount = allDbItems.length - itemsToCheck.length;
 
         sendEvent('wantlist', {
@@ -561,7 +564,7 @@ async function runScan(username, sendEvent) {
             var fullResults = db.getFullResults(user.id);
             var totalInStock = fullResults.filter(function (r) { return r.stores.some(function (s) { return s.inStock; }); }).length;
             sendEvent('done', {
-                message: 'All results from cache (checked within 24h)',
+                message: 'All results loaded from cache',
                 total: allDbItems.length,
                 inStock: totalInStock,
                 username: username
@@ -732,6 +735,7 @@ app.get('/api/test-stores', async function (req, res) {
 app.get('/api/scan/:username', function (req, res) {
     var username = req.params.username.trim();
     if (!username) return res.status(400).json({ error: 'Username required' });
+    var force = req.query.force === 'true';
 
     // Set up SSE
     res.writeHead(200, {
@@ -756,7 +760,7 @@ app.get('/api/scan/:username', function (req, res) {
     });
 
     // Start the scan
-    runScan(username, sendEvent).then(function () {
+    runScan(username, sendEvent, force).then(function () {
         clearInterval(keepAlive);
         res.end();
     });

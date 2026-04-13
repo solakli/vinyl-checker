@@ -519,6 +519,7 @@
   <div class="scan-section">
     <input type="text" class="username-input" id="usernameInput" placeholder="Discogs username..." value="">
     <button class="scan-btn" id="scanBtn">Check Wantlist</button>
+    <button class="scan-btn rescan-btn" id="rescanBtn" style="display:none;background:transparent;border:1px solid var(--gold);color:var(--gold);font-size:10px;padding:8px 16px;">Rescan All</button>
   </div>
 
   <div class="progress-section" id="progressSection">
@@ -595,12 +596,13 @@ document.getElementById('themeToggle').addEventListener('click', function() {
 });
 
 // Scan button
-document.getElementById('scanBtn').addEventListener('click', startScan);
+document.getElementById('scanBtn').addEventListener('click', function() { startScan(false); });
+document.getElementById('rescanBtn').addEventListener('click', function() { startScan(true); });
 document.getElementById('usernameInput').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') startScan();
+  if (e.key === 'Enter') startScan(false);
 });
 
-function startScan() {
+function startScan(force) {
   var username = document.getElementById('usernameInput').value.trim();
   if (!username || isScanning) return;
 
@@ -611,6 +613,7 @@ function startScan() {
   // UI updates
   document.getElementById('scanBtn').disabled = true;
   document.getElementById('scanBtn').textContent = 'Scanning...';
+  document.getElementById('rescanBtn').style.display = 'none';
   document.getElementById('liveBadge').style.display = 'inline-flex';
   document.getElementById('progressSection').classList.add('active');
   document.getElementById('welcome').style.display = 'none';
@@ -619,7 +622,8 @@ function startScan() {
   document.getElementById('noResults').style.display = 'none';
 
   // Connect to SSE
-  var evtSource = new EventSource('/vinyl/api/scan/' + encodeURIComponent(username));
+  var scanUrl = '/vinyl/api/scan/' + encodeURIComponent(username) + (force ? '?force=true' : '');
+  var evtSource = new EventSource(scanUrl);
 
   evtSource.addEventListener('status', function(e) {
     var data = JSON.parse(e.data);
@@ -668,9 +672,13 @@ function startScan() {
     isScanning = false;
     document.getElementById('scanBtn').disabled = false;
     document.getElementById('scanBtn').textContent = 'Check Wantlist';
+    document.getElementById('rescanBtn').style.display = 'inline-block';
     document.getElementById('liveBadge').style.display = 'none';
     document.getElementById('progressSection').classList.remove('active');
-    document.getElementById('timestamp').textContent = 'Last checked: ' + new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    var msg = data.checked > 0
+      ? 'Scanned ' + data.checked + ' new items · ' + (data.cached || 0) + ' from cache'
+      : 'All results loaded from cache';
+    document.getElementById('timestamp').textContent = msg + ' · ' + new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     updateStats();
     render();
   });
@@ -701,6 +709,7 @@ async function loadExisting() {
         resultsData = data.results;
         document.getElementById('welcome').style.display = 'none';
         document.getElementById('controls').style.display = 'flex';
+        document.getElementById('rescanBtn').style.display = 'inline-block';
         var lastScan = data.lastScan ? new Date(data.lastScan).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'unknown';
         document.getElementById('timestamp').textContent = 'Cached · Last full scan: ' + lastScan;
         updateStats();
