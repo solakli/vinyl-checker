@@ -153,7 +153,8 @@ function initTables() {
 
 function getOrCreateUser(username) {
     var d = getDb();
-    var user = d.prepare('SELECT * FROM users WHERE username = ?').get(username);
+    // Case-insensitive lookup to prevent duplicate users (e.g. "OsolAkli" vs "osolakli")
+    var user = d.prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE').get(username);
     if (!user) {
         var info = d.prepare('INSERT INTO users (username) VALUES (?)').run(username);
         user = { id: info.lastInsertRowid, username: username };

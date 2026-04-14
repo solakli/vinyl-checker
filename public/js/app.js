@@ -59,6 +59,7 @@ var loadingMessages = [
 ];
 var loadingMessageInterval = null;
 var lastLoadingMsgIndex = -1;
+var renderThrottleTimer = null;
 
 // Store class map
 const storeClassMap = {
@@ -98,23 +99,7 @@ document.getElementById('usernameInput').addEventListener('keydown', function(e)
   if (e.key === 'Enter') startScan(false);
 });
 
-// Welcome page Go button
-document.getElementById('welcomeGoBtn').addEventListener('click', function() {
-  var val = document.getElementById('welcomeUsernameInput').value.trim();
-  if (val) {
-    document.getElementById('usernameInput').value = val;
-    startScan(false);
-  }
-});
-document.getElementById('welcomeUsernameInput').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') {
-    var val = this.value.trim();
-    if (val) {
-      document.getElementById('usernameInput').value = val;
-      startScan(false);
-    }
-  }
-});
+// Welcome page — OAuth only (manual username removed)
 
 function startLoadingMessages() {
   var msgEl = document.getElementById('progressCurrent');
@@ -213,8 +198,14 @@ function startScan(force) {
     document.getElementById('progressCurrent').innerHTML = '<span class="progress-item-name">' + itemText + '</span>' +
       (currentMsg ? '<span class="loading-msg">' + currentMsg + '</span>' : '');
 
-    updateStats();
-    render();
+    // Throttle renders during scan to avoid jank on large wantlists
+    if (!renderThrottleTimer) {
+      renderThrottleTimer = setTimeout(function() {
+        renderThrottleTimer = null;
+        updateStats();
+        render();
+      }, 300);
+    }
   });
 
   evtSource.addEventListener('batch-done', function(e) {
@@ -238,6 +229,8 @@ function startScan(force) {
     document.getElementById('timestamp').textContent = msg + ' \u00b7 ' + new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     updateStats();
     render();
+    // Check for changes detected by background rescans
+    fetchChanges(username);
   });
 
   evtSource.addEventListener('scan-error', function(e) {
@@ -392,14 +385,30 @@ function showChangesBanner(changes) {
 }
 
 async function dismissChanges() {
+  var banner = document.getElementById('changesBanner');
   try {
-    await fetch('api/changes/dismiss', {
+    var res = await fetch('api/changes/dismiss', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({})
     });
+    if (!res.ok) {
+      // Session missing — create one from current username and retry
+      var username = document.getElementById('usernameInput').value.trim();
+      if (username) {
+        await fetch('api/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: username })
+        });
+        await fetch('api/changes/dismiss', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+      }
+    }
   } catch(e) {}
-  var banner = document.getElementById('changesBanner');
   if (banner) {
     banner.classList.add('changes-hiding');
     setTimeout(function() { banner.remove(); }, 300);
@@ -1219,7 +1228,7 @@ if (autoScanAfterAuth && autoScanUsername) {
     actionsEl.innerHTML =
       '<div class="welcome-connected">' +
         '<div class="welcome-connected-icon">&#10003;</div>' +
-        '<h3>Connected as ' + autoScanUsername + '</h3>' +
+        '<h3>Connected as ' + escapeHtml(autoScanUsername) + '</h3>' +
         '<p>Starting wantlist scan...</p>' +
       '</div>';
   }
@@ -1233,6 +1242,13 @@ checkAuthStatus().then(function() {
   } else if (authState && authState.discogs && authState.discogs.connected) {
     // Already connected — load cached results directly
     return loadExisting(authState.discogs.username);
+  } else {
+    // Not OAuth-connected — check localStorage for a saved username (manual flow)
+    var savedUsername = localStorage.getItem('vinyl-checker-username');
+    if (savedUsername) {
+      document.getElementById('usernameInput').value = savedUsername;
+      return loadExisting(savedUsername);
+    }
   }
-  // Not connected and not returning from OAuth — welcome page stays visible
+  // No saved state — welcome page stays visible
 });
