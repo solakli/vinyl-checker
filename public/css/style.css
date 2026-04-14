@@ -957,6 +957,17 @@ body.light .tag-badge .tag-stock { color: var(--gold); }
 
 .auth-btn .auth-icon { margin-right: 4px; }
 
+.auth-btn.discogs-connect-header {
+  border-color: var(--gold);
+  color: var(--gold);
+  font-size: 10px;
+  padding: 5px 12px;
+}
+.auth-btn.discogs-connect-header:hover {
+  background: var(--gold);
+  color: #fff;
+}
+
 .auth-status {
   font-size: 10px;
   color: var(--text-muted);

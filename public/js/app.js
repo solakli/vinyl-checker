@@ -937,10 +937,12 @@ async function checkAuthStatus() {
     authState = data;
 
     var userBar = document.getElementById('userBar');
+    var connectHeader = document.getElementById('connectDiscogsHeader');
 
     // Discogs connected — show user bar + scan section
     if (data.discogs && data.discogs.connected) {
       userBar.style.display = 'flex';
+      connectHeader.style.display = 'none';
       document.getElementById('userBarName').textContent = data.discogs.username;
       document.getElementById('scanSection').style.display = 'flex';
 
@@ -948,6 +950,13 @@ async function checkAuthStatus() {
       var usernameInput = document.getElementById('usernameInput');
       if (!usernameInput.value) {
         usernameInput.value = data.discogs.username;
+      }
+    } else if (data.discogsOAuthEnabled) {
+      // Not connected but OAuth available — show connect button in header
+      // (only when results are loaded, i.e. past the welcome page)
+      userBar.style.display = 'none';
+      if (resultsData.length > 0 || document.getElementById('welcome').style.display === 'none') {
+        connectHeader.style.display = 'inline-flex';
       }
     }
 
@@ -971,11 +980,17 @@ async function disconnectDiscogs() {
   try {
     await fetch('api/auth/discogs/disconnect', { method: 'POST' });
   } catch(e) {}
-  // Clear local state
+  // Switch from user bar to connect button
+  document.getElementById('userBar').style.display = 'none';
+  document.getElementById('connectDiscogsHeader').style.display = 'inline-flex';
+}
+
+function fullLogout() {
+  // Clear everything and go back to welcome
   localStorage.removeItem('vinyl-checker-username');
   document.cookie = 'vinyl_session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-  // Reset UI to welcome
   document.getElementById('userBar').style.display = 'none';
+  document.getElementById('connectDiscogsHeader').style.display = 'none';
   document.getElementById('scanSection').style.display = 'none';
   document.getElementById('usernameInput').value = '';
   document.getElementById('welcome').style.display = '';
