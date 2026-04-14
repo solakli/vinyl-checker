@@ -292,46 +292,188 @@ app.post('/api/session', function (req, res) {
     res.json({ username: username });
 });
 
-// Diagnostic: test a single store with a known query
+// ═══════════════════════════════════════════════════════════════
+// STORE VALIDATION / HEALTH CHECK
+// ═══════════════════════════════════════════════════════════════
+
+var TEST_ITEMS = [
+    { artist: 'Aphex Twin', title: 'Selected Ambient Works 85-92', searchQuery: 'Aphex Twin Selected Ambient Works' },
+    { artist: 'Daft Punk', title: 'Discovery', searchQuery: 'Daft Punk Discovery' },
+    { artist: 'Burial', title: 'Untrue', searchQuery: 'Burial Untrue' }
+];
+
 app.get('/api/test-stores', async function (req, res) {
     const puppeteer = require('puppeteer');
     const scrapers = require('./lib/scrapers');
-    var testItem = { artist: 'Aphex Twin', title: 'Selected Ambient Works 85-92', searchQuery: 'Aphex Twin Selected Ambient Works' };
+    var testIdx = parseInt(req.query.test) || 0;
+    var testItem = TEST_ITEMS[testIdx % TEST_ITEMS.length];
+    var UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36';
+
     try {
         var browser = await puppeteer.launch({
             headless: 'new',
-            protocolTimeout: 30000,
+            protocolTimeout: 60000,
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
         });
         var results = {};
 
-        // Test Deejay.de
-        var p1 = await browser.newPage();
-        await p1.setRequestInterception(true);
-        p1.on('request', function (r) { var t = r.resourceType(); (t === 'image' || t === 'media' || t === 'font' || t === 'stylesheet') ? r.abort() : r.continue(); });
-        var d = await scrapers.checkDeejay(p1, testItem);
-        results.deejay = { products: d.matches.length, inStock: d.inStock, error: d.error || null };
-        await p1.close();
+        // Helper: create a configured page
+        async function makePage(blockStylesheets) {
+            var p = await browser.newPage();
+            p.setDefaultNavigationTimeout(15000);
+            p.setDefaultTimeout(15000);
+            await p.setUserAgent(UA);
+            await p.setRequestInterception(true);
+            p.on('request', function (r) {
+                var t = r.resourceType();
+                var blocked = ['image', 'media', 'font'];
+                if (blockStylesheets) blocked.push('stylesheet');
+                blocked.indexOf(t) !== -1 ? r.abort() : r.continue();
+            });
+            return p;
+        }
 
-        // Test HHV
-        var p2 = await browser.newPage();
-        await p2.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36');
-        await p2.setRequestInterception(true);
-        p2.on('request', function (r) { var t = r.resourceType(); (t === 'image' || t === 'media' || t === 'font') ? r.abort() : r.continue(); });
-        var h = await scrapers.checkHHV(p2, testItem);
-        results.hhv = { products: h.matches.length, inStock: h.inStock, error: h.error || null };
-        await p2.close();
+        // Test scraped stores
+        var stores = [
+            { name: 'deejay', fn: scrapers.checkDeejay, blockCss: true },
+            { name: 'hhv', fn: scrapers.checkHHV, blockCss: false },
+            { name: 'juno', fn: scrapers.checkJuno, blockCss: true },
+            { name: 'hardwax', fn: scrapers.checkHardwax, blockCss: true },
+            { name: 'turntablelab', fn: scrapers.checkTurntableLab, blockCss: true },
+            { name: 'undergroundvinyl', fn: scrapers.checkUndergroundVinyl, blockCss: true }
+        ];
 
-        // Test Juno
-        var p3 = await browser.newPage();
-        await p3.setRequestInterception(true);
-        p3.on('request', function (r) { var t = r.resourceType(); (t === 'image' || t === 'media' || t === 'font') ? r.abort() : r.continue(); });
-        var j = await scrapers.checkJuno(p3, testItem);
-        results.juno = { products: j.matches.length, inStock: j.inStock, error: j.error || null };
-        await p3.close();
+        for (var i = 0; i < stores.length; i++) {
+            var store = stores[i];
+            var startTime = Date.now();
+            try {
+                var page = await makePage(store.blockCss);
+                var result = await store.fn(page, testItem);
+                var elapsed = Date.now() - startTime;
+                results[store.name] = {
+                    status: result.inStock ? 'found' : (result.error ? 'error' : 'no_match'),
+                    products: (result.matches || []).length,
+                    inStock: result.inStock,
+                    error: result.error || null,
+                    responseTime: elapsed + 'ms',
+                    searchUrl: result.searchUrl
+                };
+                await page.close();
+            } catch (e) {
+                results[store.name] = { status: 'crash', error: e.message, responseTime: (Date.now() - startTime) + 'ms' };
+            }
+        }
+
+        // Test link-only stores (just verify URLs are valid)
+        var linkStores = [
+            { name: 'phonica', fn: scrapers.getPhonicaLink },
+            { name: 'yoyaku', fn: scrapers.getYoyakuLink },
+            { name: 'decks', fn: scrapers.getDecksLink }
+        ];
+        linkStores.forEach(function (ls) {
+            var link = ls.fn(testItem);
+            results[ls.name] = { status: 'link_only', searchUrl: link.searchUrl, usShipping: link.usShipping };
+        });
 
         await browser.close();
-        res.json({ testQuery: testItem.searchQuery, results: results });
+
+        // Summary
+        var scraped = Object.keys(results).filter(function (k) { return results[k].status !== 'link_only'; });
+        var healthy = scraped.filter(function (k) { return results[k].status === 'found' || results[k].status === 'no_match'; });
+        var broken = scraped.filter(function (k) { return results[k].status === 'error' || results[k].status === 'crash'; });
+
+        res.json({
+            testQuery: testItem.searchQuery,
+            testItem: testItem,
+            timestamp: new Date().toISOString(),
+            summary: {
+                total: Object.keys(results).length,
+                scraped: scraped.length,
+                healthy: healthy.length,
+                broken: broken.length,
+                brokenStores: broken
+            },
+            results: results
+        });
+    } catch (e) {
+        res.json({ error: e.message });
+    }
+});
+
+// Full validation: test all stores with all test items
+app.get('/api/validate', async function (req, res) {
+    const puppeteer = require('puppeteer');
+    const scrapers = require('./lib/scrapers');
+    var UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36';
+
+    try {
+        var browser = await puppeteer.launch({
+            headless: 'new',
+            protocolTimeout: 60000,
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+        });
+
+        var page = await browser.newPage();
+        await page.setUserAgent(UA);
+        await page.setRequestInterception(true);
+        page.on('request', function (r) {
+            var t = r.resourceType();
+            (t === 'image' || t === 'media' || t === 'font') ? r.abort() : r.continue();
+        });
+
+        var storeChecks = [
+            { name: 'Deejay.de', fn: scrapers.checkDeejay },
+            { name: 'HHV', fn: scrapers.checkHHV },
+            { name: 'Juno', fn: scrapers.checkJuno },
+            { name: 'Hardwax', fn: scrapers.checkHardwax },
+            { name: 'Turntable Lab', fn: scrapers.checkTurntableLab },
+            { name: 'Underground Vinyl', fn: scrapers.checkUndergroundVinyl }
+        ];
+
+        var report = {};
+        for (var s = 0; s < storeChecks.length; s++) {
+            var store = storeChecks[s];
+            report[store.name] = { tests: [], healthy: true, avgResponseTime: 0 };
+            var totalTime = 0;
+
+            for (var t = 0; t < TEST_ITEMS.length; t++) {
+                var item = TEST_ITEMS[t];
+                var startTime = Date.now();
+                try {
+                    var result = await store.fn(page, item);
+                    var elapsed = Date.now() - startTime;
+                    totalTime += elapsed;
+                    var testResult = {
+                        query: item.searchQuery,
+                        products: (result.matches || []).length,
+                        inStock: result.inStock,
+                        error: result.error || null,
+                        responseTime: elapsed
+                    };
+                    if (result.error) report[store.name].healthy = false;
+                    report[store.name].tests.push(testResult);
+                } catch (e) {
+                    report[store.name].tests.push({ query: item.searchQuery, error: e.message });
+                    report[store.name].healthy = false;
+                }
+                // Delay between tests
+                await new Promise(function (r) { setTimeout(r, 1000); });
+            }
+            report[store.name].avgResponseTime = Math.round(totalTime / TEST_ITEMS.length) + 'ms';
+        }
+
+        await browser.close();
+
+        // Overall health
+        var storeNames = Object.keys(report);
+        var healthyCount = storeNames.filter(function (n) { return report[n].healthy; }).length;
+
+        res.json({
+            timestamp: new Date().toISOString(),
+            overallHealth: healthyCount + '/' + storeNames.length + ' stores healthy',
+            testItems: TEST_ITEMS.map(function (i) { return i.searchQuery; }),
+            stores: report
+        });
     } catch (e) {
         res.json({ error: e.message });
     }
