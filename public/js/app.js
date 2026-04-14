@@ -73,10 +73,22 @@ const storeDisplayName = {
   'Decks.de': 'Decks', 'Phonica': 'Phonica', 'Yoyaku': 'Yoyaku'
 };
 
-// Theme toggle
+// Theme toggle (persisted)
+(function() {
+  var saved = localStorage.getItem('vinyl-checker-theme');
+  if (saved === 'dark') {
+    document.body.classList.remove('light');
+    document.getElementById('themeToggle').textContent = 'Light';
+  } else if (saved === 'light') {
+    document.body.classList.add('light');
+    document.getElementById('themeToggle').textContent = 'Dark';
+  }
+})();
 document.getElementById('themeToggle').addEventListener('click', function() {
   document.body.classList.toggle('light');
-  this.textContent = document.body.classList.contains('light') ? 'Dark' : 'Light';
+  var isLight = document.body.classList.contains('light');
+  this.textContent = isLight ? 'Dark' : 'Light';
+  localStorage.setItem('vinyl-checker-theme', isLight ? 'light' : 'dark');
 });
 
 // Scan button
@@ -497,7 +509,7 @@ function render() {
     var bestPriceHtml = lowest < Infinity
       ? '<div class="price-compare">' +
           '<span class="best-price-label">Best Store Price</span>' +
-          '<span class="best-price-value">' + lowest.toFixed(2).replace('.', ',') + '</span>' +
+          '<span class="best-price-value">' + lowest.toFixed(2) + '</span>' +
         '</div>'
       : '';
 

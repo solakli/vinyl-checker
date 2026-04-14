@@ -183,7 +183,7 @@ app.get('/api/auth/google/callback', async function (req, res) {
         res.redirect(APP_BASE + '/?auth=youtube');
     } catch (e) {
         console.error('[auth] Google callback error:', e.message);
-        res.redirect('/?auth_error=' + encodeURIComponent(e.message));
+        res.redirect(APP_BASE + '/?auth_error=' + encodeURIComponent(e.message));
     }
 });
 
