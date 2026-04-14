@@ -243,7 +243,18 @@ function startScan(force) {
   evtSource.addEventListener('error', function(e) {
     try {
       var data = JSON.parse(e.data);
-      document.getElementById('progressText').textContent = 'Error: ' + data.message;
+      var msg = data.message || 'Unknown error';
+      // If private wantlist, show connect button inline
+      if (msg.toLowerCase().indexOf('private') !== -1) {
+        document.getElementById('progressText').innerHTML =
+          'This wantlist is private. ' +
+          '<a href="api/auth/discogs" style="color:var(--gold);text-decoration:underline;cursor:pointer;font-weight:500">' +
+          'Connect Discogs to access it</a>';
+        document.getElementById('progressCurrent').innerHTML =
+          '<span class="loading-msg">The owner needs to authorize via OAuth to scan a private wantlist</span>';
+      } else {
+        document.getElementById('progressText').textContent = 'Error: ' + msg;
+      }
     } catch(err) {}
     evtSource.close();
     stopLoadingMessages();
@@ -251,6 +262,8 @@ function startScan(force) {
     document.getElementById('scanBtn').disabled = false;
     document.getElementById('scanBtn').textContent = 'Check Wantlist';
     document.getElementById('liveBadge').style.display = 'none';
+    // Keep progress section visible on error so user sees the message
+    // (don't remove 'active' class)
   });
 }
 
