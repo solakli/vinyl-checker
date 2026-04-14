@@ -389,8 +389,8 @@ body {
 .tag-badge .tag-stock {
   font-size: 8px;
   font-weight: 300;
-  color: var(--green);
-  opacity: 0.7;
+  color: var(--gold);
+  opacity: 0.6;
 }
 
 /* Store logos */
@@ -711,7 +711,7 @@ body.light .tag-badge { background: rgba(0,0,0,0.02); border-color: #ddd; }
 body.light .tag-badge:hover { border-color: #999; color: #444; }
 body.light .tag-badge.active { border-color: var(--gold); color: var(--gold); background: var(--gold-soft); }
 body.light .tag-filter-label { color: #999; }
-body.light .tag-badge .tag-stock { color: #2a8c2a; }
+body.light .tag-badge .tag-stock { color: var(--gold); }
 
 /* ═══════════════════════════════════════════════════════════════
    AUTH SECTION
