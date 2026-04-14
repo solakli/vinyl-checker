@@ -528,7 +528,9 @@ app.get('/api/scan/:username', function (req, res) {
     var userDiscogsHeaders = null;
     if (req.sessionUser) {
         var discogsOAuth = db.getOAuthToken(req.sessionUser.id, 'discogs');
+        console.log('[scan] Session user:', req.sessionUser.username, '| OAuth token:', discogsOAuth ? 'found' : 'not found');
         if (discogsOAuth && discogsOAuth.access_token && discogsOAuth.access_secret) {
+            console.log('[scan] Using OAuth headers for', username);
             userDiscogsHeaders = function (method, path) {
                 var url = 'https://api.discogs.com' + path;
                 return {
@@ -537,6 +539,8 @@ app.get('/api/scan/:username', function (req, res) {
                 };
             };
         }
+    } else {
+        console.log('[scan] No session user for scan of', username, '| Cookie:', req.cookies['vinyl_session'] ? 'present' : 'missing');
     }
 
     // Start or attach to existing scan
