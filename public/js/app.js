@@ -1099,11 +1099,11 @@ var autoScanAfterAuth = false;
   }
 })();
 
-// Init
-loadExisting();
-checkAuthStatus();
-
-// Auto-scan after first Discogs connect
-if (autoScanAfterAuth) {
-  setTimeout(function() { startScan(false); }, 500);
-}
+// Init — load existing results first, then check auth
+loadExisting().then(function() {
+  return checkAuthStatus();
+}).then(function() {
+  if (autoScanAfterAuth) {
+    startScan(false);
+  }
+});
