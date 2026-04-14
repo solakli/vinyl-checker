@@ -1,0 +1,679 @@
+/* Vinyl Checker Frontend */
+
+let resultsData = [];
+let isScanning = false;
+
+// Store class map
+const storeClassMap = {
+  'HHV': 'hhv', 'Deejay.de': 'deejay', 'Hardwax': 'hardwax',
+  'Juno': 'juno', 'Turntable Lab': 'ttlab', 'Underground Vinyl': 'uvs',
+  'Decks.de': 'decks', 'Phonica': 'phonica', 'Yoyaku': 'yoyaku'
+};
+
+const storeDisplayName = {
+  'HHV': 'HHV', 'Deejay.de': 'Deejay', 'Hardwax': 'Hardwax',
+  'Juno': 'Juno', 'Turntable Lab': 'TT Lab', 'Underground Vinyl': 'UVS',
+  'Decks.de': 'Decks', 'Phonica': 'Phonica', 'Yoyaku': 'Yoyaku'
+};
+
+// Theme toggle
+document.getElementById('themeToggle').addEventListener('click', function() {
+  document.body.classList.toggle('light');
+  this.textContent = document.body.classList.contains('light') ? 'Dark' : 'Light';
+});
+
+// Scan button
+document.getElementById('scanBtn').addEventListener('click', function() { startScan(false); });
+document.getElementById('rescanBtn').addEventListener('click', function() { startScan(true); });
+document.getElementById('usernameInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') startScan(false);
+});
+
+function startScan(force) {
+  var username = document.getElementById('usernameInput').value.trim();
+  if (!username || isScanning) return;
+
+  localStorage.setItem('vinyl-checker-username', username);
+
+  // Create session cookie via API
+  fetch('/vinyl/api/session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: username })
+  }).catch(function() {});
+
+  isScanning = true;
+  resultsData = [];
+
+  // UI updates
+  document.getElementById('scanBtn').disabled = true;
+  document.getElementById('scanBtn').textContent = 'Scanning...';
+  document.getElementById('rescanBtn').style.display = 'none';
+  document.getElementById('liveBadge').style.display = 'inline-flex';
+  document.getElementById('progressSection').classList.add('active');
+  document.getElementById('welcome').style.display = 'none';
+  document.getElementById('controls').style.display = 'flex';
+  document.getElementById('grid').innerHTML = '';
+  document.getElementById('noResults').style.display = 'none';
+
+  // Connect to SSE
+  var scanUrl = '/vinyl/api/scan/' + encodeURIComponent(username) + (force ? '?force=true' : '');
+  var evtSource = new EventSource(scanUrl);
+
+  evtSource.addEventListener('status', function(e) {
+    var data = JSON.parse(e.data);
+    document.getElementById('progressText').textContent = data.message;
+  });
+
+  evtSource.addEventListener('wantlist', function(e) {
+    var data = JSON.parse(e.data);
+    document.getElementById('progressCount').textContent = '0 / ' + data.total;
+    updateStats();
+  });
+
+  evtSource.addEventListener('batch-start', function(e) {
+    var data = JSON.parse(e.data);
+    document.getElementById('progressText').textContent = 'Batch ' + data.batch + '/' + data.totalBatches;
+    document.getElementById('progressCurrent').textContent = data.items.join(' | ');
+  });
+
+  evtSource.addEventListener('item-done', function(e) {
+    var data = JSON.parse(e.data);
+    // Avoid duplicates from cache + live
+    var exists = resultsData.some(function(r) { return r.item.id === data.item.id; });
+    if (!exists) {
+      resultsData.push({ item: data.item, stores: data.stores, discogsPrice: data.discogsPrice || null });
+    }
+
+    // Update progress
+    var pct = ((data.index + 1) / data.total * 100).toFixed(1);
+    document.getElementById('progressFill').style.width = pct + '%';
+    document.getElementById('progressCount').textContent = (data.index + 1) + ' / ' + data.total;
+    var suffix = data.fromCache ? ' (cached)' : (data.inStock ? ' \u2713' : '');
+    document.getElementById('progressCurrent').textContent = data.item.artist + ' - ' + data.item.title + suffix;
+
+    updateStats();
+    render();
+  });
+
+  evtSource.addEventListener('batch-done', function(e) {
+    var data = JSON.parse(e.data);
+    document.getElementById('progressText').textContent = 'Batch ' + data.batch + '/' + data.totalBatches + ' done';
+  });
+
+  evtSource.addEventListener('done', function(e) {
+    var data = JSON.parse(e.data);
+    evtSource.close();
+    isScanning = false;
+    document.getElementById('scanBtn').disabled = false;
+    document.getElementById('scanBtn').textContent = 'Check Wantlist';
+    document.getElementById('rescanBtn').style.display = 'inline-block';
+    document.getElementById('liveBadge').style.display = 'none';
+    document.getElementById('progressSection').classList.remove('active');
+    var msg = data.checked > 0
+      ? 'Scanned ' + data.checked + ' new items \u00b7 ' + (data.cached || 0) + ' from cache'
+      : 'All results loaded from cache';
+    document.getElementById('timestamp').textContent = msg + ' \u00b7 ' + new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    updateStats();
+    render();
+  });
+
+  evtSource.addEventListener('error', function(e) {
+    try {
+      var data = JSON.parse(e.data);
+      document.getElementById('progressText').textContent = 'Error: ' + data.message;
+    } catch(err) {}
+    evtSource.close();
+    isScanning = false;
+    document.getElementById('scanBtn').disabled = false;
+    document.getElementById('scanBtn').textContent = 'Check Wantlist';
+    document.getElementById('liveBadge').style.display = 'none';
+  });
+}
+
+// Try to load cached results from DB on page load
+async function loadExisting() {
+  // Check for session cookie first
+  try {
+    var sessionRes = await fetch('/vinyl/api/session');
+    if (sessionRes.ok) {
+      var sessionData = await sessionRes.json();
+      if (sessionData.username) {
+        document.getElementById('usernameInput').value = sessionData.username;
+        await loadResultsForUser(sessionData.username);
+        return;
+      }
+    }
+  } catch(e) {}
+
+  // Fall back to localStorage
+  var savedUser = localStorage.getItem('vinyl-checker-username');
+  if (!savedUser) return;
+  document.getElementById('usernameInput').value = savedUser;
+  await loadResultsForUser(savedUser);
+}
+
+async function loadResultsForUser(username) {
+  try {
+    var res = await fetch('/vinyl/api/results/' + encodeURIComponent(username));
+    if (res.ok) {
+      var data = await res.json();
+      if (data.results && data.results.length > 0) {
+        resultsData = data.results;
+        document.getElementById('welcome').style.display = 'none';
+        document.getElementById('controls').style.display = 'flex';
+        document.getElementById('rescanBtn').style.display = 'inline-block';
+        var lastScan = data.lastScan ? new Date(data.lastScan).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'unknown';
+        document.getElementById('timestamp').textContent = 'Cached \u00b7 Last full scan: ' + lastScan;
+        updateStats();
+        render();
+      }
+    }
+  } catch(e) {}
+}
+
+function parsePrice(priceStr) {
+  if (!priceStr) return Infinity;
+  var match = priceStr.replace(',', '.').match(/([\d.]+)/);
+  return match ? parseFloat(match[1]) : Infinity;
+}
+
+function getLowestPrice(item) {
+  var lowest = Infinity;
+  item.stores.forEach(function(s) {
+    if (s.matches) {
+      s.matches.forEach(function(m) {
+        var p = parsePrice(m.price);
+        if (p < lowest) lowest = p;
+      });
+    }
+  });
+  return lowest;
+}
+
+function getStoreCount(item) {
+  return item.stores.filter(function(s) { return s.inStock; }).length;
+}
+
+function updateStats() {
+  var total = resultsData.length;
+  var inStock = resultsData.filter(function(i) { return i.stores.some(function(s) { return s.inStock && !s.linkOnly; }); }).length;
+
+  document.getElementById('stats').innerHTML =
+    '<div><span class="stat-value">' + total + '</span> wantlist</div>' +
+    '<div><span class="stat-value">' + inStock + '</span> in stock</div>';
+
+  // Update store counts
+  document.querySelectorAll('.store-badge').forEach(function(badge) {
+    var store = badge.dataset.store;
+    var count = resultsData.filter(function(i) {
+      return i.stores.some(function(s) { return s.store === store && s.inStock && !s.linkOnly; });
+    }).length;
+    badge.querySelector('.count').textContent = '(' + count + ')';
+  });
+
+  // Populate genre/style dropdowns
+  var genres = new Set();
+  var styles = new Set();
+  resultsData.forEach(function(item) {
+    if (item.item.genres) item.item.genres.split(', ').forEach(function(g) { if (g) genres.add(g); });
+    if (item.item.styles) item.item.styles.split(', ').forEach(function(s) { if (s) styles.add(s); });
+  });
+
+  var genreSelect = document.getElementById('genreFilter');
+  var styleSelect = document.getElementById('styleFilter');
+  var currentGenre = genreSelect.value;
+  var currentStyle = styleSelect.value;
+
+  genreSelect.innerHTML = '<option value="">All Genres</option>';
+  Array.from(genres).sort().forEach(function(g) {
+    genreSelect.innerHTML += '<option value="' + escapeHtml(g) + '">' + escapeHtml(g) + '</option>';
+  });
+  genreSelect.value = currentGenre;
+
+  styleSelect.innerHTML = '<option value="">All Styles</option>';
+  Array.from(styles).sort().forEach(function(s) {
+    styleSelect.innerHTML += '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>';
+  });
+  styleSelect.value = currentStyle;
+}
+
+function getActiveStores() {
+  return [].slice.call(document.querySelectorAll('.store-badge.active')).map(function(el) { return el.dataset.store; });
+}
+
+function getDiscogsPrice(item) {
+  if (item.discogsPrice && item.discogsPrice.lowestPrice) return item.discogsPrice.lowestPrice;
+  return Infinity;
+}
+
+function render() {
+  var search = document.getElementById('search').value.toLowerCase();
+  var sort = document.getElementById('sort').value;
+  var activeStores = getActiveStores();
+  var inStockOnly = document.querySelector('#inStockOnly input').checked;
+  var genreFilter = document.getElementById('genreFilter').value;
+  var styleFilter = document.getElementById('styleFilter').value;
+
+  var filtered = resultsData.filter(function(item) {
+    if (search) {
+      var haystack = (item.item.artist + ' ' + item.item.title + ' ' + item.item.label + ' ' + item.item.catno).toLowerCase();
+      if (haystack.indexOf(search) === -1) return false;
+    }
+    if (genreFilter && (!item.item.genres || item.item.genres.indexOf(genreFilter) === -1)) return false;
+    if (styleFilter && (!item.item.styles || item.item.styles.indexOf(styleFilter) === -1)) return false;
+    if (inStockOnly) {
+      var hasStockInActiveStore = item.stores.some(function(s) {
+        return activeStores.indexOf(s.store) !== -1 && s.inStock && !s.linkOnly;
+      });
+      if (!hasStockInActiveStore) return false;
+    }
+    return true;
+  });
+
+  filtered.sort(function(a, b) {
+    switch(sort) {
+      case 'artist': return a.item.artist.localeCompare(b.item.artist);
+      case 'price-low': return getLowestPrice(a) - getLowestPrice(b);
+      case 'price-high': return getLowestPrice(b) - getLowestPrice(a);
+      case 'stores': return getStoreCount(b) - getStoreCount(a);
+      case 'discogs-low': return getDiscogsPrice(a) - getDiscogsPrice(b);
+      default: return 0;
+    }
+  });
+
+  var grid = document.getElementById('grid');
+  var noResults = document.getElementById('noResults');
+
+  if (filtered.length === 0) {
+    grid.innerHTML = '';
+    noResults.style.display = 'block';
+    return;
+  }
+
+  noResults.style.display = 'none';
+
+  grid.innerHTML = filtered.map(function(item) {
+    var storeRows = item.stores
+      .filter(function(s) { return activeStores.indexOf(s.store) !== -1; })
+      .map(function(s) {
+        var cls = storeClassMap[s.store] || '';
+        var name = storeDisplayName[s.store] || s.store;
+
+        var shippingHtml = s.usShipping ? '<span class="shipping">+' + s.usShipping + ' US ship</span>' : '';
+
+        if (s.linkOnly) {
+          return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + '" onclick="event.stopPropagation()">' +
+            '<span class="store-name">' + name + '</span>' +
+            '<span class="match-info"><span class="link-only">Search manually</span></span>' +
+            shippingHtml +
+            '<span class="arrow">&rarr;</span></a>';
+        }
+
+        if (!s.inStock || !s.matches || s.matches.length === 0) {
+          return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' out-of-stock" onclick="event.stopPropagation()">' +
+            '<span class="store-name">' + name + '</span>' +
+            '<span class="match-info"><span class="not-found">Not found</span></span>' +
+            '<span class="arrow">&rarr;</span></a>';
+        }
+
+        var cheapest = s.matches.reduce(function(min, m) { return parsePrice(m.price) < parsePrice(min.price) ? m : min; }, s.matches[0]);
+        var extras = s.matches.length > 1 ? ' +' + (s.matches.length - 1) + ' more' : '';
+
+        return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + '" onclick="event.stopPropagation()">' +
+          '<span class="store-name">' + name + '</span>' +
+          '<span class="match-info">' + escapeHtml(cheapest.title || '') + extras + '</span>' +
+          '<span class="price">' + escapeHtml(cheapest.price || '') + '</span>' +
+          shippingHtml +
+          '<span class="arrow">&rarr;</span></a>';
+      }).join('');
+
+    var lowest = getLowestPrice(item);
+    var bestPriceHtml = lowest < Infinity
+      ? '<div class="price-compare">' +
+          '<span class="best-price-label">Best Store Price</span>' +
+          '<span class="best-price-value">' + lowest.toFixed(2).replace('.', ',') + '</span>' +
+        '</div>'
+      : '';
+
+    // Discogs marketplace price
+    var discogsPriceHtml = '';
+    if (item.discogsPrice && item.discogsPrice.lowestPrice) {
+      var dShipping = item.discogsPrice.shipping ? '<span class="shipping">+' + item.discogsPrice.shipping + ' ship</span>' : '';
+      var currSymbol = item.discogsPrice.currency === 'USD' ? '$' : item.discogsPrice.currency === 'GBP' ? '\u00a3' : item.discogsPrice.currency === 'JPY' ? '\u00a5' : '\u20ac';
+      discogsPriceHtml = '<a href="' + (item.discogsPrice.marketplaceUrl || '#') + '" target="_blank" class="store-row discogs" onclick="event.stopPropagation()">' +
+        '<span class="store-name">Discogs</span>' +
+        '<span class="match-info">' + item.discogsPrice.numForSale + ' for sale (ships to US)</span>' +
+        '<span class="price">' + currSymbol + item.discogsPrice.lowestPrice.toFixed(2) + '</span>' +
+        dShipping +
+        '<span class="arrow">&rarr;</span></a>';
+    } else if (item.discogsPrice) {
+      discogsPriceHtml = '<a href="' + (item.discogsPrice.marketplaceUrl || '#') + '" target="_blank" class="store-row discogs out-of-stock" onclick="event.stopPropagation()">' +
+        '<span class="store-name">Discogs</span>' +
+        '<span class="match-info"><span class="not-found">None for sale</span></span>' +
+        '<span class="arrow">&rarr;</span></a>';
+    }
+
+    // Thumbnail
+    var thumbHtml = '';
+    if (item.item.thumb) {
+      thumbHtml = '<img class="card-thumb" src="' + escapeHtml(item.item.thumb) + '" alt="" loading="lazy">';
+    } else {
+      thumbHtml = '<div class="card-thumb" style="display:flex;align-items:center;justify-content:center;font-size:20px;color:#555;">&#9835;</div>';
+    }
+
+    return '<div class="card" data-discogs-id="' + item.item.id + '" onclick="openReleaseDetail(' + item.item.id + ')">' +
+      '<div class="card-header">' +
+        thumbHtml +
+        '<div class="card-info">' +
+          '<div class="card-artist">' + escapeHtml(item.item.artist) + '</div>' +
+          '<div class="card-title">' + escapeHtml(item.item.title) + '</div>' +
+          '<div class="card-meta">' +
+            (item.item.year ? '<span>' + item.item.year + '</span>' : '') +
+            (item.item.label ? '<span>' + escapeHtml(item.item.label) + '</span>' : '') +
+            (item.item.catno ? '<span>' + escapeHtml(item.item.catno) + '</span>' : '') +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="store-results">' + storeRows + discogsPriceHtml + '</div>' +
+      bestPriceHtml +
+    '</div>';
+  }).join('');
+}
+
+function escapeHtml(str) {
+  var div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RELEASE DETAIL MODAL
+// ═══════════════════════════════════════════════════════════════
+
+function openReleaseDetail(discogsId) {
+  var overlay = document.getElementById('modalOverlay');
+  var content = document.getElementById('modalBody');
+
+  overlay.classList.add('active');
+  document.body.style.overflow = 'hidden';
+
+  // Show loading state
+  content.innerHTML = '<div class="modal-loading"><div class="spinner"></div> Loading release details...</div>';
+
+  // Find the item in resultsData for store info
+  var resultItem = resultsData.find(function(r) { return r.item.id === discogsId; });
+
+  // Fetch release details
+  fetch('/vinyl/api/release/' + discogsId)
+    .then(function(res) { return res.json(); })
+    .then(function(response) {
+      if (response.error) {
+        content.innerHTML = '<div class="modal-loading">Error: ' + escapeHtml(response.error) + '</div>';
+        return;
+      }
+      renderReleaseDetail(response.data, resultItem);
+    })
+    .catch(function(err) {
+      content.innerHTML = '<div class="modal-loading">Failed to load details</div>';
+    });
+}
+
+function closeModal() {
+  var overlay = document.getElementById('modalOverlay');
+  overlay.classList.remove('active');
+  document.body.style.overflow = '';
+
+  // Stop any playing videos
+  var iframes = overlay.querySelectorAll('iframe');
+  iframes.forEach(function(iframe) { iframe.src = ''; });
+}
+
+function renderReleaseDetail(data, resultItem) {
+  var content = document.getElementById('modalBody');
+
+  // Album art: prefer high-res from release details, fall back to thumb
+  var albumArt = '';
+  if (data.images && data.images.length > 0) {
+    albumArt = data.images[0].uri || data.images[0].uri150 || '';
+  }
+  if (!albumArt && resultItem && resultItem.item.thumb) {
+    albumArt = resultItem.item.thumb;
+  }
+
+  var artistName = (data.artists && data.artists.length > 0)
+    ? data.artists.map(function(a) { return a.name; }).join(', ')
+    : (resultItem ? resultItem.item.artist : '');
+
+  // Rating stars
+  var ratingHtml = '';
+  if (data.community && data.community.rating && data.community.rating.count > 0) {
+    var avg = data.community.rating.average;
+    var fullStars = Math.floor(avg);
+    var halfStar = (avg - fullStars) >= 0.5;
+    var starsStr = '';
+    for (var i = 0; i < fullStars; i++) starsStr += '\u2605';
+    if (halfStar) starsStr += '\u2606';
+    ratingHtml = '<div class="modal-rating">' +
+      '<span class="modal-stars">' + starsStr + '</span>' +
+      '<span>' + avg.toFixed(1) + '/5</span>' +
+      '<span class="modal-rating-count">(' + data.community.rating.count + ' ratings)</span>' +
+    '</div>';
+  }
+
+  // Community stats
+  var communityHtml = '';
+  if (data.community) {
+    communityHtml = '<span><span class="label">Have:</span> ' + (data.community.have || 0) + '</span>' +
+      '<span><span class="label">Want:</span> ' + (data.community.want || 0) + '</span>';
+  }
+
+  // Format info
+  var formatHtml = '';
+  if (data.formats && data.formats.length > 0) {
+    formatHtml = data.formats.map(function(f) {
+      var desc = f.descriptions ? f.descriptions.join(', ') : '';
+      return f.qty + 'x ' + f.name + (desc ? ' (' + desc + ')' : '');
+    }).join(', ');
+  }
+
+  // Hero section
+  var html = '<div class="modal-hero">';
+  if (albumArt) {
+    html += '<img class="modal-album-art" src="' + escapeHtml(albumArt) + '" alt="">';
+  }
+  html += '<div class="modal-info">' +
+    '<div class="modal-artist">' + escapeHtml(artistName) + '</div>' +
+    '<div class="modal-title">' + escapeHtml(data.title || '') + '</div>' +
+    '<div class="modal-meta">' +
+      (data.released ? '<span><span class="label">Released:</span> ' + escapeHtml(data.released) + '</span>' : '') +
+      (data.country ? '<span><span class="label">Country:</span> ' + escapeHtml(data.country) + '</span>' : '') +
+      (formatHtml ? '<span><span class="label">Format:</span> ' + escapeHtml(formatHtml) + '</span>' : '') +
+      communityHtml +
+    '</div>' +
+    ratingHtml +
+  '</div></div>';
+
+  // Tracklist section
+  if (data.tracklistWithVideos && data.tracklistWithVideos.length > 0) {
+    html += '<div class="modal-section"><div class="modal-section-title">Tracklist</div><ul class="tracklist">';
+    data.tracklistWithVideos.forEach(function(track) {
+      var playBtn = '';
+      if (track.videoId) {
+        playBtn = '<button class="track-play" onclick="playTrackVideo(\'' + track.videoId + '\', event)">Play</button>';
+      }
+      html += '<li>' +
+        '<span class="track-position">' + escapeHtml(track.position || '') + '</span>' +
+        '<span class="track-title">' + escapeHtml(track.title || '') + '</span>' +
+        '<span class="track-duration">' + escapeHtml(track.duration || '') + '</span>' +
+        playBtn +
+      '</li>';
+    });
+    html += '</ul></div>';
+  } else if (data.tracklist && data.tracklist.length > 0) {
+    html += '<div class="modal-section"><div class="modal-section-title">Tracklist</div><ul class="tracklist">';
+    data.tracklist.forEach(function(track) {
+      html += '<li>' +
+        '<span class="track-position">' + escapeHtml(track.position || '') + '</span>' +
+        '<span class="track-title">' + escapeHtml(track.title || '') + '</span>' +
+        '<span class="track-duration">' + escapeHtml(track.duration || '') + '</span>' +
+      '</li>';
+    });
+    html += '</ul></div>';
+  }
+
+  // Video embeds (first 3 unique videos from Discogs)
+  if (data.videos && data.videos.length > 0) {
+    var videoIds = [];
+    data.videos.forEach(function(v) {
+      var vid = extractYoutubeId(v.url);
+      if (vid && videoIds.indexOf(vid) === -1 && videoIds.length < 3) {
+        videoIds.push(vid);
+      }
+    });
+
+    if (videoIds.length > 0) {
+      html += '<div class="modal-section"><div class="modal-section-title">Videos</div><div class="video-grid">';
+      videoIds.forEach(function(vid) {
+        html += '<div class="video-embed">' +
+          '<iframe src="https://www.youtube.com/embed/' + vid + '" allowfullscreen loading="lazy"></iframe>' +
+        '</div>';
+      });
+      html += '</div></div>';
+    }
+  }
+
+  // Inline video player (hidden by default, shown when Play button is clicked)
+  html += '<div class="modal-section" id="trackVideoPlayer" style="display:none">' +
+    '<div class="modal-section-title">Now Playing</div>' +
+    '<div class="video-embed" id="trackVideoEmbed"></div>' +
+  '</div>';
+
+  // Store price comparison
+  if (resultItem && resultItem.stores) {
+    html += '<div class="modal-section modal-stores"><div class="modal-section-title">Store Prices</div>';
+    var activeStores = getActiveStores();
+    resultItem.stores.forEach(function(s) {
+      if (activeStores.indexOf(s.store) === -1) return;
+      var cls = storeClassMap[s.store] || '';
+      var name = storeDisplayName[s.store] || s.store;
+      var shippingHtml = s.usShipping ? '<span class="shipping">+' + s.usShipping + ' US ship</span>' : '';
+
+      if (s.linkOnly) {
+        html += '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + '">' +
+          '<span class="store-name">' + name + '</span>' +
+          '<span class="match-info"><span class="link-only">Search manually</span></span>' +
+          shippingHtml +
+          '<span class="arrow">&rarr;</span></a>';
+      } else if (s.inStock && s.matches && s.matches.length > 0) {
+        var cheapest = s.matches.reduce(function(min, m) { return parsePrice(m.price) < parsePrice(min.price) ? m : min; }, s.matches[0]);
+        html += '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + '">' +
+          '<span class="store-name">' + name + '</span>' +
+          '<span class="match-info">' + escapeHtml(cheapest.title || '') + '</span>' +
+          '<span class="price">' + escapeHtml(cheapest.price || '') + '</span>' +
+          shippingHtml +
+          '<span class="arrow">&rarr;</span></a>';
+      } else {
+        html += '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' out-of-stock">' +
+          '<span class="store-name">' + name + '</span>' +
+          '<span class="match-info"><span class="not-found">Not found</span></span>' +
+          '<span class="arrow">&rarr;</span></a>';
+      }
+    });
+
+    // Discogs marketplace
+    if (resultItem.discogsPrice && resultItem.discogsPrice.lowestPrice) {
+      var currSymbol = resultItem.discogsPrice.currency === 'USD' ? '$' : resultItem.discogsPrice.currency === 'GBP' ? '\u00a3' : '\u20ac';
+      html += '<a href="' + (resultItem.discogsPrice.marketplaceUrl || '#') + '" target="_blank" class="store-row discogs">' +
+        '<span class="store-name">Discogs</span>' +
+        '<span class="match-info">' + resultItem.discogsPrice.numForSale + ' for sale</span>' +
+        '<span class="price">' + currSymbol + resultItem.discogsPrice.lowestPrice.toFixed(2) + '</span>' +
+        '<span class="arrow">&rarr;</span></a>';
+    }
+    html += '</div>';
+  }
+
+  // Credits
+  if (data.extraartists && data.extraartists.length > 0) {
+    html += '<div class="modal-section"><div class="modal-section-title">Credits</div><div class="credits-list">';
+    data.extraartists.forEach(function(credit) {
+      html += '<div class="credit-item">' +
+        escapeHtml(credit.name) +
+        '<div class="credit-role">' + escapeHtml(credit.role || '') + '</div>' +
+      '</div>';
+    });
+    html += '</div></div>';
+  }
+
+  // Notes
+  if (data.notes) {
+    html += '<div class="modal-section"><div class="modal-section-title">Notes</div>' +
+      '<p style="font-size:12px;font-weight:300;color:var(--text-sec);line-height:1.5;letter-spacing:0.3px">' +
+      escapeHtml(data.notes).substring(0, 500) +
+      (data.notes.length > 500 ? '...' : '') +
+      '</p></div>';
+  }
+
+  // Discogs link
+  var discogsUrl = 'https://www.discogs.com/release/' + (data.id || '');
+  html += '<div class="modal-section">' +
+    '<a href="' + discogsUrl + '" target="_blank" class="discogs-link">View on Discogs &rarr;</a>' +
+  '</div>';
+
+  content.innerHTML = html;
+}
+
+function extractYoutubeId(url) {
+  if (!url) return null;
+  try {
+    var parsed = new URL(url);
+    if (parsed.hostname.includes('youtube.com')) {
+      return parsed.searchParams.get('v') || null;
+    }
+    if (parsed.hostname.includes('youtu.be')) {
+      return parsed.pathname.replace(/^\//, '') || null;
+    }
+  } catch (e) {}
+  return null;
+}
+
+function playTrackVideo(videoId, event) {
+  event.stopPropagation();
+  var player = document.getElementById('trackVideoPlayer');
+  var embed = document.getElementById('trackVideoEmbed');
+  player.style.display = 'block';
+  embed.innerHTML = '<iframe src="https://www.youtube.com/embed/' + videoId + '?autoplay=1" allowfullscreen allow="autoplay"></iframe>';
+  player.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// Modal event listeners
+document.getElementById('modalClose').addEventListener('click', closeModal);
+document.getElementById('modalOverlay').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeModal();
+});
+
+// Event listeners
+document.getElementById('search').addEventListener('input', render);
+document.getElementById('sort').addEventListener('change', render);
+document.getElementById('genreFilter').addEventListener('change', render);
+document.getElementById('styleFilter').addEventListener('change', render);
+
+document.querySelectorAll('.store-badge').forEach(function(el) {
+  el.addEventListener('click', function() {
+    el.classList.toggle('active');
+    render();
+  });
+});
+
+document.getElementById('inStockOnly').addEventListener('click', function() {
+  var cb = this.querySelector('input');
+  cb.checked = !cb.checked;
+  this.classList.toggle('active', cb.checked);
+  render();
+});
+
+// Init
+loadExisting();

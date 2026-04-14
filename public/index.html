@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vinyl Checker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/vinyl/css/style.css">
+</head>
+<body>
+
+<button class="theme-toggle" id="themeToggle">Light</button>
+
+<div class="header">
+  <div class="header-top">
+    <div class="header-left">
+      <h1><span>Vinyl</span> Checker</h1>
+      <div class="live-badge" id="liveBadge" style="display:none"><div class="live-dot"></div> Scanning</div>
+      <div class="stats" id="stats"></div>
+    </div>
+    <div class="timestamp" id="timestamp"></div>
+  </div>
+
+  <div class="scan-section">
+    <input type="text" class="username-input" id="usernameInput" placeholder="Discogs username..." value="">
+    <button class="scan-btn" id="scanBtn">Check Wantlist</button>
+    <button class="scan-btn rescan-btn" id="rescanBtn" style="display:none;background:transparent;border:1px solid var(--gold);color:var(--gold);font-size:10px;padding:8px 16px;">Rescan All</button>
+  </div>
+
+  <div class="progress-section" id="progressSection">
+    <div class="progress-bar-track"><div class="progress-bar-fill" id="progressFill"></div></div>
+    <div class="progress-info">
+      <span id="progressText">Starting...</span>
+      <span id="progressCount">0 / 0</span>
+    </div>
+    <div class="progress-current" id="progressCurrent"></div>
+  </div>
+
+  <div class="controls" id="controls" style="display:none">
+    <input type="text" class="search-box" id="search" placeholder="Search...">
+    <select class="sort-select" id="sort">
+      <option value="artist">Artist A-Z</option>
+      <option value="price-low">Price Low-High</option>
+      <option value="price-high">Price High-Low</option>
+      <option value="stores">Most Stores</option>
+      <option value="discogs-low">Discogs Price Low</option>
+    </select>
+    <select class="sort-select" id="genreFilter">
+      <option value="">All Genres</option>
+    </select>
+    <select class="sort-select" id="styleFilter">
+      <option value="">All Styles</option>
+    </select>
+    <div class="store-filter" id="storeFilter">
+      <div class="store-badge hhv active" data-store="HHV">HHV <span class="count"></span></div>
+      <div class="store-badge deejay active" data-store="Deejay.de">Deejay <span class="count"></span></div>
+      <div class="store-badge hardwax active" data-store="Hardwax">Hardwax <span class="count"></span></div>
+      <div class="store-badge juno active" data-store="Juno">Juno <span class="count"></span></div>
+      <div class="store-badge ttlab active" data-store="Turntable Lab">TT Lab <span class="count"></span></div>
+      <div class="store-badge uvs active" data-store="Underground Vinyl">UVS <span class="count"></span></div>
+      <div class="store-badge decks active" data-store="Decks.de">Decks <span class="count"></span></div>
+      <div class="store-badge phonica active" data-store="Phonica">Phonica <span class="count"></span></div>
+      <div class="store-badge yoyaku active" data-store="Yoyaku">Yoyaku <span class="count"></span></div>
+    </div>
+    <label class="filter-btn" id="inStockOnly">
+      <input type="checkbox" style="display:none"> In Stock Only
+    </label>
+  </div>
+</div>
+
+<div class="container">
+  <div id="welcome" class="welcome">
+    <h2>Enter a Discogs username</h2>
+    <p>We'll check their wantlist across 9 vinyl stores worldwide</p>
+  </div>
+  <div class="grid" id="grid"></div>
+  <div class="no-results" id="noResults" style="display:none">No items match your filters</div>
+</div>
+
+<!-- Release Detail Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-content">
+    <button class="modal-close" id="modalClose">&times;</button>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script src="/vinyl/js/app.js"></script>
+
+</body>
+</html>

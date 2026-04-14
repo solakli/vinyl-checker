@@ -77,10 +77,27 @@ function initTables() {
             UNIQUE(wantlist_id)
         );
 
+        CREATE TABLE IF NOT EXISTS release_details (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            discogs_id INTEGER UNIQUE NOT NULL,
+            data TEXT,
+            fetched_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            token TEXT UNIQUE NOT NULL,
+            user_id INTEGER NOT NULL,
+            created_at TEXT,
+            last_seen TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_wantlist_user ON wantlist(user_id);
         CREATE INDEX IF NOT EXISTS idx_wantlist_active ON wantlist(user_id, active);
         CREATE INDEX IF NOT EXISTS idx_store_results_wantlist ON store_results(wantlist_id);
         CREATE INDEX IF NOT EXISTS idx_discogs_prices_wantlist ON discogs_prices(wantlist_id);
+        CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
     `);
 }
 
@@ -311,6 +328,68 @@ function getFullResults(userId) {
     });
 }
 
+// ═══════════════════════════════════════════════════════════
+// RELEASE DETAILS OPERATIONS
+// ═══════════════════════════════════════════════════════════
+
+const RELEASE_DETAILS_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
+
+function saveReleaseDetails(discogsId, data) {
+    getDb().prepare(`
+        INSERT INTO release_details (discogs_id, data, fetched_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(discogs_id) DO UPDATE SET
+            data = excluded.data, fetched_at = excluded.fetched_at
+    `).run(discogsId, JSON.stringify(data), new Date().toISOString());
+}
+
+function getReleaseDetails(discogsId) {
+    var row = getDb().prepare('SELECT * FROM release_details WHERE discogs_id = ?').get(discogsId);
+    if (!row) return null;
+
+    // Check TTL
+    var fetchedAt = new Date(row.fetched_at).getTime();
+    if (Date.now() - fetchedAt > RELEASE_DETAILS_TTL) {
+        return null; // expired
+    }
+
+    try {
+        return JSON.parse(row.data);
+    } catch (e) {
+        return null;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+// SESSION OPERATIONS
+// ═══════════════════════════════════════════════════════════
+
+function createSession(userId) {
+    var crypto = require('crypto');
+    var token = crypto.randomBytes(32).toString('hex');
+    var now = new Date().toISOString();
+    getDb().prepare('INSERT INTO sessions (token, user_id, created_at, last_seen) VALUES (?, ?, ?, ?)')
+        .run(token, userId, now, now);
+    return token;
+}
+
+function getSessionUser(token) {
+    if (!token) return null;
+    var row = getDb().prepare(`
+        SELECT s.*, u.username FROM sessions s
+        JOIN users u ON u.id = s.user_id
+        WHERE s.token = ?
+    `).get(token);
+    if (!row) return null;
+    return { id: row.user_id, username: row.username, token: row.token };
+}
+
+function updateSessionLastSeen(token) {
+    if (!token) return;
+    getDb().prepare('UPDATE sessions SET last_seen = ? WHERE token = ?')
+        .run(new Date().toISOString(), token);
+}
+
 function close() {
     if (db) { db.close(); db = null; }
 }
@@ -331,5 +410,10 @@ module.exports = {
     getDiscogsPrice: getDiscogsPrice,
     getPricesNeedingCheck: getPricesNeedingCheck,
     getFullResults: getFullResults,
+    saveReleaseDetails: saveReleaseDetails,
+    getReleaseDetails: getReleaseDetails,
+    createSession: createSession,
+    getSessionUser: getSessionUser,
+    updateSessionLastSeen: updateSessionLastSeen,
     close: close
 };
