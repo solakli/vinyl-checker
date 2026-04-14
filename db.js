@@ -109,11 +109,22 @@ function initTables() {
             UNIQUE(user_id, provider)
         );
 
+        CREATE TABLE IF NOT EXISTS price_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            wantlist_id INTEGER NOT NULL,
+            lowest_price REAL,
+            num_for_sale INTEGER DEFAULT 0,
+            currency TEXT DEFAULT 'USD',
+            recorded_at TEXT,
+            FOREIGN KEY (wantlist_id) REFERENCES wantlist(id)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_wantlist_user ON wantlist(user_id);
         CREATE INDEX IF NOT EXISTS idx_wantlist_active ON wantlist(user_id, active);
         CREATE INDEX IF NOT EXISTS idx_store_results_wantlist ON store_results(wantlist_id);
         CREATE INDEX IF NOT EXISTS idx_discogs_prices_wantlist ON discogs_prices(wantlist_id);
         CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
+        CREATE INDEX IF NOT EXISTS idx_price_history_wantlist ON price_history(wantlist_id);
     `);
 }
 
@@ -274,7 +285,9 @@ function getItemsNeedingCheck(userId) {
 // ═══════════════════════════════════════════════════════════
 
 function saveDiscogsPrice(wantlistId, priceData) {
-    getDb().prepare(`
+    var d = getDb();
+    var now = new Date().toISOString();
+    d.prepare(`
         INSERT INTO discogs_prices (wantlist_id, lowest_price, currency, num_for_sale, shipping, marketplace_url, checked_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(wantlist_id) DO UPDATE SET
@@ -289,12 +302,44 @@ function saveDiscogsPrice(wantlistId, priceData) {
         priceData.numForSale || 0,
         priceData.shipping || null,
         priceData.marketplaceUrl || '',
-        new Date().toISOString()
+        now
     );
+
+    // Append to price history (only if we have a price)
+    if (priceData.lowestPrice) {
+        // Don't duplicate if already recorded today
+        var today = now.substring(0, 10);
+        var existing = d.prepare(
+            "SELECT id FROM price_history WHERE wantlist_id = ? AND recorded_at LIKE ? || '%'"
+        ).get(wantlistId, today);
+
+        if (!existing) {
+            d.prepare(`
+                INSERT INTO price_history (wantlist_id, lowest_price, num_for_sale, currency, recorded_at)
+                VALUES (?, ?, ?, ?, ?)
+            `).run(wantlistId, priceData.lowestPrice, priceData.numForSale || 0, priceData.currency || 'USD', now);
+        } else {
+            // Update today's entry with latest price
+            d.prepare('UPDATE price_history SET lowest_price = ?, num_for_sale = ? WHERE id = ?')
+                .run(priceData.lowestPrice, priceData.numForSale || 0, existing.id);
+        }
+    }
 }
 
 function getDiscogsPrice(wantlistId) {
     return getDb().prepare('SELECT * FROM discogs_prices WHERE wantlist_id = ?').get(wantlistId);
+}
+
+function getPriceHistory(wantlistId, limit) {
+    return getDb().prepare(
+        'SELECT lowest_price, num_for_sale, currency, recorded_at FROM price_history WHERE wantlist_id = ? ORDER BY recorded_at ASC LIMIT ?'
+    ).all(wantlistId, limit || 90);
+}
+
+function getPriceHistoryByDiscogsId(discogsId, limit) {
+    return getDb().prepare(
+        'SELECT ph.lowest_price, ph.num_for_sale, ph.currency, ph.recorded_at FROM price_history ph JOIN wantlist w ON w.id = ph.wantlist_id WHERE w.discogs_id = ? ORDER BY ph.recorded_at ASC LIMIT ?'
+    ).all(discogsId, limit || 90);
 }
 
 function getPricesNeedingCheck(userId) {
@@ -460,6 +505,8 @@ module.exports = {
     getItemsNeedingCheck: getItemsNeedingCheck,
     saveDiscogsPrice: saveDiscogsPrice,
     getDiscogsPrice: getDiscogsPrice,
+    getPriceHistory: getPriceHistory,
+    getPriceHistoryByDiscogsId: getPriceHistoryByDiscogsId,
     getPricesNeedingCheck: getPricesNeedingCheck,
     getFullResults: getFullResults,
     saveReleaseDetails: saveReleaseDetails,

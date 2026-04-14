@@ -591,6 +591,53 @@ app.get('/api/release/:discogs_id', async function (req, res) {
     }
 });
 
+// Price history for a release
+app.get('/api/price-history/:discogs_id', function (req, res) {
+    var discogsId = parseInt(req.params.discogs_id, 10);
+    if (!discogsId || isNaN(discogsId)) return res.status(400).json({ error: 'Invalid discogs_id' });
+
+    var history = db.getPriceHistoryByDiscogsId(discogsId, 90);
+    var current = null;
+
+    // Also get current price
+    var d = db.getDb();
+    var row = d.prepare(`
+        SELECT dp.* FROM discogs_prices dp
+        JOIN wantlist w ON w.id = dp.wantlist_id
+        WHERE w.discogs_id = ?
+    `).get(discogsId);
+
+    if (row) {
+        current = {
+            lowestPrice: row.lowest_price,
+            numForSale: row.num_for_sale,
+            currency: row.currency,
+            checkedAt: row.checked_at
+        };
+    }
+
+    // Calculate stats
+    var stats = null;
+    if (history.length > 0) {
+        var prices = history.map(function(h) { return h.lowest_price; });
+        var minPrice = Math.min.apply(null, prices);
+        var maxPrice = Math.max.apply(null, prices);
+        var avgPrice = prices.reduce(function(a, b) { return a + b; }, 0) / prices.length;
+        var trend = prices.length >= 2 ? (prices[prices.length - 1] - prices[0]) : 0;
+
+        stats = {
+            min: minPrice,
+            max: maxPrice,
+            avg: Math.round(avgPrice * 100) / 100,
+            trend: trend > 0 ? 'up' : trend < 0 ? 'down' : 'stable',
+            trendAmount: Math.round(Math.abs(trend) * 100) / 100,
+            dataPoints: history.length
+        };
+    }
+
+    res.json({ discogsId: discogsId, current: current, history: history, stats: stats });
+});
+
 // Check scan status
 app.get('/api/status', function (req, res) {
     res.json({ scanning: Object.keys(scanner.activeScans).length > 0, users: Object.keys(scanner.activeScans) });

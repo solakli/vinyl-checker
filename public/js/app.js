@@ -549,7 +549,10 @@ function renderReleaseDetail(data, resultItem) {
   // Hero section
   var html = '<div class="modal-hero">';
   if (albumArt) {
-    html += '<img class="modal-album-art" src="' + escapeHtml(albumArt) + '" alt="">';
+    html += '<div class="modal-art-wrap">' +
+      '<img class="modal-album-art" src="' + escapeHtml(albumArt) + '" alt="">' +
+      '<div class="price-chart-wrap" id="priceChartWrap" data-discogs-id="' + (data.id || '') + '"></div>' +
+    '</div>';
   }
   html += '<div class="modal-info">' +
     '<div class="modal-artist">' + escapeHtml(artistName) + '</div>' +
@@ -690,6 +693,73 @@ function renderReleaseDetail(data, resultItem) {
   '</div>';
 
   content.innerHTML = html;
+
+  // Fetch price history and render sparkline
+  var chartWrap = document.getElementById('priceChartWrap');
+  if (chartWrap && chartWrap.dataset.discogsId) {
+    fetch('api/price-history/' + chartWrap.dataset.discogsId)
+      .then(function(res) { return res.json(); })
+      .then(function(ph) { renderPriceChart(chartWrap, ph); })
+      .catch(function() {});
+  }
+}
+
+function renderPriceChart(container, ph) {
+  if (!ph || !ph.current) {
+    container.innerHTML = '<div class="price-stat-mini">No price data</div>';
+    return;
+  }
+
+  var currSymbol = ph.current.currency === 'USD' ? '$' : ph.current.currency === 'GBP' ? '\u00a3' : '\u20ac';
+
+  // Stats line
+  var statsHtml = '<div class="price-stat-mini">' +
+    '<span class="price-current">' + currSymbol + ph.current.lowestPrice.toFixed(2) + '</span>' +
+    '<span class="price-label">lowest</span>';
+
+  if (ph.stats) {
+    var trendIcon = ph.stats.trend === 'up' ? '\u2197' : ph.stats.trend === 'down' ? '\u2198' : '\u2192';
+    var trendClass = ph.stats.trend === 'down' ? 'trend-down' : ph.stats.trend === 'up' ? 'trend-up' : '';
+    statsHtml += '<span class="price-trend ' + trendClass + '">' + trendIcon + ' ' + currSymbol + ph.stats.trendAmount.toFixed(2) + '</span>';
+  }
+  statsHtml += '</div>';
+
+  // SVG Sparkline
+  var sparkHtml = '';
+  if (ph.history && ph.history.length >= 2) {
+    var prices = ph.history.map(function(h) { return h.lowest_price; });
+    var minP = Math.min.apply(null, prices);
+    var maxP = Math.max.apply(null, prices);
+    var range = maxP - minP || 1;
+    var w = 200, h = 40;
+    var padding = 2;
+
+    var points = prices.map(function(p, i) {
+      var x = padding + (i / (prices.length - 1)) * (w - padding * 2);
+      var y = h - padding - ((p - minP) / range) * (h - padding * 2);
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+
+    // Fill area
+    var fillPoints = points + ' ' + (w - padding).toFixed(1) + ',' + (h - padding) + ' ' + padding + ',' + (h - padding);
+
+    sparkHtml = '<svg class="sparkline" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none">' +
+      '<polygon points="' + fillPoints + '" fill="rgba(255,102,0,0.1)" />' +
+      '<polyline points="' + points + '" fill="none" stroke="rgba(255,102,0,0.6)" stroke-width="1.5" />' +
+      '<circle cx="' + points.split(' ').pop().split(',')[0] + '" cy="' + points.split(' ').pop().split(',')[1] + '" r="2.5" fill="var(--gold)" />' +
+    '</svg>';
+
+    // Min/max labels
+    sparkHtml += '<div class="spark-range">' +
+      '<span>' + currSymbol + minP.toFixed(2) + '</span>' +
+      '<span>' + ph.history.length + ' days</span>' +
+      '<span>' + currSymbol + maxP.toFixed(2) + '</span>' +
+    '</div>';
+  } else {
+    sparkHtml = '<div class="price-stat-mini"><span class="price-label">Tracking started today</span></div>';
+  }
+
+  container.innerHTML = statsHtml + sparkHtml;
 }
 
 function extractYoutubeId(url) {
