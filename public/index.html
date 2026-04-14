@@ -6,7 +6,7 @@
 <title>Vinyl Checker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/vinyl/css/style.css">
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
@@ -25,14 +25,14 @@
   <div class="scan-section">
     <input type="text" class="username-input" id="usernameInput" placeholder="Discogs username..." value="">
     <button class="scan-btn" id="scanBtn">Check Wantlist</button>
-    <button class="scan-btn rescan-btn" id="rescanBtn" style="display:none;background:transparent;border:1px solid var(--gold);color:var(--gold);font-size:10px;padding:8px 16px;">Rescan All</button>
+    <button class="scan-btn rescan-btn" id="rescanBtn" style="display:none">Rescan All</button>
   </div>
 
   <div class="auth-section" id="authSection">
-    <button class="auth-btn discogs-auth" id="connectDiscogs" style="display:none" onclick="window.location.href='/vinyl/api/auth/discogs'">
+    <button class="auth-btn discogs-auth" id="connectDiscogs" style="display:none" onclick="window.location.href='api/auth/discogs'">
       <span class="auth-icon">&#9737;</span> Connect Discogs
     </button>
-    <button class="auth-btn youtube-auth" id="connectYoutube" style="display:none" onclick="window.location.href='/vinyl/api/auth/google'">
+    <button class="auth-btn youtube-auth" id="connectYoutube" style="display:none" onclick="window.location.href='api/auth/google'">
       <span class="auth-icon">&#9654;</span> Connect YouTube
     </button>
     <button class="auth-btn playlist-btn" id="createPlaylistBtn" style="display:none" onclick="createYoutubePlaylist()">
@@ -99,7 +99,7 @@
   </div>
 </div>
 
-<script src="/vinyl/js/app.js"></script>
+<script src="js/app.js"></script>
 
 </body>
 </html>

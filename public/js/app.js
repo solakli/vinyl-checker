@@ -36,7 +36,7 @@ function startScan(force) {
   localStorage.setItem('vinyl-checker-username', username);
 
   // Create session cookie via API
-  fetch('/vinyl/api/session', {
+  fetch('api/session', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username: username })
@@ -57,7 +57,7 @@ function startScan(force) {
   document.getElementById('noResults').style.display = 'none';
 
   // Connect to SSE
-  var scanUrl = '/vinyl/api/scan/' + encodeURIComponent(username) + (force ? '?force=true' : '');
+  var scanUrl = 'api/scan/' + encodeURIComponent(username) + (force ? '?force=true' : '');
   var evtSource = new EventSource(scanUrl);
 
   evtSource.addEventListener('status', function(e) {
@@ -135,7 +135,7 @@ function startScan(force) {
 async function loadExisting() {
   // Check for session cookie first
   try {
-    var sessionRes = await fetch('/vinyl/api/session');
+    var sessionRes = await fetch('api/session');
     if (sessionRes.ok) {
       var sessionData = await sessionRes.json();
       if (sessionData.username) {
@@ -155,7 +155,7 @@ async function loadExisting() {
 
 async function loadResultsForUser(username) {
   try {
-    var res = await fetch('/vinyl/api/results/' + encodeURIComponent(username));
+    var res = await fetch('api/results/' + encodeURIComponent(username));
     if (res.ok) {
       var data = await res.json();
       if (data.results && data.results.length > 0) {
@@ -405,7 +405,7 @@ function openReleaseDetail(discogsId) {
   var resultItem = resultsData.find(function(r) { return r.item.id === discogsId; });
 
   // Fetch release details
-  fetch('/vinyl/api/release/' + discogsId)
+  fetch('api/release/' + discogsId)
     .then(function(res) { return res.json(); })
     .then(function(response) {
       if (response.error) {
@@ -683,7 +683,7 @@ var authState = { discogs: false, youtube: false };
 
 async function checkAuthStatus() {
   try {
-    var res = await fetch('/vinyl/api/auth/status');
+    var res = await fetch('api/auth/status');
     if (!res.ok) return;
     var data = await res.json();
     authState = data;
@@ -742,7 +742,7 @@ async function createYoutubePlaylist() {
   for (var i = 0; i < resultsData.length; i++) {
     var item = resultsData[i];
     try {
-      var res = await fetch('/vinyl/api/release/' + item.item.id);
+      var res = await fetch('api/release/' + item.item.id);
       if (res.ok) {
         var data = await res.json();
         if (data.data && data.data.tracklistWithVideos) {
@@ -779,7 +779,7 @@ async function createYoutubePlaylist() {
 
   var username = document.getElementById('usernameInput').value.trim();
   try {
-    var res = await fetch('/vinyl/api/youtube/create-playlist', {
+    var res = await fetch('api/youtube/create-playlist', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
