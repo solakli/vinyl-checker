@@ -199,18 +199,18 @@ function syncWantlistItems(userId, items) {
 
     // Upsert all items
     var upsert = d.prepare(`
-        INSERT INTO wantlist (user_id, discogs_id, artist, title, year, label, catno, thumb, genres, styles, search_query, active)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        INSERT INTO wantlist (user_id, discogs_id, artist, title, year, label, catno, thumb, genres, styles, search_query, date_added, active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
         ON CONFLICT(user_id, discogs_id) DO UPDATE SET
             artist = excluded.artist, title = excluded.title, year = excluded.year,
             label = excluded.label, catno = excluded.catno, thumb = excluded.thumb,
             genres = excluded.genres, styles = excluded.styles,
-            search_query = excluded.search_query, active = 1
+            search_query = excluded.search_query, date_added = COALESCE(excluded.date_added, wantlist.date_added), active = 1
     `);
 
     var upsertMany = d.transaction(function (items) {
         items.forEach(function (item) {
-            upsert.run(userId, item.id, item.artist, item.title, item.year, item.label, item.catno, item.thumb, item.genres || '', item.styles || '', item.searchQuery);
+            upsert.run(userId, item.id, item.artist, item.title, item.year, item.label, item.catno, item.thumb, item.genres || '', item.styles || '', item.searchQuery, item.dateAdded || null);
         });
     });
     upsertMany(items);
@@ -394,7 +394,8 @@ function getFullResults(userId) {
                 thumb: w.thumb,
                 genres: w.genres || '',
                 styles: w.styles || '',
-                searchQuery: w.search_query
+                searchQuery: w.search_query,
+                dateAdded: w.date_added || null
             },
             stores: stores,
             discogsPrice: price ? {

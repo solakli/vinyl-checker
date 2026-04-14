@@ -596,6 +596,8 @@ function render() {
 
   filtered.sort(function(a, b) {
     switch(sort) {
+      case 'date-new': return (b.item.dateAdded || '').localeCompare(a.item.dateAdded || '');
+      case 'date-old': return (a.item.dateAdded || '').localeCompare(b.item.dateAdded || '');
       case 'artist': return a.item.artist.localeCompare(b.item.artist);
       case 'price-low': return getLowestPrice(a) - getLowestPrice(b);
       case 'price-high': return getLowestPrice(b) - getLowestPrice(a);
