@@ -277,26 +277,11 @@ function startScan(force) {
   };
 }
 
-// Try to load cached results from DB on page load
-async function loadExisting() {
-  // Check for session cookie first
-  try {
-    var sessionRes = await fetch('api/session');
-    if (sessionRes.ok) {
-      var sessionData = await sessionRes.json();
-      if (sessionData.username) {
-        document.getElementById('usernameInput').value = sessionData.username;
-        await loadResultsForUser(sessionData.username);
-        return;
-      }
-    }
-  } catch(e) {}
-
-  // Fall back to localStorage
-  var savedUser = localStorage.getItem('vinyl-checker-username');
-  if (!savedUser) return;
-  document.getElementById('usernameInput').value = savedUser;
-  await loadResultsForUser(savedUser);
+// Load cached results for a connected user
+async function loadExisting(username) {
+  if (!username) return;
+  document.getElementById('usernameInput').value = username;
+  await loadResultsForUser(username);
 }
 
 async function loadResultsForUser(username) {
@@ -1138,12 +1123,14 @@ if (autoScanAfterAuth && autoScanUsername) {
   }
 }
 
-// Init — load existing results first, then check auth
-loadExisting().then(function() {
-  return checkAuthStatus();
-}).then(function() {
+// Init — check auth first, then decide what to show
+checkAuthStatus().then(function() {
   if (autoScanAfterAuth) {
-    // Small delay so user sees the "Connected" state
+    // Just came from OAuth — show connected splash, then auto-scan
     setTimeout(function() { startScan(false); }, 1200);
+  } else if (authState && authState.discogs && authState.discogs.connected) {
+    // Already connected — load cached results directly
+    return loadExisting(authState.discogs.username);
   }
+  // Not connected and not returning from OAuth — welcome page stays visible
 });
