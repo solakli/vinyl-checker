@@ -56,6 +56,9 @@ app.use(function (req, res, next) {
     next();
 });
 
+// Base path for redirects (handles nginx subpath)
+var APP_BASE = process.env.BASE_URL || '';
+
 // ═══════════════════════════════════════════════════════════════
 // API ROUTES
 // ═══════════════════════════════════════════════════════════════
@@ -104,7 +107,7 @@ app.get('/api/auth/discogs/callback', async function (req, res) {
     var oauthVerifier = req.query.oauth_verifier;
 
     if (!oauthToken || !oauthVerifier) {
-        return res.redirect('/?auth_error=denied');
+        return res.redirect(APP_BASE + '/?auth_error=denied');
     }
 
     try {
@@ -135,10 +138,10 @@ app.get('/api/auth/discogs/callback', async function (req, res) {
         });
 
         // Redirect back to app
-        res.redirect('/?auth=discogs&username=' + encodeURIComponent(identity.username));
+        res.redirect(APP_BASE + '/?auth=discogs&username=' + encodeURIComponent(identity.username));
     } catch (e) {
         console.error('[auth] Discogs callback error:', e.message);
-        res.redirect('/?auth_error=' + encodeURIComponent(e.message));
+        res.redirect(APP_BASE + '/?auth_error=' + encodeURIComponent(e.message));
     }
 });
 
@@ -163,13 +166,13 @@ app.get('/api/auth/google/callback', async function (req, res) {
     var code = req.query.code;
     var error = req.query.error;
 
-    if (error || !code) return res.redirect('/?auth_error=google_denied');
+    if (error || !code) return res.redirect(APP_BASE + '/?auth_error=google_denied');
 
     try {
         var tokens = await oauth.googleExchangeCode(code);
 
         // Need to find the user from session
-        if (!req.sessionUser) return res.redirect('/?auth_error=no_session');
+        if (!req.sessionUser) return res.redirect(APP_BASE + '/?auth_error=no_session');
 
         db.saveOAuthToken(req.sessionUser.id, 'google', {
             accessToken: tokens.accessToken,
@@ -177,7 +180,7 @@ app.get('/api/auth/google/callback', async function (req, res) {
             expiresAt: new Date(tokens.expiresAt).toISOString()
         });
 
-        res.redirect('/?auth=youtube');
+        res.redirect(APP_BASE + '/?auth=youtube');
     } catch (e) {
         console.error('[auth] Google callback error:', e.message);
         res.redirect('/?auth_error=' + encodeURIComponent(e.message));
