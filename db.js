@@ -553,11 +553,12 @@ function dismissChanges(userId, ids) {
 }
 
 function getUsersDueForRescan() {
-    // Users who have scanned at least once and haven't had a daily rescan in 20+ hours
+    // Users who have any wantlist items AND haven't had a daily rescan in 20+ hours
+    // Picks up users with partial scans too (last_full_scan can be NULL)
     return getDb().prepare(`
-        SELECT * FROM users
-        WHERE last_full_scan IS NOT NULL
-        AND (last_daily_rescan IS NULL OR last_daily_rescan < datetime('now', '-20 hours'))
+        SELECT u.* FROM users u
+        WHERE EXISTS (SELECT 1 FROM wantlist w WHERE w.user_id = u.id AND w.active = 1)
+        AND (u.last_daily_rescan IS NULL OR u.last_daily_rescan < datetime('now', '-20 hours'))
     `).all();
 }
 

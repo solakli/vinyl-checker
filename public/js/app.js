@@ -262,10 +262,13 @@ function startScan(force) {
     document.getElementById('scanBtn').disabled = false;
     document.getElementById('scanBtn').textContent = 'Check Wantlist';
     document.getElementById('liveBadge').style.display = 'none';
-    // Keep progress section visible on error so user sees the message
+    // Try to load cached results even on error (user may have previous scan data)
+    if (resultsData.length === 0) {
+      loadResultsForUser(username);
+    }
   });
 
-  // Handle native SSE connection errors
+  // Handle native SSE connection errors (mobile Safari drops these)
   evtSource.onerror = function() {
     if (!isScanning) return;
     evtSource.close();
@@ -274,6 +277,11 @@ function startScan(force) {
     document.getElementById('scanBtn').disabled = false;
     document.getElementById('scanBtn').textContent = 'Check Wantlist';
     document.getElementById('liveBadge').style.display = 'none';
+    document.getElementById('progressSection').classList.remove('active');
+    // Load whatever results we have cached (SSE drop doesn't mean no data)
+    if (resultsData.length === 0) {
+      loadResultsForUser(username);
+    }
   };
 }
 
