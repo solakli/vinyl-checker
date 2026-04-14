@@ -899,6 +899,39 @@ body.light .tag-badge .tag-stock { color: var(--gold); }
   flex-wrap: wrap;
 }
 
+.user-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.user-bar-name {
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-sec);
+}
+.user-bar-btn {
+  font-family: 'Oswald', sans-serif;
+  font-size: 9px;
+  font-weight: 300;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-muted);
+  transition: all 0.2s;
+}
+.user-bar-btn:hover { border-color: var(--red-soft); color: var(--red-soft); }
+.user-bar-sep {
+  color: var(--border);
+  font-size: 10px;
+  font-weight: 200;
+}
+
 .auth-btn {
   font-family: 'Oswald', sans-serif;
   font-size: 10px;
@@ -916,21 +949,11 @@ body.light .tag-badge .tag-stock { color: var(--gold); }
 
 .auth-btn:hover { border-color: var(--text-sec); color: var(--text); }
 
-.auth-btn.discogs-auth { border-color: var(--discogs); color: var(--discogs); }
-.auth-btn.discogs-auth:hover { background: var(--discogs); color: #fff; }
-
 .auth-btn.youtube-auth { border-color: #ff0000; color: #ff0000; }
 .auth-btn.youtube-auth:hover { background: #ff0000; color: #fff; }
 
 .auth-btn.playlist-btn { border-color: #ff0000; color: #ff0000; }
 .auth-btn.playlist-btn:hover { background: #ff0000; color: #fff; }
-
-.auth-btn.connected {
-  border-color: var(--green);
-  color: var(--green);
-  cursor: default;
-  font-size: 10px;
-}
 
 .auth-btn .auth-icon { margin-right: 4px; }
 

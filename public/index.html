@@ -22,22 +22,25 @@
     <div class="timestamp" id="timestamp"></div>
   </div>
 
-  <div class="scan-section">
+  <div class="scan-section" id="scanSection" style="display:none">
     <input type="text" class="username-input" id="usernameInput" placeholder="Discogs username..." value="">
     <button class="scan-btn" id="scanBtn">Check Wantlist</button>
     <button class="scan-btn rescan-btn" id="rescanBtn" style="display:none">Rescan All</button>
   </div>
 
   <div class="auth-section" id="authSection">
-    <button class="auth-btn discogs-auth" id="connectDiscogs" style="display:none" onclick="window.location.href='api/auth/discogs'">
-      <span class="auth-icon">&#9737;</span> Connect Discogs
-    </button>
-    <button class="auth-btn youtube-auth" id="connectYoutube" style="display:none" onclick="window.location.href='api/auth/google'">
-      <span class="auth-icon">&#9654;</span> Connect YouTube
-    </button>
-    <button class="auth-btn playlist-btn" id="createPlaylistBtn" style="display:none" onclick="createYoutubePlaylist()">
-      <span class="auth-icon">&#9835;</span> Create YouTube Playlist
-    </button>
+    <div class="user-bar" id="userBar" style="display:none">
+      <img class="store-logo" src="img/discogs.png" alt="" style="width:14px;height:14px;filter:none;opacity:0.8">
+      <span class="user-bar-name" id="userBarName"></span>
+      <button class="user-bar-btn" id="disconnectBtn" onclick="disconnectDiscogs()">Disconnect</button>
+      <span class="user-bar-sep">|</span>
+      <button class="auth-btn youtube-auth" id="connectYoutube" style="display:none" onclick="window.location.href='api/auth/google'">
+        <span class="auth-icon">&#9654;</span> YouTube
+      </button>
+      <button class="auth-btn playlist-btn" id="createPlaylistBtn" style="display:none" onclick="createYoutubePlaylist()">
+        <span class="auth-icon">&#9835;</span> Create Playlist
+      </button>
+    </div>
     <span class="auth-status" id="authStatus"></span>
   </div>
 

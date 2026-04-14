@@ -166,6 +166,7 @@ function startScan(force) {
   document.getElementById('liveBadge').style.display = 'inline-flex';
   document.getElementById('progressSection').classList.add('active');
   document.getElementById('welcome').style.display = 'none';
+  document.getElementById('scanSection').style.display = 'flex';
   document.getElementById('controls').style.display = 'flex';
   document.getElementById('grid').innerHTML = '';
   document.getElementById('noResults').style.display = 'none';
@@ -283,6 +284,7 @@ async function loadResultsForUser(username) {
       if (data.results && data.results.length > 0) {
         resultsData = data.results;
         document.getElementById('welcome').style.display = 'none';
+        document.getElementById('scanSection').style.display = 'flex';
         document.getElementById('controls').style.display = 'flex';
         document.getElementById('rescanBtn').style.display = 'inline-block';
         var lastScan = data.lastScan ? new Date(data.lastScan).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'unknown';
@@ -934,39 +936,57 @@ async function checkAuthStatus() {
     var data = await res.json();
     authState = data;
 
-    var statusParts = [];
+    var userBar = document.getElementById('userBar');
 
-    // Discogs OAuth button
-    var discogsBtn = document.getElementById('connectDiscogs');
-    if (data.discogsOAuthEnabled) {
-      discogsBtn.style.display = 'inline-flex';
-      if (data.discogs && data.discogs.connected) {
-        discogsBtn.className = 'auth-btn discogs-auth connected';
-        discogsBtn.innerHTML = '<span class="auth-icon">&#10003;</span> Discogs: ' + escapeHtml(data.discogs.username);
-        discogsBtn.onclick = null;
-        statusParts.push('Discogs connected');
+    // Discogs connected — show user bar + scan section
+    if (data.discogs && data.discogs.connected) {
+      userBar.style.display = 'flex';
+      document.getElementById('userBarName').textContent = data.discogs.username;
+      document.getElementById('scanSection').style.display = 'flex';
+
+      // Auto-fill username input if empty
+      var usernameInput = document.getElementById('usernameInput');
+      if (!usernameInput.value) {
+        usernameInput.value = data.discogs.username;
       }
     }
 
     // YouTube button
     var youtubeBtn = document.getElementById('connectYoutube');
     var playlistBtn = document.getElementById('createPlaylistBtn');
-    if (data.youtubeEnabled) {
+    if (data.youtubeEnabled && data.discogs && data.discogs.connected) {
       if (data.youtube && data.youtube.connected) {
         youtubeBtn.style.display = 'none';
         playlistBtn.style.display = 'inline-flex';
-        statusParts.push('YouTube connected');
       } else {
         youtubeBtn.style.display = 'inline-flex';
         playlistBtn.style.display = 'none';
       }
     }
-
-    var authStatusEl = document.getElementById('authStatus');
-    if (statusParts.length > 0) {
-      authStatusEl.textContent = statusParts.join(' | ');
-    }
   } catch(e) {}
+}
+
+async function disconnectDiscogs() {
+  if (!confirm('Disconnect your Discogs account?')) return;
+  try {
+    await fetch('api/auth/discogs/disconnect', { method: 'POST' });
+  } catch(e) {}
+  // Clear local state
+  localStorage.removeItem('vinyl-checker-username');
+  document.cookie = 'vinyl_session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+  // Reset UI to welcome
+  document.getElementById('userBar').style.display = 'none';
+  document.getElementById('scanSection').style.display = 'none';
+  document.getElementById('usernameInput').value = '';
+  document.getElementById('welcome').style.display = '';
+  document.getElementById('controls').style.display = 'none';
+  document.getElementById('grid').innerHTML = '';
+  document.getElementById('stats').innerHTML = '';
+  document.getElementById('timestamp').textContent = '';
+  document.getElementById('rescanBtn').style.display = 'none';
+  resultsData = [];
+  activeGenres = new Set();
+  activeStyles = new Set();
 }
 
 async function createYoutubePlaylist() {
