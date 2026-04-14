@@ -125,7 +125,26 @@ function initTables() {
         CREATE INDEX IF NOT EXISTS idx_discogs_prices_wantlist ON discogs_prices(wantlist_id);
         CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
         CREATE INDEX IF NOT EXISTS idx_price_history_wantlist ON price_history(wantlist_id);
+
+        CREATE TABLE IF NOT EXISTS scan_changes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            wantlist_id INTEGER NOT NULL,
+            change_type TEXT NOT NULL,
+            store TEXT,
+            old_value TEXT,
+            new_value TEXT,
+            detected_at TEXT NOT NULL,
+            dismissed INTEGER DEFAULT 0,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (wantlist_id) REFERENCES wantlist(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_scan_changes_user ON scan_changes(user_id, dismissed);
     `);
+
+    // Migrations — add columns if missing
+    try { db.exec('ALTER TABLE users ADD COLUMN last_daily_rescan TEXT'); } catch(e) {}
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -487,6 +506,71 @@ function deleteOAuthToken(userId, provider) {
     getDb().prepare('DELETE FROM oauth_tokens WHERE user_id = ? AND provider = ?').run(userId, provider);
 }
 
+// ═══════════════════════════════════════════════════════════
+// SCAN CHANGES (new since last visit)
+// ═══════════════════════════════════════════════════════════
+
+function snapshotStoreResults(userId) {
+    // Get current in_stock status + best price per wantlist item per store
+    return getDb().prepare(`
+        SELECT sr.wantlist_id, sr.store, sr.in_stock, sr.matches
+        FROM store_results sr
+        JOIN wantlist w ON w.id = sr.wantlist_id
+        WHERE w.user_id = ? AND w.active = 1
+    `).all(userId);
+}
+
+function insertScanChange(userId, wantlistId, changeType, store, oldVal, newVal) {
+    getDb().prepare(`
+        INSERT INTO scan_changes (user_id, wantlist_id, change_type, store, old_value, new_value, detected_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(userId, wantlistId, changeType, store, JSON.stringify(oldVal), JSON.stringify(newVal), new Date().toISOString());
+}
+
+function getUndismissedChanges(userId, since) {
+    var query = `
+        SELECT sc.*, w.artist, w.title, w.thumb, w.discogs_id
+        FROM scan_changes sc
+        JOIN wantlist w ON w.id = sc.wantlist_id
+        WHERE sc.user_id = ? AND sc.dismissed = 0
+    `;
+    var params = [userId];
+    if (since) {
+        query += ' AND sc.detected_at > ?';
+        params.push(since);
+    }
+    query += ' ORDER BY sc.detected_at DESC LIMIT 100';
+    return getDb().prepare(query).all(params);
+}
+
+function dismissChanges(userId, ids) {
+    if (!ids || ids.length === 0) {
+        getDb().prepare('UPDATE scan_changes SET dismissed = 1 WHERE user_id = ? AND dismissed = 0').run(userId);
+    } else {
+        var placeholders = ids.map(function() { return '?'; }).join(',');
+        getDb().prepare('UPDATE scan_changes SET dismissed = 1 WHERE user_id = ? AND id IN (' + placeholders + ')').run(userId, ...ids);
+    }
+}
+
+function getUsersDueForRescan() {
+    // Users who have scanned at least once and haven't had a daily rescan in 20+ hours
+    return getDb().prepare(`
+        SELECT * FROM users
+        WHERE last_full_scan IS NOT NULL
+        AND (last_daily_rescan IS NULL OR last_daily_rescan < datetime('now', '-20 hours'))
+    `).all();
+}
+
+function updateUserDailyRescan(userId) {
+    getDb().prepare('UPDATE users SET last_daily_rescan = ? WHERE id = ?').run(new Date().toISOString(), userId);
+}
+
+function getSessionLastSeen(token) {
+    if (!token) return null;
+    var row = getDb().prepare('SELECT last_seen FROM sessions WHERE token = ?').get(token);
+    return row ? row.last_seen : null;
+}
+
 function close() {
     if (db) { db.close(); db = null; }
 }
@@ -517,5 +601,12 @@ module.exports = {
     saveOAuthToken: saveOAuthToken,
     getOAuthToken: getOAuthToken,
     deleteOAuthToken: deleteOAuthToken,
+    snapshotStoreResults: snapshotStoreResults,
+    insertScanChange: insertScanChange,
+    getUndismissedChanges: getUndismissedChanges,
+    dismissChanges: dismissChanges,
+    getUsersDueForRescan: getUsersDueForRescan,
+    updateUserDailyRescan: updateUserDailyRescan,
+    getSessionLastSeen: getSessionLastSeen,
     close: close
 };

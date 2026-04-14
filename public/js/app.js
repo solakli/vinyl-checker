@@ -299,9 +299,103 @@ async function loadResultsForUser(username) {
         document.getElementById('timestamp').textContent = 'Cached \u00b7 Last full scan: ' + lastScan;
         updateStats();
         render();
+        // Check for changes after loading results
+        fetchChanges(username);
       }
     }
   } catch(e) {}
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CHANGES NOTIFICATION (new since last visit)
+// ═══════════════════════════════════════════════════════════════
+
+async function fetchChanges(username) {
+  try {
+    var res = await fetch('api/changes/' + encodeURIComponent(username));
+    if (!res.ok) return;
+    var data = await res.json();
+    if (data.changes && data.changes.length > 0) {
+      showChangesBanner(data.changes);
+    }
+  } catch(e) {}
+}
+
+function showChangesBanner(changes) {
+  // Remove existing banner if any
+  var existing = document.getElementById('changesBanner');
+  if (existing) existing.remove();
+
+  // Group changes by type
+  var newInStock = changes.filter(function(c) { return c.change_type === 'now_in_stock'; });
+  var outOfStock = changes.filter(function(c) { return c.change_type === 'out_of_stock'; });
+  var priceDrops = changes.filter(function(c) { return c.change_type === 'price_drop'; });
+  var priceUps = changes.filter(function(c) { return c.change_type === 'price_increase'; });
+
+  // Build summary line
+  var parts = [];
+  if (newInStock.length > 0) parts.push('<span class="changes-new">' + newInStock.length + ' newly in stock</span>');
+  if (priceDrops.length > 0) parts.push('<span class="changes-drop">' + priceDrops.length + ' price drop' + (priceDrops.length > 1 ? 's' : '') + '</span>');
+  if (outOfStock.length > 0) parts.push('<span class="changes-out">' + outOfStock.length + ' went out of stock</span>');
+  if (priceUps.length > 0) parts.push('<span class="changes-up">' + priceUps.length + ' price increase' + (priceUps.length > 1 ? 's' : '') + '</span>');
+
+  var summaryText = parts.join(' · ');
+
+  // Build detail items (show first 5 most interesting changes)
+  var topChanges = newInStock.concat(priceDrops).slice(0, 5);
+  var detailHtml = '';
+  if (topChanges.length > 0) {
+    detailHtml = '<div class="changes-details">';
+    topChanges.forEach(function(c) {
+      var newVal = {};
+      try { newVal = JSON.parse(c.new_value || '{}'); } catch(e) {}
+      var icon = c.change_type === 'now_in_stock' ? '🟢' : '📉';
+      var info = c.change_type === 'now_in_stock'
+        ? (c.store + (newVal.price ? ' · ' + newVal.price : ''))
+        : (c.store + ' · ' + (newVal.price || ''));
+      detailHtml += '<div class="changes-item">' +
+        '<span class="changes-icon">' + icon + '</span>' +
+        '<span class="changes-item-text">' + escapeHtml(c.artist) + ' — ' + escapeHtml(c.title) + '</span>' +
+        '<span class="changes-item-info">' + escapeHtml(info) + '</span>' +
+      '</div>';
+    });
+    if (changes.length > 5) {
+      detailHtml += '<div class="changes-more">+ ' + (changes.length - 5) + ' more changes</div>';
+    }
+    detailHtml += '</div>';
+  }
+
+  var banner = document.createElement('div');
+  banner.id = 'changesBanner';
+  banner.className = 'changes-banner';
+  banner.innerHTML =
+    '<div class="changes-header">' +
+      '<div class="changes-summary">' +
+        '<span class="changes-title">Changes since last visit</span>' +
+        summaryText +
+      '</div>' +
+      '<button class="changes-dismiss" onclick="dismissChanges()">Dismiss</button>' +
+    '</div>' +
+    detailHtml;
+
+  // Insert after header, before container
+  var container = document.querySelector('.container');
+  container.parentNode.insertBefore(banner, container);
+}
+
+async function dismissChanges() {
+  try {
+    await fetch('api/changes/dismiss', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+  } catch(e) {}
+  var banner = document.getElementById('changesBanner');
+  if (banner) {
+    banner.classList.add('changes-hiding');
+    setTimeout(function() { banner.remove(); }, 300);
+  }
 }
 
 function parsePrice(priceStr) {

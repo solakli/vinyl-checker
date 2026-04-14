@@ -663,19 +663,60 @@ process.on('SIGINT', function () { db.close(); process.exit(0); });
 process.on('SIGTERM', function () { db.close(); process.exit(0); });
 
 // ═══════════════════════════════════════════════════════════════
+// CHANGES API (new since last visit)
+// ═══════════════════════════════════════════════════════════════
+
+// Get undismissed changes for a user
+app.get('/api/changes/:username', function (req, res) {
+    try {
+        var user = db.getOrCreateUser(req.params.username.trim());
+        // Optionally filter by "since" timestamp
+        var since = req.query.since || null;
+        var changes = db.getUndismissedChanges(user.id, since);
+        res.json({ username: req.params.username, changes: changes });
+    } catch (e) {
+        res.json({ username: req.params.username, changes: [] });
+    }
+});
+
+// Dismiss changes
+app.post('/api/changes/dismiss', function (req, res) {
+    if (!req.sessionUser) return res.status(401).json({ error: 'Not logged in' });
+    try {
+        var ids = req.body.ids || null; // null = dismiss all
+        db.dismissChanges(req.sessionUser.id, ids);
+        res.json({ ok: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════
 // BACKGROUND SYNC
 // ═══════════════════════════════════════════════════════════════
 
 var SYNC_INTERVAL = parseInt(process.env.SYNC_INTERVAL) || (60 * 60 * 1000); // default 1 hour
+var DAILY_CHECK_INTERVAL = 15 * 60 * 1000; // Check every 15 min if any user needs daily rescan
 var NOTIFICATION_WEBHOOK = process.env.NOTIFICATION_WEBHOOK || '';
 
 app.listen(PORT, function () {
     console.log('\n\u2728 Vinyl Checker running at http://localhost:' + PORT + '\n');
 
-    // Background sync
+    // Background sync (incremental — new items only)
     console.log('[sync] Background sync every ' + (SYNC_INTERVAL / 60000).toFixed(0) + ' minutes');
     if (NOTIFICATION_WEBHOOK) console.log('[sync] Notifications enabled (webhook)');
     setInterval(function () {
         scanner.backgroundSync().catch(function (e) { console.error('[sync] Fatal:', e.message); });
     }, SYNC_INTERVAL);
+
+    // Daily full rescan scheduler — checks every 15 min if any user is due
+    console.log('[daily] Daily rescan checker every 15 minutes');
+    setInterval(function () {
+        scanner.dailyFullRescan().catch(function (e) { console.error('[daily] Fatal:', e.message); });
+    }, DAILY_CHECK_INTERVAL);
+
+    // Also run daily check once on startup (after 2 min delay to let things settle)
+    setTimeout(function () {
+        scanner.dailyFullRescan().catch(function (e) { console.error('[daily] Startup check fatal:', e.message); });
+    }, 120000);
 });
