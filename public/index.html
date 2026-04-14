@@ -59,12 +59,16 @@
       <option value="stores">Most Stores</option>
       <option value="discogs-low">Discogs Price Low</option>
     </select>
-    <select class="sort-select" id="genreFilter">
-      <option value="">All Genres</option>
-    </select>
-    <select class="sort-select" id="styleFilter">
-      <option value="">All Styles</option>
-    </select>
+    <div class="tag-filter-section" id="genreSection" style="display:none">
+      <div class="tag-filter-label">Genres</div>
+      <div class="tag-filter-tags" id="genreTags"></div>
+      <div class="tag-expand-btn" id="genreExpand" style="display:none" onclick="toggleTagSection('genreTags','genreExpand')">+more</div>
+    </div>
+    <div class="tag-filter-section" id="styleSection" style="display:none">
+      <div class="tag-filter-label">Styles</div>
+      <div class="tag-filter-tags" id="styleTags"></div>
+      <div class="tag-expand-btn" id="styleExpand" style="display:none" onclick="toggleTagSection('styleTags','styleExpand')">+more</div>
+    </div>
     <div class="store-filter" id="storeFilter">
       <div class="store-badge hhv active" data-store="HHV">HHV <span class="count"></span></div>
       <div class="store-badge deejay active" data-store="Deejay.de">Deejay <span class="count"></span></div>

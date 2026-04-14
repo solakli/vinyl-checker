@@ -313,6 +313,123 @@ body {
 .filter-btn:hover { border-color: var(--text-sec); color: var(--text-sec); }
 .filter-btn.active { border-color: var(--gold); color: var(--gold); background: var(--gold-soft); }
 
+/* Genre / Style Tag Filters */
+.tag-filter-section {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.tag-filter-label {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  padding-top: 5px;
+  min-width: 48px;
+}
+
+.tag-filter-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  max-height: 34px;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+.tag-filter-tags.expanded {
+  max-height: 600px;
+}
+
+.tag-expand-btn {
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--gold);
+  cursor: pointer;
+  white-space: nowrap;
+  padding: 4px 0;
+  align-self: flex-start;
+  margin-top: 2px;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.tag-expand-btn:hover { opacity: 1; }
+
+.tag-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.15s;
+  user-select: none;
+}
+
+.tag-badge:hover {
+  border-color: var(--text-sec);
+  color: var(--text-sec);
+}
+
+.tag-badge.active {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: var(--gold-soft);
+}
+
+.tag-badge .tag-count {
+  opacity: 0.5;
+  font-weight: 300;
+}
+
+/* Genre color mapping */
+.tag-badge[data-color="electronic"] { color: #00d4ff; border-color: rgba(0,212,255,0.3); }
+.tag-badge[data-color="electronic"].active { color: #00d4ff; border-color: #00d4ff; background: rgba(0,212,255,0.1); }
+.tag-badge[data-color="hiphop"] { color: #ff4444; border-color: rgba(255,68,68,0.3); }
+.tag-badge[data-color="hiphop"].active { color: #ff4444; border-color: #ff4444; background: rgba(255,68,68,0.1); }
+.tag-badge[data-color="jazz"] { color: #ffd700; border-color: rgba(255,215,0,0.3); }
+.tag-badge[data-color="jazz"].active { color: #ffd700; border-color: #ffd700; background: rgba(255,215,0,0.1); }
+.tag-badge[data-color="funk"] { color: #ff6ec7; border-color: rgba(255,110,199,0.3); }
+.tag-badge[data-color="funk"].active { color: #ff6ec7; border-color: #ff6ec7; background: rgba(255,110,199,0.1); }
+.tag-badge[data-color="rock"] { color: #ff8c00; border-color: rgba(255,140,0,0.3); }
+.tag-badge[data-color="rock"].active { color: #ff8c00; border-color: #ff8c00; background: rgba(255,140,0,0.1); }
+.tag-badge[data-color="blues"] { color: #4a90d9; border-color: rgba(74,144,217,0.3); }
+.tag-badge[data-color="blues"].active { color: #4a90d9; border-color: #4a90d9; background: rgba(74,144,217,0.1); }
+.tag-badge[data-color="folk"] { color: #8fbc8f; border-color: rgba(143,188,143,0.3); }
+.tag-badge[data-color="folk"].active { color: #8fbc8f; border-color: #8fbc8f; background: rgba(143,188,143,0.1); }
+.tag-badge[data-color="world"] { color: #dda15e; border-color: rgba(221,161,94,0.3); }
+.tag-badge[data-color="world"].active { color: #dda15e; border-color: #dda15e; background: rgba(221,161,94,0.1); }
+.tag-badge[data-color="latin"] { color: #e63946; border-color: rgba(230,57,70,0.3); }
+.tag-badge[data-color="latin"].active { color: #e63946; border-color: #e63946; background: rgba(230,57,70,0.1); }
+.tag-badge[data-color="country"] { color: #c9a96e; border-color: rgba(201,169,110,0.3); }
+.tag-badge[data-color="country"].active { color: #c9a96e; border-color: #c9a96e; background: rgba(201,169,110,0.1); }
+
+/* Style tags inherit from parent genre or use a softer palette */
+.tag-badge[data-color="style-warm"] { color: #e8a87c; border-color: rgba(232,168,124,0.25); }
+.tag-badge[data-color="style-warm"].active { color: #e8a87c; border-color: #e8a87c; background: rgba(232,168,124,0.1); }
+.tag-badge[data-color="style-cool"] { color: #85cdca; border-color: rgba(133,205,202,0.25); }
+.tag-badge[data-color="style-cool"].active { color: #85cdca; border-color: #85cdca; background: rgba(133,205,202,0.1); }
+.tag-badge[data-color="style-electric"] { color: #a78bfa; border-color: rgba(167,139,250,0.25); }
+.tag-badge[data-color="style-electric"].active { color: #a78bfa; border-color: #a78bfa; background: rgba(167,139,250,0.1); }
+.tag-badge[data-color="style-earthy"] { color: #a3b18a; border-color: rgba(163,177,138,0.25); }
+.tag-badge[data-color="style-earthy"].active { color: #a3b18a; border-color: #a3b18a; background: rgba(163,177,138,0.1); }
+.tag-badge[data-color="style-hot"] { color: #f4845f; border-color: rgba(244,132,95,0.25); }
+.tag-badge[data-color="style-hot"].active { color: #f4845f; border-color: #f4845f; background: rgba(244,132,95,0.1); }
+
 .store-filter {
   display: flex;
   gap: 5px;
@@ -334,15 +451,15 @@ body {
   border-radius: var(--radius);
 }
 
-.store-badge.hhv { color: var(--hhv); }
-.store-badge.deejay { color: var(--deejay); }
-.store-badge.phonica { color: var(--phonica); }
-.store-badge.hardwax { color: var(--hardwax); }
-.store-badge.juno { color: var(--juno); }
-.store-badge.decks { color: var(--decks); }
-.store-badge.ttlab { color: var(--ttlab); }
-.store-badge.uvs { color: var(--uvs); }
-.store-badge.yoyaku { color: var(--yoyaku); }
+.store-badge.hhv { color: var(--hhv); font-weight: 700; letter-spacing: 3px; }
+.store-badge.deejay { color: var(--deejay); font-weight: 300; font-style: italic; text-transform: lowercase; letter-spacing: 0.5px; }
+.store-badge.phonica { color: var(--phonica); font-weight: 200; letter-spacing: 3px; }
+.store-badge.hardwax { color: var(--hardwax); font-weight: 700; letter-spacing: 4px; font-size: 9px; }
+.store-badge.juno { color: var(--juno); font-weight: 400; letter-spacing: 2px; }
+.store-badge.decks { color: var(--decks); font-weight: 300; letter-spacing: 1px; }
+.store-badge.ttlab { color: var(--ttlab); font-weight: 600; letter-spacing: 1px; }
+.store-badge.uvs { color: var(--uvs); font-weight: 400; letter-spacing: 2px; }
+.store-badge.yoyaku { color: var(--yoyaku); font-weight: 200; letter-spacing: 4px; }
 .store-badge.active { border-color: currentColor; background: rgba(255,255,255,0.03); }
 .store-badge .count { opacity: 0.5; font-weight: 300; }
 
@@ -458,15 +575,38 @@ body {
   min-width: 80px;
 }
 
-.store-row.hhv .store-name { color: var(--hhv); }
-.store-row.deejay .store-name { color: var(--deejay); }
-.store-row.phonica .store-name { color: var(--phonica); }
-.store-row.hardwax .store-name { color: var(--hardwax); }
-.store-row.juno .store-name { color: var(--juno); }
-.store-row.decks .store-name { color: var(--decks); }
-.store-row.ttlab .store-name { color: var(--ttlab); }
-.store-row.uvs .store-name { color: var(--uvs); }
-.store-row.yoyaku .store-name { color: var(--yoyaku); }
+/* Vendor-branded store names */
+.store-row.hhv .store-name {
+  color: var(--hhv); font-weight: 700; letter-spacing: 3px; font-size: 11px;
+}
+.store-row.deejay .store-name {
+  color: var(--deejay); font-weight: 300; letter-spacing: 0.5px; font-size: 10px;
+  text-transform: lowercase; font-style: italic;
+}
+.store-row.phonica .store-name {
+  color: var(--phonica); font-weight: 200; letter-spacing: 3px; font-size: 9px;
+}
+.store-row.hardwax .store-name {
+  color: var(--hardwax); font-weight: 700; letter-spacing: 4px; font-size: 9px;
+}
+.store-row.juno .store-name {
+  color: var(--juno); font-weight: 400; letter-spacing: 2px; font-size: 10px;
+}
+.store-row.decks .store-name {
+  color: var(--decks); font-weight: 300; letter-spacing: 1px; font-size: 10px;
+}
+.store-row.ttlab .store-name {
+  color: var(--ttlab); font-weight: 600; letter-spacing: 1px; font-size: 10px;
+}
+.store-row.uvs .store-name {
+  color: var(--uvs); font-weight: 400; letter-spacing: 2px; font-size: 9px;
+}
+.store-row.yoyaku .store-name {
+  color: var(--yoyaku); font-weight: 200; letter-spacing: 4px; font-size: 9px;
+}
+.store-row.discogs .store-name {
+  color: var(--discogs); font-weight: 600; letter-spacing: 1px; font-size: 10px;
+}
 
 .store-row .match-info {
   font-size: 11px; font-weight: 300;
@@ -601,6 +741,13 @@ body.light .header {
 body.light .card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
 body.light .store-row:hover { background: rgba(0,0,0,0.02); }
 body.light .sort-select option { background: #fff; color: #000; }
+body.light .tag-badge { background: rgba(0,0,0,0.02); border-color: #ddd; color: #888; }
+body.light .tag-badge:hover { border-color: #999; color: #666; }
+body.light .tag-badge.active { border-color: var(--gold); color: var(--gold); background: var(--gold-soft); }
+body.light .tag-badge[data-color] { border-color: currentColor; opacity: 0.8; }
+body.light .tag-badge[data-color]:hover { opacity: 1; }
+body.light .tag-filter-label { color: #999; }
+body.light .tag-expand-btn { color: var(--gold); }
 
 /* ═══════════════════════════════════════════════════════════════
    AUTH SECTION

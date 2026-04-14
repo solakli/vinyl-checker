@@ -2,6 +2,74 @@
 
 let resultsData = [];
 let isScanning = false;
+let activeGenres = new Set();
+let activeStyles = new Set();
+
+function toggleTagSection(tagsId, btnId) {
+  var tags = document.getElementById(tagsId);
+  var btn = document.getElementById(btnId);
+  if (tags.classList.contains('expanded')) {
+    tags.classList.remove('expanded');
+    btn.textContent = '+more';
+  } else {
+    tags.classList.add('expanded');
+    btn.textContent = 'less';
+  }
+}
+
+function checkTagOverflow(tagsId, btnId) {
+  var tags = document.getElementById(tagsId);
+  var btn = document.getElementById(btnId);
+  if (tags.scrollHeight > tags.clientHeight + 4) {
+    btn.style.display = '';
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+// Genre → color mapping
+var genreColorMap = {
+  'Electronic': 'electronic',
+  'Hip Hop': 'hiphop',
+  'Jazz': 'jazz',
+  'Funk / Soul': 'funk',
+  'Rock': 'rock',
+  'Blues': 'blues',
+  'Folk': 'folk',
+  'Folk, World, & Country': 'folk',
+  '& Country': 'country',
+  'World': 'world',
+  'Latin': 'latin',
+  'Stage & Screen': 'world',
+  'Pop': 'funk',
+  'Classical': 'blues',
+  'Reggae': 'world'
+};
+
+// Style → color group mapping (styles get softer colors based on vibe)
+var styleColorMap = {
+  // Electronic/digital vibes
+  'House': 'style-electric', 'Deep House': 'style-electric', 'Techno': 'style-electric',
+  'Minimal': 'style-electric', 'Electro': 'style-electric', 'IDM': 'style-electric',
+  'Ambient': 'style-cool', 'Drone': 'style-cool', 'Experimental': 'style-cool',
+  'Downtempo': 'style-cool', 'Dub Techno': 'style-cool', 'Leftfield': 'style-cool',
+  // Hot/energetic vibes
+  'Breaks': 'style-hot', 'Breakbeat': 'style-hot', 'Drum N Bass': 'style-hot',
+  'Jungle': 'style-hot', 'Garage House': 'style-hot', 'Hardcore': 'style-hot',
+  'Bass Music': 'style-hot', 'Dubstep': 'style-hot',
+  // Jazz/soul warm vibes
+  'Acid Jazz': 'style-warm', 'Future Jazz': 'style-warm', 'Jazz-Funk': 'style-warm',
+  'Bop': 'style-warm', 'Cool Jazz': 'style-warm', 'Modal': 'style-warm',
+  'Contemporary Jazz': 'style-warm', 'Big Band': 'style-warm', 'Latin Jazz': 'style-warm',
+  'Fusion': 'style-warm', 'Soul': 'style-warm', 'Funk': 'style-warm',
+  // Earthy/organic vibes
+  'Dub': 'style-earthy', 'Folk': 'style-earthy', 'African': 'style-earthy',
+  'Latin': 'style-earthy', 'Bossanova': 'style-earthy', 'World': 'style-earthy',
+  'Acoustic': 'style-earthy', 'Conscious': 'style-earthy'
+};
+
+function getGenreColor(genre) { return genreColorMap[genre] || ''; }
+function getStyleColor(style) { return styleColorMap[style] || ''; }
 
 // Store class map
 const storeClassMap = {
@@ -44,6 +112,8 @@ function startScan(force) {
 
   isScanning = true;
   resultsData = [];
+  activeGenres = new Set();
+  activeStyles = new Set();
 
   // UI updates
   document.getElementById('scanBtn').disabled = true;
@@ -212,30 +282,64 @@ function updateStats() {
     badge.querySelector('.count').textContent = '(' + count + ')';
   });
 
-  // Populate genre/style dropdowns
-  var genres = new Set();
-  var styles = new Set();
+  // Populate genre/style tags
+  var genreCounts = {};
+  var styleCounts = {};
   resultsData.forEach(function(item) {
-    if (item.item.genres) item.item.genres.split(', ').forEach(function(g) { if (g) genres.add(g); });
-    if (item.item.styles) item.item.styles.split(', ').forEach(function(s) { if (s) styles.add(s); });
+    if (item.item.genres) item.item.genres.split(', ').forEach(function(g) {
+      if (g) genreCounts[g] = (genreCounts[g] || 0) + 1;
+    });
+    if (item.item.styles) item.item.styles.split(', ').forEach(function(s) {
+      if (s) styleCounts[s] = (styleCounts[s] || 0) + 1;
+    });
   });
 
-  var genreSelect = document.getElementById('genreFilter');
-  var styleSelect = document.getElementById('styleFilter');
-  var currentGenre = genreSelect.value;
-  var currentStyle = styleSelect.value;
+  var genreSection = document.getElementById('genreSection');
+  var styleSection = document.getElementById('styleSection');
+  var genreTagsEl = document.getElementById('genreTags');
+  var styleTagsEl = document.getElementById('styleTags');
 
-  genreSelect.innerHTML = '<option value="">All Genres</option>';
-  Array.from(genres).sort().forEach(function(g) {
-    genreSelect.innerHTML += '<option value="' + escapeHtml(g) + '">' + escapeHtml(g) + '</option>';
-  });
-  genreSelect.value = currentGenre;
+  var genreKeys = Object.keys(genreCounts).sort();
+  var styleKeys = Object.keys(styleCounts).sort();
 
-  styleSelect.innerHTML = '<option value="">All Styles</option>';
-  Array.from(styles).sort().forEach(function(s) {
-    styleSelect.innerHTML += '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>';
+  genreSection.style.display = genreKeys.length > 0 ? 'flex' : 'none';
+  styleSection.style.display = styleKeys.length > 0 ? 'flex' : 'none';
+
+  genreTagsEl.innerHTML = genreKeys.map(function(g) {
+    var active = activeGenres.has(g) ? ' active' : '';
+    var colorAttr = getGenreColor(g) ? ' data-color="' + getGenreColor(g) + '"' : '';
+    return '<div class="tag-badge' + active + '" data-tag="' + escapeHtml(g) + '"' + colorAttr + '>' +
+      escapeHtml(g) + ' <span class="tag-count">' + genreCounts[g] + '</span></div>';
+  }).join('');
+
+  styleTagsEl.innerHTML = styleKeys.map(function(s) {
+    var active = activeStyles.has(s) ? ' active' : '';
+    var colorAttr = getStyleColor(s) ? ' data-color="' + getStyleColor(s) + '"' : '';
+    return '<div class="tag-badge' + active + '" data-tag="' + escapeHtml(s) + '"' + colorAttr + '>' +
+      escapeHtml(s) + ' <span class="tag-count">' + styleCounts[s] + '</span></div>';
+  }).join('');
+
+  // Attach click handlers
+  genreTagsEl.querySelectorAll('.tag-badge').forEach(function(el) {
+    el.addEventListener('click', function() {
+      var tag = el.dataset.tag;
+      if (activeGenres.has(tag)) { activeGenres.delete(tag); } else { activeGenres.add(tag); }
+      render();
+    });
   });
-  styleSelect.value = currentStyle;
+  styleTagsEl.querySelectorAll('.tag-badge').forEach(function(el) {
+    el.addEventListener('click', function() {
+      var tag = el.dataset.tag;
+      if (activeStyles.has(tag)) { activeStyles.delete(tag); } else { activeStyles.add(tag); }
+      render();
+    });
+  });
+
+  // Show +more button if tags overflow
+  setTimeout(function() {
+    checkTagOverflow('genreTags', 'genreExpand');
+    checkTagOverflow('styleTags', 'styleExpand');
+  }, 10);
 }
 
 function getActiveStores() {
@@ -252,16 +356,22 @@ function render() {
   var sort = document.getElementById('sort').value;
   var activeStores = getActiveStores();
   var inStockOnly = document.querySelector('#inStockOnly input').checked;
-  var genreFilter = document.getElementById('genreFilter').value;
-  var styleFilter = document.getElementById('styleFilter').value;
 
   var filtered = resultsData.filter(function(item) {
     if (search) {
       var haystack = (item.item.artist + ' ' + item.item.title + ' ' + item.item.label + ' ' + item.item.catno).toLowerCase();
       if (haystack.indexOf(search) === -1) return false;
     }
-    if (genreFilter && (!item.item.genres || item.item.genres.indexOf(genreFilter) === -1)) return false;
-    if (styleFilter && (!item.item.styles || item.item.styles.indexOf(styleFilter) === -1)) return false;
+    if (activeGenres.size > 0) {
+      var itemGenres = item.item.genres ? item.item.genres.split(', ') : [];
+      var matchesGenre = itemGenres.some(function(g) { return activeGenres.has(g); });
+      if (!matchesGenre) return false;
+    }
+    if (activeStyles.size > 0) {
+      var itemStyles = item.item.styles ? item.item.styles.split(', ') : [];
+      var matchesStyle = itemStyles.some(function(s) { return activeStyles.has(s); });
+      if (!matchesStyle) return false;
+    }
     if (inStockOnly) {
       var hasStockInActiveStore = item.stores.some(function(s) {
         return activeStores.indexOf(s.store) !== -1 && s.inStock && !s.linkOnly;
@@ -658,8 +768,7 @@ document.addEventListener('keydown', function(e) {
 // Event listeners
 document.getElementById('search').addEventListener('input', render);
 document.getElementById('sort').addEventListener('change', render);
-document.getElementById('genreFilter').addEventListener('change', render);
-document.getElementById('styleFilter').addEventListener('change', render);
+// Genre/style tag click handlers are attached dynamically in updateFilters()
 
 document.querySelectorAll('.store-badge').forEach(function(el) {
   el.addEventListener('click', function() {
