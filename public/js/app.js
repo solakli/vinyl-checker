@@ -1023,6 +1023,14 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') closeModal();
 });
 
+// Mobile filter toggle
+document.getElementById('filterToggle').addEventListener('click', function() {
+  var controls = document.getElementById('controls');
+  controls.classList.toggle('filters-open');
+  this.classList.toggle('active');
+  this.textContent = controls.classList.contains('filters-open') ? 'Hide Filters' : 'Filters';
+});
+
 // Event listeners
 document.getElementById('search').addEventListener('input', render);
 document.getElementById('sort').addEventListener('change', render);

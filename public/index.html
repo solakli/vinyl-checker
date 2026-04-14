@@ -57,7 +57,10 @@
   </div>
 
   <div class="controls" id="controls" style="display:none">
-    <input type="text" class="search-box" id="search" placeholder="Search...">
+    <div style="display:flex;gap:6px;align-items:center">
+      <input type="text" class="search-box" id="search" placeholder="Search..." style="flex:1">
+      <label class="filter-btn filter-toggle-mobile" id="filterToggle">Filters</label>
+    </div>
     <select class="sort-select" id="sort">
       <option value="artist">Artist A-Z</option>
       <option value="price-low">Price Low-High</option>
