@@ -15,6 +15,51 @@ var storeLogoMap = {
 
 var MAX_STYLES = 20; // Show top N styles
 
+// Fun loading messages — vinyl buyer / crate digger vibes
+var loadingMessages = [
+  'Digging through crates...',
+  'Flipping through the bins...',
+  'Checking the new arrivals wall...',
+  'Dusting off some deep cuts...',
+  'Asking the clerk about restocks...',
+  'Inspecting the wax for scratches...',
+  'Holding it up to the light...',
+  'Reading the matrix runout...',
+  'Checking the dead wax...',
+  'Haggling over VG+ vs NM...',
+  'Sniffing for that vintage vinyl smell...',
+  'Elbowing past other diggers...',
+  'Sliding through the jazz section...',
+  'Found a first pressing? Wait, no...',
+  'Squinting at catalog numbers...',
+  'Dodging overpriced reissues...',
+  'Nodding along to the in-store DJ...',
+  'Flipping to the back of the rack...',
+  'Checking if the sleeve matches the vinyl...',
+  'Mentally calculating shipping costs...',
+  'Adding to cart... removing... adding back...',
+  'Wondering if this is the right pressing...',
+  'Comparing prices across 9 stores...',
+  'Eyeing someone else\'s finds...',
+  'That "one more record" feeling...',
+  'Pretending the budget still exists...',
+  'Stacking up the wants pile...',
+  'Testing the platter spin...',
+  'Admiring gatefold artwork...',
+  'Peeling back the shrink wrap corner...',
+  'Checking Discogs median price...',
+  'Calculating cost per minute of music...',
+  'Reorganizing by BPM in my head...',
+  'Whispering "just one more" to myself...',
+  'Scanning the 12" singles section...',
+  'Spotting a white label promo...',
+  'Debating colored vinyl vs black...',
+  'Measuring shelf space at home...',
+  'Convincing myself this is an investment...',
+];
+var loadingMessageInterval = null;
+var lastLoadingMsgIndex = -1;
+
 // Store class map
 const storeClassMap = {
   'HHV': 'hhv', 'Deejay.de': 'deejay', 'Hardwax': 'hardwax',
@@ -40,6 +85,49 @@ document.getElementById('rescanBtn').addEventListener('click', function() { star
 document.getElementById('usernameInput').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') startScan(false);
 });
+
+// Welcome page Go button
+document.getElementById('welcomeGoBtn').addEventListener('click', function() {
+  var val = document.getElementById('welcomeUsernameInput').value.trim();
+  if (val) {
+    document.getElementById('usernameInput').value = val;
+    startScan(false);
+  }
+});
+document.getElementById('welcomeUsernameInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') {
+    var val = this.value.trim();
+    if (val) {
+      document.getElementById('usernameInput').value = val;
+      startScan(false);
+    }
+  }
+});
+
+function startLoadingMessages() {
+  var msgEl = document.getElementById('progressCurrent');
+  // Show first message immediately
+  lastLoadingMsgIndex = Math.floor(Math.random() * loadingMessages.length);
+  msgEl.innerHTML = '<span class="loading-msg">' + loadingMessages[lastLoadingMsgIndex] + '</span>';
+  // Rotate every 3 seconds
+  loadingMessageInterval = setInterval(function() {
+    var idx;
+    do { idx = Math.floor(Math.random() * loadingMessages.length); } while (idx === lastLoadingMsgIndex);
+    lastLoadingMsgIndex = idx;
+    msgEl.classList.add('msg-fade');
+    setTimeout(function() {
+      msgEl.innerHTML = '<span class="loading-msg">' + loadingMessages[idx] + '</span>';
+      msgEl.classList.remove('msg-fade');
+    }, 200);
+  }, 3000);
+}
+
+function stopLoadingMessages() {
+  if (loadingMessageInterval) {
+    clearInterval(loadingMessageInterval);
+    loadingMessageInterval = null;
+  }
+}
 
 function startScan(force) {
   var username = document.getElementById('usernameInput').value.trim();
@@ -69,6 +157,9 @@ function startScan(force) {
   document.getElementById('controls').style.display = 'flex';
   document.getElementById('grid').innerHTML = '';
   document.getElementById('noResults').style.display = 'none';
+
+  // Start fun loading messages
+  startLoadingMessages();
 
   // Connect to SSE
   var scanUrl = 'api/scan/' + encodeURIComponent(username) + (force ? '?force=true' : '');
@@ -103,8 +194,11 @@ function startScan(force) {
     var pct = ((data.index + 1) / data.total * 100).toFixed(1);
     document.getElementById('progressFill').style.width = pct + '%';
     document.getElementById('progressCount').textContent = (data.index + 1) + ' / ' + data.total;
-    var suffix = data.fromCache ? ' (cached)' : (data.inStock ? ' \u2713' : '');
-    document.getElementById('progressCurrent').textContent = data.item.artist + ' - ' + data.item.title + suffix;
+    var suffix = data.fromCache ? ' (cached)' : (data.inStock ? ' ✓' : '');
+    var itemText = data.item.artist + ' — ' + data.item.title + suffix;
+    var currentMsg = lastLoadingMsgIndex >= 0 ? loadingMessages[lastLoadingMsgIndex] : '';
+    document.getElementById('progressCurrent').innerHTML = '<span class="progress-item-name">' + itemText + '</span>' +
+      (currentMsg ? '<span class="loading-msg">' + currentMsg + '</span>' : '');
 
     updateStats();
     render();
@@ -118,6 +212,7 @@ function startScan(force) {
   evtSource.addEventListener('done', function(e) {
     var data = JSON.parse(e.data);
     evtSource.close();
+    stopLoadingMessages();
     isScanning = false;
     document.getElementById('scanBtn').disabled = false;
     document.getElementById('scanBtn').textContent = 'Check Wantlist';
@@ -138,6 +233,7 @@ function startScan(force) {
       document.getElementById('progressText').textContent = 'Error: ' + data.message;
     } catch(err) {}
     evtSource.close();
+    stopLoadingMessages();
     isScanning = false;
     document.getElementById('scanBtn').disabled = false;
     document.getElementById('scanBtn').textContent = 'Check Wantlist';
@@ -941,6 +1037,7 @@ async function createYoutubePlaylist() {
 }
 
 // Handle auth redirects (check URL params)
+var autoScanAfterAuth = false;
 (function() {
   var params = new URLSearchParams(window.location.search);
   if (params.get('auth') === 'discogs') {
@@ -948,6 +1045,7 @@ async function createYoutubePlaylist() {
     if (username) {
       document.getElementById('usernameInput').value = username;
       localStorage.setItem('vinyl-checker-username', username);
+      autoScanAfterAuth = true; // auto-scan after Discogs connect
     }
     // Clean URL
     window.history.replaceState({}, '', window.location.pathname);
@@ -962,3 +1060,8 @@ async function createYoutubePlaylist() {
 // Init
 loadExisting();
 checkAuthStatus();
+
+// Auto-scan after first Discogs connect
+if (autoScanAfterAuth) {
+  setTimeout(function() { startScan(false); }, 500);
+}

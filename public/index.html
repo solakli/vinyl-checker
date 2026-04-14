@@ -86,8 +86,27 @@
 
 <div class="container">
   <div id="welcome" class="welcome">
-    <h2>Enter a Discogs username</h2>
-    <p>We'll check their wantlist across 9 vinyl stores worldwide</p>
+    <div class="welcome-hero">
+      <h2><span>Vinyl</span> Checker</h2>
+      <p class="welcome-sub">Find your Discogs wantlist in stock across 9 vinyl stores worldwide</p>
+    </div>
+    <div class="welcome-actions">
+      <button class="welcome-cta" onclick="window.location.href='api/auth/discogs'">
+        <img class="store-logo" src="img/discogs.png" alt="" style="width:20px;height:20px;margin-right:8px;vertical-align:middle;filter:none;opacity:1"> Connect Your Discogs
+      </button>
+      <p class="welcome-hint">Authorize to scan your wantlist &mdash; works with private wantlists too</p>
+      <div class="welcome-divider"><span>or check any public wantlist</span></div>
+      <div class="welcome-manual">
+        <input type="text" class="welcome-input" id="welcomeUsernameInput" placeholder="Enter a Discogs username...">
+        <button class="welcome-go" id="welcomeGoBtn">Go</button>
+      </div>
+    </div>
+    <div class="welcome-stores">
+      <span class="welcome-store-label">Stores we check:</span>
+      <div class="welcome-store-logos">
+        <img src="img/hhv.png" alt="HHV" title="HHV"><img src="img/deejay.png" alt="Deejay.de" title="Deejay.de"><img src="img/hardwax.png" alt="Hardwax" title="Hardwax"><img src="img/juno.png" alt="Juno" title="Juno"><img src="img/ttlab.png" alt="Turntable Lab" title="Turntable Lab"><img src="img/phonica.png" alt="Phonica" title="Phonica"><img src="img/decks.png" alt="Decks.de" title="Decks.de"><img src="img/yoyaku.png" alt="Yoyaku" title="Yoyaku"><img src="img/uvs.png" alt="Underground Vinyl" title="Underground Vinyl">
+      </div>
+    </div>
   </div>
   <div class="grid" id="grid"></div>
   <div class="no-results" id="noResults" style="display:none">No items match your filters</div>
