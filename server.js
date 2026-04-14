@@ -292,6 +292,12 @@ app.post('/api/session', function (req, res) {
     res.json({ username: username });
 });
 
+// Logout — clear session cookie
+app.post('/api/logout', function (req, res) {
+    res.clearCookie('vinyl_session', { path: '/' });
+    res.json({ ok: true });
+});
+
 // ═══════════════════════════════════════════════════════════════
 // STORE VALIDATION / HEALTH CHECK
 // ═══════════════════════════════════════════════════════════════

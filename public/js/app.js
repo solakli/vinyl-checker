@@ -976,19 +976,14 @@ async function checkAuthStatus() {
 }
 
 async function disconnectDiscogs() {
-  if (!confirm('Disconnect your Discogs account?')) return;
+  if (!confirm('Disconnect and return to the welcome page?')) return;
   try {
     await fetch('api/auth/discogs/disconnect', { method: 'POST' });
+    await fetch('api/logout', { method: 'POST' });
   } catch(e) {}
-  // Switch from user bar to connect button
-  document.getElementById('userBar').style.display = 'none';
-  document.getElementById('connectDiscogsHeader').style.display = 'inline-flex';
-}
-
-function fullLogout() {
-  // Clear everything and go back to welcome
+  // Clear local state
   localStorage.removeItem('vinyl-checker-username');
-  document.cookie = 'vinyl_session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+  // Reset UI to welcome
   document.getElementById('userBar').style.display = 'none';
   document.getElementById('connectDiscogsHeader').style.display = 'none';
   document.getElementById('scanSection').style.display = 'none';
