@@ -675,5 +675,152 @@ document.getElementById('inStockOnly').addEventListener('click', function() {
   render();
 });
 
+// ═══════════════════════════════════════════════════════════════
+// AUTH & YOUTUBE PLAYLIST
+// ═══════════════════════════════════════════════════════════════
+
+var authState = { discogs: false, youtube: false };
+
+async function checkAuthStatus() {
+  try {
+    var res = await fetch('/vinyl/api/auth/status');
+    if (!res.ok) return;
+    var data = await res.json();
+    authState = data;
+
+    var statusParts = [];
+
+    // Discogs OAuth button
+    var discogsBtn = document.getElementById('connectDiscogs');
+    if (data.discogsOAuthEnabled) {
+      discogsBtn.style.display = 'inline-flex';
+      if (data.discogs && data.discogs.connected) {
+        discogsBtn.className = 'auth-btn discogs-auth connected';
+        discogsBtn.innerHTML = '<span class="auth-icon">&#10003;</span> Discogs: ' + escapeHtml(data.discogs.username);
+        discogsBtn.onclick = null;
+        statusParts.push('Discogs connected');
+      }
+    }
+
+    // YouTube button
+    var youtubeBtn = document.getElementById('connectYoutube');
+    var playlistBtn = document.getElementById('createPlaylistBtn');
+    if (data.youtubeEnabled) {
+      if (data.youtube && data.youtube.connected) {
+        youtubeBtn.style.display = 'none';
+        playlistBtn.style.display = 'inline-flex';
+        statusParts.push('YouTube connected');
+      } else {
+        youtubeBtn.style.display = 'inline-flex';
+        playlistBtn.style.display = 'none';
+      }
+    }
+
+    var authStatusEl = document.getElementById('authStatus');
+    if (statusParts.length > 0) {
+      authStatusEl.textContent = statusParts.join(' | ');
+    }
+  } catch(e) {}
+}
+
+async function createYoutubePlaylist() {
+  if (!resultsData || resultsData.length === 0) {
+    alert('No wantlist loaded. Scan first!');
+    return;
+  }
+
+  var btn = document.getElementById('createPlaylistBtn');
+  btn.disabled = true;
+  btn.textContent = 'Creating playlist...';
+
+  // Collect all video IDs from release details
+  // We need to fetch release details for each item to get video IDs
+  var videoIds = [];
+  var statusEl = document.getElementById('authStatus');
+  statusEl.textContent = 'Fetching track videos...';
+
+  for (var i = 0; i < resultsData.length; i++) {
+    var item = resultsData[i];
+    try {
+      var res = await fetch('/vinyl/api/release/' + item.item.id);
+      if (res.ok) {
+        var data = await res.json();
+        if (data.data && data.data.tracklistWithVideos) {
+          data.data.tracklistWithVideos.forEach(function(track) {
+            if (track.videoId && videoIds.indexOf(track.videoId) === -1) {
+              videoIds.push(track.videoId);
+            }
+          });
+        } else if (data.data && data.data.videos) {
+          data.data.videos.forEach(function(v) {
+            var vid = extractYoutubeId(v.url);
+            if (vid && videoIds.indexOf(vid) === -1) videoIds.push(vid);
+          });
+        }
+      }
+      statusEl.textContent = 'Fetching videos... ' + (i + 1) + '/' + resultsData.length + ' (' + videoIds.length + ' videos)';
+    } catch(e) {}
+
+    // Small delay to avoid rate limits
+    if (i < resultsData.length - 1) {
+      await new Promise(function(r) { setTimeout(r, 300); });
+    }
+  }
+
+  if (videoIds.length === 0) {
+    alert('No YouTube videos found in your wantlist releases.');
+    btn.disabled = false;
+    btn.innerHTML = '<span class="auth-icon">&#9835;</span> Create YouTube Playlist';
+    statusEl.textContent = '';
+    return;
+  }
+
+  statusEl.textContent = 'Creating playlist with ' + videoIds.length + ' videos...';
+
+  var username = document.getElementById('usernameInput').value.trim();
+  try {
+    var res = await fetch('/vinyl/api/youtube/create-playlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: username + "'s Vinyl Wantlist",
+        description: 'Auto-generated playlist from Discogs wantlist by Vinyl Checker. ' + videoIds.length + ' tracks from ' + resultsData.length + ' releases.',
+        videoIds: videoIds
+      })
+    });
+    var result = await res.json();
+    if (result.ok) {
+      statusEl.innerHTML = '<a href="' + result.playlistUrl + '" target="_blank" style="color:var(--green)">Playlist created! ' + result.added + '/' + result.total + ' videos added &rarr;</a>';
+    } else {
+      statusEl.textContent = 'Error: ' + (result.error || 'Unknown error');
+    }
+  } catch(e) {
+    statusEl.textContent = 'Error creating playlist';
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<span class="auth-icon">&#9835;</span> Create YouTube Playlist';
+}
+
+// Handle auth redirects (check URL params)
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  if (params.get('auth') === 'discogs') {
+    var username = params.get('username');
+    if (username) {
+      document.getElementById('usernameInput').value = username;
+      localStorage.setItem('vinyl-checker-username', username);
+    }
+    // Clean URL
+    window.history.replaceState({}, '', window.location.pathname);
+  } else if (params.get('auth') === 'youtube') {
+    window.history.replaceState({}, '', window.location.pathname);
+  } else if (params.get('auth_error')) {
+    document.getElementById('authStatus').textContent = 'Auth error: ' + params.get('auth_error');
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+})();
+
 // Init
 loadExisting();
+checkAuthStatus();

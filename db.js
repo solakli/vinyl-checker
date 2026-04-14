@@ -93,6 +93,22 @@ function initTables() {
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
 
+        CREATE TABLE IF NOT EXISTS oauth_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            provider TEXT NOT NULL,
+            access_token TEXT,
+            access_secret TEXT,
+            refresh_token TEXT,
+            expires_at TEXT,
+            provider_username TEXT,
+            provider_id TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            UNIQUE(user_id, provider)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_wantlist_user ON wantlist(user_id);
         CREATE INDEX IF NOT EXISTS idx_wantlist_active ON wantlist(user_id, active);
         CREATE INDEX IF NOT EXISTS idx_store_results_wantlist ON store_results(wantlist_id);
@@ -390,6 +406,42 @@ function updateSessionLastSeen(token) {
         .run(new Date().toISOString(), token);
 }
 
+// ═══════════════════════════════════════════════════════════
+// OAUTH TOKEN OPERATIONS
+// ═══════════════════════════════════════════════════════════
+
+function saveOAuthToken(userId, provider, tokenData) {
+    var now = new Date().toISOString();
+    getDb().prepare(`
+        INSERT INTO oauth_tokens (user_id, provider, access_token, access_secret, refresh_token, expires_at, provider_username, provider_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, provider) DO UPDATE SET
+            access_token = excluded.access_token, access_secret = excluded.access_secret,
+            refresh_token = COALESCE(excluded.refresh_token, oauth_tokens.refresh_token),
+            expires_at = excluded.expires_at,
+            provider_username = COALESCE(excluded.provider_username, oauth_tokens.provider_username),
+            provider_id = COALESCE(excluded.provider_id, oauth_tokens.provider_id),
+            updated_at = excluded.updated_at
+    `).run(
+        userId, provider,
+        tokenData.accessToken || null,
+        tokenData.accessSecret || null,
+        tokenData.refreshToken || null,
+        tokenData.expiresAt || null,
+        tokenData.providerUsername || null,
+        tokenData.providerId || null,
+        now, now
+    );
+}
+
+function getOAuthToken(userId, provider) {
+    return getDb().prepare('SELECT * FROM oauth_tokens WHERE user_id = ? AND provider = ?').get(userId, provider);
+}
+
+function deleteOAuthToken(userId, provider) {
+    getDb().prepare('DELETE FROM oauth_tokens WHERE user_id = ? AND provider = ?').run(userId, provider);
+}
+
 function close() {
     if (db) { db.close(); db = null; }
 }
@@ -415,5 +467,8 @@ module.exports = {
     createSession: createSession,
     getSessionUser: getSessionUser,
     updateSessionLastSeen: updateSessionLastSeen,
+    saveOAuthToken: saveOAuthToken,
+    getOAuthToken: getOAuthToken,
+    deleteOAuthToken: deleteOAuthToken,
     close: close
 };

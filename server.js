@@ -15,6 +15,7 @@ const path = require('path');
 const db = require('./db');
 const discogs = require('./lib/discogs');
 const scanner = require('./lib/scanner');
+const oauth = require('./lib/oauth');
 
 // Prevent unhandled errors from crashing the server
 process.on('uncaughtException', function (e) { console.error('Uncaught:', e.message); });
@@ -59,6 +60,194 @@ app.use(function (req, res, next) {
 // API ROUTES
 // ═══════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════
+// AUTH ROUTES
+// ═══════════════════════════════════════════════════════════════
+
+// Get auth status for current user
+app.get('/api/auth/status', function (req, res) {
+    if (!req.sessionUser) return res.json({ discogs: false, youtube: false });
+    var discogsToken = db.getOAuthToken(req.sessionUser.id, 'discogs');
+    var googleToken = db.getOAuthToken(req.sessionUser.id, 'google');
+    res.json({
+        discogs: discogsToken ? { connected: true, username: discogsToken.provider_username } : { connected: false },
+        youtube: googleToken ? { connected: true } : { connected: false },
+        discogsOAuthEnabled: oauth.discogsEnabled(),
+        youtubeEnabled: oauth.googleEnabled()
+    });
+});
+
+// --- DISCOGS OAUTH ---
+
+app.get('/api/auth/discogs', async function (req, res) {
+    if (!oauth.discogsEnabled()) return res.status(503).json({ error: 'Discogs OAuth not configured' });
+    try {
+        var result = await oauth.discogsRequestToken();
+        // Store which session initiated this so we can link on callback
+        if (req.sessionUser) {
+            // Store session token in a cookie so callback can find user
+            res.cookie('vinyl_oauth_state', req.cookies['vinyl_session'], { httpOnly: true, maxAge: 600000, path: '/' });
+        }
+        res.redirect(result.authorizeUrl);
+    } catch (e) {
+        console.error('[auth] Discogs request token error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/auth/discogs/callback', async function (req, res) {
+    var oauthToken = req.query.oauth_token;
+    var oauthVerifier = req.query.oauth_verifier;
+
+    if (!oauthToken || !oauthVerifier) {
+        return res.redirect('/?auth_error=denied');
+    }
+
+    try {
+        // Exchange for access token
+        var tokens = await oauth.discogsAccessToken(oauthToken, oauthVerifier);
+
+        // Get identity
+        var identity = await oauth.discogsIdentity(tokens.accessToken, tokens.accessSecret);
+
+        // Find or create user by Discogs username
+        var user = db.getOrCreateUser(identity.username);
+
+        // Save OAuth tokens
+        db.saveOAuthToken(user.id, 'discogs', {
+            accessToken: tokens.accessToken,
+            accessSecret: tokens.accessSecret,
+            providerUsername: identity.username,
+            providerId: String(identity.id)
+        });
+
+        // Create a session for this user
+        var sessionToken = db.createSession(user.id);
+        res.cookie('vinyl_session', sessionToken, {
+            httpOnly: true,
+            maxAge: 365 * 24 * 60 * 60 * 1000,
+            sameSite: 'lax',
+            path: '/'
+        });
+
+        // Redirect back to app
+        res.redirect('/?auth=discogs&username=' + encodeURIComponent(identity.username));
+    } catch (e) {
+        console.error('[auth] Discogs callback error:', e.message);
+        res.redirect('/?auth_error=' + encodeURIComponent(e.message));
+    }
+});
+
+app.post('/api/auth/discogs/disconnect', function (req, res) {
+    if (!req.sessionUser) return res.status(401).json({ error: 'Not logged in' });
+    db.deleteOAuthToken(req.sessionUser.id, 'discogs');
+    res.json({ ok: true });
+});
+
+// --- GOOGLE/YOUTUBE OAUTH ---
+
+app.get('/api/auth/google', function (req, res) {
+    if (!oauth.googleEnabled()) return res.status(503).json({ error: 'YouTube OAuth not configured' });
+    if (!req.sessionUser) return res.status(401).json({ error: 'Login first (enter Discogs username or connect Discogs)' });
+
+    var state = req.cookies['vinyl_session'] || '';
+    var authUrl = oauth.googleAuthorizeUrl(state);
+    res.redirect(authUrl);
+});
+
+app.get('/api/auth/google/callback', async function (req, res) {
+    var code = req.query.code;
+    var error = req.query.error;
+
+    if (error || !code) return res.redirect('/?auth_error=google_denied');
+
+    try {
+        var tokens = await oauth.googleExchangeCode(code);
+
+        // Need to find the user from session
+        if (!req.sessionUser) return res.redirect('/?auth_error=no_session');
+
+        db.saveOAuthToken(req.sessionUser.id, 'google', {
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken,
+            expiresAt: new Date(tokens.expiresAt).toISOString()
+        });
+
+        res.redirect('/?auth=youtube');
+    } catch (e) {
+        console.error('[auth] Google callback error:', e.message);
+        res.redirect('/?auth_error=' + encodeURIComponent(e.message));
+    }
+});
+
+app.post('/api/auth/google/disconnect', function (req, res) {
+    if (!req.sessionUser) return res.status(401).json({ error: 'Not logged in' });
+    db.deleteOAuthToken(req.sessionUser.id, 'google');
+    res.json({ ok: true });
+});
+
+// --- YOUTUBE PLAYLIST CREATION ---
+
+app.post('/api/youtube/create-playlist', async function (req, res) {
+    if (!req.sessionUser) return res.status(401).json({ error: 'Not logged in' });
+
+    var googleOAuth = db.getOAuthToken(req.sessionUser.id, 'google');
+    if (!googleOAuth) return res.status(401).json({ error: 'Connect YouTube first' });
+
+    try {
+        // Refresh token if expired
+        var accessToken = googleOAuth.access_token;
+        if (googleOAuth.expires_at && new Date(googleOAuth.expires_at) < new Date()) {
+            if (!googleOAuth.refresh_token) return res.status(401).json({ error: 'YouTube token expired, reconnect' });
+            var refreshed = await oauth.googleRefreshToken(googleOAuth.refresh_token);
+            db.saveOAuthToken(req.sessionUser.id, 'google', {
+                accessToken: refreshed.accessToken,
+                expiresAt: new Date(refreshed.expiresAt).toISOString()
+            });
+            accessToken = refreshed.accessToken;
+        }
+
+        var title = req.body.title || (req.sessionUser.username + "'s Vinyl Wantlist");
+        var description = req.body.description || 'Created by Vinyl Checker from Discogs wantlist';
+        var videoIds = req.body.videoIds || [];
+
+        if (videoIds.length === 0) return res.status(400).json({ error: 'No videos to add' });
+
+        // Create playlist
+        var playlist = await oauth.createPlaylist(accessToken, title, description);
+        var playlistId = playlist.id;
+        var playlistUrl = 'https://www.youtube.com/playlist?list=' + playlistId;
+
+        // Add videos (with delay to respect rate limits)
+        var added = 0;
+        var errors = [];
+        for (var i = 0; i < videoIds.length; i++) {
+            try {
+                await oauth.addVideoToPlaylist(accessToken, playlistId, videoIds[i]);
+                added++;
+            } catch (e) {
+                errors.push({ videoId: videoIds[i], error: e.message });
+            }
+            // Small delay between adds
+            if (i < videoIds.length - 1) {
+                await new Promise(function(r) { setTimeout(r, 200); });
+            }
+        }
+
+        res.json({
+            ok: true,
+            playlistId: playlistId,
+            playlistUrl: playlistUrl,
+            added: added,
+            total: videoIds.length,
+            errors: errors
+        });
+    } catch (e) {
+        console.error('[youtube] Playlist error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // Force-reset scan lock
 app.get('/api/reset', function (req, res) {
     scanner.activeScans = {};
@@ -68,7 +257,11 @@ app.get('/api/reset', function (req, res) {
 // Get current session info
 app.get('/api/session', function (req, res) {
     if (req.sessionUser) {
-        res.json({ username: req.sessionUser.username });
+        var discogsOAuth = db.getOAuthToken(req.sessionUser.id, 'discogs');
+        res.json({
+            username: req.sessionUser.username,
+            discogsConnected: !!discogsOAuth
+        });
     } else {
         res.json({ username: null });
     }
@@ -182,8 +375,23 @@ app.get('/api/scan/:username', function (req, res) {
         }
     });
 
+    // Build per-user Discogs auth headers if they have OAuth connected
+    var userDiscogsHeaders = null;
+    if (req.sessionUser) {
+        var discogsOAuth = db.getOAuthToken(req.sessionUser.id, 'discogs');
+        if (discogsOAuth && discogsOAuth.access_token && discogsOAuth.access_secret) {
+            userDiscogsHeaders = function (method, path) {
+                var url = 'https://api.discogs.com' + path;
+                return {
+                    'User-Agent': 'VinylWantlistChecker/1.0',
+                    'Authorization': oauth.discogsAuthHeader(method, url, discogsOAuth.access_token, discogsOAuth.access_secret)
+                };
+            };
+        }
+    }
+
     // Start or attach to existing scan
-    scanner.runScan(username, sendEvent, force);
+    scanner.runScan(username, sendEvent, force, userDiscogsHeaders);
 });
 
 // Get cached results from DB (instant)

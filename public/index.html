@@ -28,6 +28,19 @@
     <button class="scan-btn rescan-btn" id="rescanBtn" style="display:none;background:transparent;border:1px solid var(--gold);color:var(--gold);font-size:10px;padding:8px 16px;">Rescan All</button>
   </div>
 
+  <div class="auth-section" id="authSection">
+    <button class="auth-btn discogs-auth" id="connectDiscogs" style="display:none" onclick="window.location.href='/vinyl/api/auth/discogs'">
+      <span class="auth-icon">&#9737;</span> Connect Discogs
+    </button>
+    <button class="auth-btn youtube-auth" id="connectYoutube" style="display:none" onclick="window.location.href='/vinyl/api/auth/google'">
+      <span class="auth-icon">&#9654;</span> Connect YouTube
+    </button>
+    <button class="auth-btn playlist-btn" id="createPlaylistBtn" style="display:none" onclick="createYoutubePlaylist()">
+      <span class="auth-icon">&#9835;</span> Create YouTube Playlist
+    </button>
+    <span class="auth-status" id="authStatus"></span>
+  </div>
+
   <div class="progress-section" id="progressSection">
     <div class="progress-bar-track"><div class="progress-bar-fill" id="progressFill"></div></div>
     <div class="progress-info">
