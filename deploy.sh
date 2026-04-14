@@ -31,14 +31,14 @@ puts \"\n>>> Installing dependencies...\"
 send \"cd $APP_DIR && npm install --production 2>&1 | tail -3; echo NPM_DONE\r\"
 expect -timeout 120 \"NPM_DONE\"
 
-# Step 4: Kill existing vinyl-checker process
-puts \"\n>>> Stopping old process...\"
-send \"pkill -f 'node.*server.js.*5052' 2>/dev/null; sleep 1; echo KILL_DONE\r\"
+# Step 4: Kill ALL existing vinyl-checker processes
+puts \"\n>>> Stopping old process(es)...\"
+send \"pkill -f 'node server.js' 2>/dev/null; sleep 2; echo KILL_DONE\r\"
 expect \"KILL_DONE\"
 
-# Step 5: Start the app
+# Step 5: Start the app with all required env vars
 puts \"\n>>> Starting vinyl-checker on port $PORT...\"
-send \"cd $APP_DIR && PORT=$PORT nohup node server.js > /root/vinyl-checker.log 2>&1 & sleep 2; echo START_DONE\r\"
+send \"cd $APP_DIR && PORT=$PORT DISCOGS_TOKEN=UPiAwrUCQLYhGCppWIVvBDMSScyQuxGyRRyRDSPd DISCOGS_CONSUMER_KEY=OVtKjTmXdGeBpsudUyhz DISCOGS_CONSUMER_SECRET=XIexsqsiEyJUZjKhyFNBcUGHTVSoPsAV BASE_URL=https://stream.ronautradio.la/vinyl nohup node server.js >> /root/vinyl-checker.log 2>&1 & sleep 2; echo START_DONE\r\"
 expect \"START_DONE\"
 
 # Step 6: Verify it's running
