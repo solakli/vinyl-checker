@@ -66,15 +66,19 @@ app.use(function (req, res, next) {
 
 // Get auth status for current user
 app.get('/api/auth/status', function (req, res) {
-    if (!req.sessionUser) return res.json({ discogs: false, youtube: false });
-    var discogsToken = db.getOAuthToken(req.sessionUser.id, 'discogs');
-    var googleToken = db.getOAuthToken(req.sessionUser.id, 'google');
-    res.json({
-        discogs: discogsToken ? { connected: true, username: discogsToken.provider_username } : { connected: false },
-        youtube: googleToken ? { connected: true } : { connected: false },
+    var result = {
+        discogs: { connected: false },
+        youtube: { connected: false },
         discogsOAuthEnabled: oauth.discogsEnabled(),
         youtubeEnabled: oauth.googleEnabled()
-    });
+    };
+    if (req.sessionUser) {
+        var discogsToken = db.getOAuthToken(req.sessionUser.id, 'discogs');
+        var googleToken = db.getOAuthToken(req.sessionUser.id, 'google');
+        if (discogsToken) result.discogs = { connected: true, username: discogsToken.provider_username };
+        if (googleToken) result.youtube = { connected: true };
+    }
+    res.json(result);
 });
 
 // --- DISCOGS OAUTH ---
