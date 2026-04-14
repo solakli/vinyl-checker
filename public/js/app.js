@@ -455,12 +455,33 @@ function updateStats() {
     badge.querySelector('.count').textContent = '(' + count + ')';
   });
 
-  // Populate genre/style tags with availability-based intensity
+  // Populate genre/style tags with cross-filtering:
+  // - When a genre is active, only count styles from items matching that genre
+  // - When a style is active, only count genres from items matching that style
   var genreCounts = {};
   var genreInStock = {};
   var styleCounts = {};
   var styleInStock = {};
-  resultsData.forEach(function(item) {
+
+  // Items filtered by active styles (for genre counts)
+  var itemsForGenres = resultsData;
+  if (activeStyles.size > 0) {
+    itemsForGenres = resultsData.filter(function(item) {
+      var itemStyles = item.item.styles ? item.item.styles.split(', ') : [];
+      return itemStyles.some(function(s) { return activeStyles.has(s); });
+    });
+  }
+
+  // Items filtered by active genres (for style counts)
+  var itemsForStyles = resultsData;
+  if (activeGenres.size > 0) {
+    itemsForStyles = resultsData.filter(function(item) {
+      var itemGenres = item.item.genres ? item.item.genres.split(', ') : [];
+      return itemGenres.some(function(g) { return activeGenres.has(g); });
+    });
+  }
+
+  itemsForGenres.forEach(function(item) {
     var itemHasStock = item.stores && item.stores.some(function(s) { return s.inStock && !s.linkOnly; });
     if (item.item.genres) item.item.genres.split(', ').forEach(function(g) {
       if (g) {
@@ -468,6 +489,10 @@ function updateStats() {
         if (itemHasStock) genreInStock[g] = (genreInStock[g] || 0) + 1;
       }
     });
+  });
+
+  itemsForStyles.forEach(function(item) {
+    var itemHasStock = item.stores && item.stores.some(function(s) { return s.inStock && !s.linkOnly; });
     if (item.item.styles) item.item.styles.split(', ').forEach(function(s) {
       if (s) {
         styleCounts[s] = (styleCounts[s] || 0) + 1;
@@ -511,11 +536,12 @@ function updateStats() {
       (stock > 0 ? '<span class="tag-stock">' + stock + ' avail</span>' : '') + '</div>';
   }).join('');
 
-  // Attach click handlers
+  // Attach click handlers — update both tags + grid on click
   genreTagsEl.querySelectorAll('.tag-badge').forEach(function(el) {
     el.addEventListener('click', function() {
       var tag = el.dataset.tag;
       if (activeGenres.has(tag)) { activeGenres.delete(tag); } else { activeGenres.add(tag); }
+      updateStats();
       render();
     });
   });
@@ -523,6 +549,7 @@ function updateStats() {
     el.addEventListener('click', function() {
       var tag = el.dataset.tag;
       if (activeStyles.has(tag)) { activeStyles.delete(tag); } else { activeStyles.add(tag); }
+      updateStats();
       render();
     });
   });
