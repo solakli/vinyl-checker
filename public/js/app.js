@@ -5,71 +5,15 @@ let isScanning = false;
 let activeGenres = new Set();
 let activeStyles = new Set();
 
-function toggleTagSection(tagsId, btnId) {
-  var tags = document.getElementById(tagsId);
-  var btn = document.getElementById(btnId);
-  if (tags.classList.contains('expanded')) {
-    tags.classList.remove('expanded');
-    btn.textContent = '+more';
-  } else {
-    tags.classList.add('expanded');
-    btn.textContent = 'less';
-  }
-}
-
-function checkTagOverflow(tagsId, btnId) {
-  var tags = document.getElementById(tagsId);
-  var btn = document.getElementById(btnId);
-  if (tags.scrollHeight > tags.clientHeight + 4) {
-    btn.style.display = '';
-  } else {
-    btn.style.display = 'none';
-  }
-}
-
-// Genre → color mapping
-var genreColorMap = {
-  'Electronic': 'electronic',
-  'Hip Hop': 'hiphop',
-  'Jazz': 'jazz',
-  'Funk / Soul': 'funk',
-  'Rock': 'rock',
-  'Blues': 'blues',
-  'Folk': 'folk',
-  'Folk, World, & Country': 'folk',
-  '& Country': 'country',
-  'World': 'world',
-  'Latin': 'latin',
-  'Stage & Screen': 'world',
-  'Pop': 'funk',
-  'Classical': 'blues',
-  'Reggae': 'world'
+// Store logo filenames
+var storeLogoMap = {
+  'HHV': 'hhv.png', 'Deejay.de': 'deejay.png', 'Hardwax': 'hardwax.png',
+  'Juno': 'juno.png', 'Turntable Lab': 'ttlab.png', 'Underground Vinyl': 'uvs.png',
+  'Decks.de': 'decks.png', 'Phonica': 'phonica.png', 'Yoyaku': 'yoyaku.png',
+  'Discogs': 'discogs.png'
 };
 
-// Style → color group mapping (styles get softer colors based on vibe)
-var styleColorMap = {
-  // Electronic/digital vibes
-  'House': 'style-electric', 'Deep House': 'style-electric', 'Techno': 'style-electric',
-  'Minimal': 'style-electric', 'Electro': 'style-electric', 'IDM': 'style-electric',
-  'Ambient': 'style-cool', 'Drone': 'style-cool', 'Experimental': 'style-cool',
-  'Downtempo': 'style-cool', 'Dub Techno': 'style-cool', 'Leftfield': 'style-cool',
-  // Hot/energetic vibes
-  'Breaks': 'style-hot', 'Breakbeat': 'style-hot', 'Drum N Bass': 'style-hot',
-  'Jungle': 'style-hot', 'Garage House': 'style-hot', 'Hardcore': 'style-hot',
-  'Bass Music': 'style-hot', 'Dubstep': 'style-hot',
-  // Jazz/soul warm vibes
-  'Acid Jazz': 'style-warm', 'Future Jazz': 'style-warm', 'Jazz-Funk': 'style-warm',
-  'Bop': 'style-warm', 'Cool Jazz': 'style-warm', 'Modal': 'style-warm',
-  'Contemporary Jazz': 'style-warm', 'Big Band': 'style-warm', 'Latin Jazz': 'style-warm',
-  'Fusion': 'style-warm', 'Soul': 'style-warm', 'Funk': 'style-warm',
-  // Earthy/organic vibes
-  'Dub': 'style-earthy', 'Folk': 'style-earthy', 'African': 'style-earthy',
-  'Latin': 'style-earthy', 'Bossanova': 'style-earthy', 'World': 'style-earthy',
-  'Acoustic': 'style-earthy', 'Conscious': 'style-earthy'
-};
-
-function getGenreColor(genre) { return genreColorMap[genre] || ''; }
-function getStyleColor(style) { return styleColorMap[style] || ''; }
+var MAX_STYLES = 20; // Show top N styles
 
 // Store class map
 const storeClassMap = {
@@ -282,15 +226,24 @@ function updateStats() {
     badge.querySelector('.count').textContent = '(' + count + ')';
   });
 
-  // Populate genre/style tags
+  // Populate genre/style tags with availability-based intensity
   var genreCounts = {};
+  var genreInStock = {};
   var styleCounts = {};
+  var styleInStock = {};
   resultsData.forEach(function(item) {
+    var itemHasStock = item.stores && item.stores.some(function(s) { return s.inStock && !s.linkOnly; });
     if (item.item.genres) item.item.genres.split(', ').forEach(function(g) {
-      if (g) genreCounts[g] = (genreCounts[g] || 0) + 1;
+      if (g) {
+        genreCounts[g] = (genreCounts[g] || 0) + 1;
+        if (itemHasStock) genreInStock[g] = (genreInStock[g] || 0) + 1;
+      }
     });
     if (item.item.styles) item.item.styles.split(', ').forEach(function(s) {
-      if (s) styleCounts[s] = (styleCounts[s] || 0) + 1;
+      if (s) {
+        styleCounts[s] = (styleCounts[s] || 0) + 1;
+        if (itemHasStock) styleInStock[s] = (styleInStock[s] || 0) + 1;
+      }
     });
   });
 
@@ -299,24 +252,34 @@ function updateStats() {
   var genreTagsEl = document.getElementById('genreTags');
   var styleTagsEl = document.getElementById('styleTags');
 
-  var genreKeys = Object.keys(genreCounts).sort();
-  var styleKeys = Object.keys(styleCounts).sort();
+  // Sort genres by count descending
+  var genreKeys = Object.keys(genreCounts).sort(function(a, b) { return genreCounts[b] - genreCounts[a]; });
+  // Top styles by count, capped
+  var styleKeys = Object.keys(styleCounts).sort(function(a, b) { return styleCounts[b] - styleCounts[a]; }).slice(0, MAX_STYLES);
 
   genreSection.style.display = genreKeys.length > 0 ? 'flex' : 'none';
   styleSection.style.display = styleKeys.length > 0 ? 'flex' : 'none';
 
+  // Calculate max in-stock for intensity scaling
+  var maxGenreStock = Math.max.apply(null, genreKeys.map(function(g) { return genreInStock[g] || 0; }).concat([1]));
+  var maxStyleStock = Math.max.apply(null, styleKeys.map(function(s) { return styleInStock[s] || 0; }).concat([1]));
+
   genreTagsEl.innerHTML = genreKeys.map(function(g) {
     var active = activeGenres.has(g) ? ' active' : '';
-    var colorAttr = getGenreColor(g) ? ' data-color="' + getGenreColor(g) + '"' : '';
-    return '<div class="tag-badge' + active + '" data-tag="' + escapeHtml(g) + '"' + colorAttr + '>' +
-      escapeHtml(g) + ' <span class="tag-count">' + genreCounts[g] + '</span></div>';
+    var stock = genreInStock[g] || 0;
+    var intensity = Math.round((stock / maxGenreStock) * 100);
+    return '<div class="tag-badge' + active + '" data-tag="' + escapeHtml(g) + '" data-intensity="' + intensity + '" style="--tag-intensity:' + intensity + '%">' +
+      escapeHtml(g) + ' <span class="tag-count">' + genreCounts[g] + '</span>' +
+      (stock > 0 ? '<span class="tag-stock">' + stock + ' avail</span>' : '') + '</div>';
   }).join('');
 
   styleTagsEl.innerHTML = styleKeys.map(function(s) {
     var active = activeStyles.has(s) ? ' active' : '';
-    var colorAttr = getStyleColor(s) ? ' data-color="' + getStyleColor(s) + '"' : '';
-    return '<div class="tag-badge' + active + '" data-tag="' + escapeHtml(s) + '"' + colorAttr + '>' +
-      escapeHtml(s) + ' <span class="tag-count">' + styleCounts[s] + '</span></div>';
+    var stock = styleInStock[s] || 0;
+    var intensity = Math.round((stock / maxStyleStock) * 100);
+    return '<div class="tag-badge' + active + '" data-tag="' + escapeHtml(s) + '" data-intensity="' + intensity + '" style="--tag-intensity:' + intensity + '%">' +
+      escapeHtml(s) + ' <span class="tag-count">' + styleCounts[s] + '</span>' +
+      (stock > 0 ? '<span class="tag-stock">' + stock + ' avail</span>' : '') + '</div>';
   }).join('');
 
   // Attach click handlers
@@ -334,12 +297,6 @@ function updateStats() {
       render();
     });
   });
-
-  // Show +more button if tags overflow
-  setTimeout(function() {
-    checkTagOverflow('genreTags', 'genreExpand');
-    checkTagOverflow('styleTags', 'styleExpand');
-  }, 10);
 }
 
 function getActiveStores() {
@@ -411,10 +368,12 @@ function render() {
         var name = storeDisplayName[s.store] || s.store;
 
         var shippingHtml = s.usShipping ? '<span class="shipping">+' + s.usShipping + ' US ship</span>' : '';
+        var logoFile = storeLogoMap[s.store] || '';
+        var logoHtml = logoFile ? '<img class="store-logo" src="img/' + logoFile + '" alt="">' : '';
 
         if (s.linkOnly) {
           return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + '" onclick="event.stopPropagation()">' +
-            '<span class="store-name">' + name + '</span>' +
+            '<span class="store-name">' + logoHtml + name + '</span>' +
             '<span class="match-info"><span class="link-only">Search manually</span></span>' +
             shippingHtml +
             '<span class="arrow">&rarr;</span></a>';
@@ -422,7 +381,7 @@ function render() {
 
         if (!s.inStock || !s.matches || s.matches.length === 0) {
           return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' out-of-stock" onclick="event.stopPropagation()">' +
-            '<span class="store-name">' + name + '</span>' +
+            '<span class="store-name">' + logoHtml + name + '</span>' +
             '<span class="match-info"><span class="not-found">Not found</span></span>' +
             '<span class="arrow">&rarr;</span></a>';
         }
@@ -431,7 +390,7 @@ function render() {
         var extras = s.matches.length > 1 ? ' +' + (s.matches.length - 1) + ' more' : '';
 
         return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + '" onclick="event.stopPropagation()">' +
-          '<span class="store-name">' + name + '</span>' +
+          '<span class="store-name">' + logoHtml + name + '</span>' +
           '<span class="match-info">' + escapeHtml(cheapest.title || '') + extras + '</span>' +
           '<span class="price">' + escapeHtml(cheapest.price || '') + '</span>' +
           shippingHtml +
@@ -452,14 +411,14 @@ function render() {
       var dShipping = item.discogsPrice.shipping ? '<span class="shipping">+' + item.discogsPrice.shipping + ' ship</span>' : '';
       var currSymbol = item.discogsPrice.currency === 'USD' ? '$' : item.discogsPrice.currency === 'GBP' ? '\u00a3' : item.discogsPrice.currency === 'JPY' ? '\u00a5' : '\u20ac';
       discogsPriceHtml = '<a href="' + (item.discogsPrice.marketplaceUrl || '#') + '" target="_blank" class="store-row discogs" onclick="event.stopPropagation()">' +
-        '<span class="store-name">Discogs</span>' +
+        '<span class="store-name"><img class="store-logo" src="img/discogs.png" alt="">Discogs</span>' +
         '<span class="match-info">' + item.discogsPrice.numForSale + ' for sale (ships to US)</span>' +
         '<span class="price">' + currSymbol + item.discogsPrice.lowestPrice.toFixed(2) + '</span>' +
         dShipping +
         '<span class="arrow">&rarr;</span></a>';
     } else if (item.discogsPrice) {
       discogsPriceHtml = '<a href="' + (item.discogsPrice.marketplaceUrl || '#') + '" target="_blank" class="store-row discogs out-of-stock" onclick="event.stopPropagation()">' +
-        '<span class="store-name">Discogs</span>' +
+        '<span class="store-name"><img class="store-logo" src="img/discogs.png" alt="">Discogs</span>' +
         '<span class="match-info"><span class="not-found">None for sale</span></span>' +
         '<span class="arrow">&rarr;</span></a>';
     }
@@ -695,7 +654,7 @@ function renderReleaseDetail(data, resultItem) {
     if (resultItem.discogsPrice && resultItem.discogsPrice.lowestPrice) {
       var currSymbol = resultItem.discogsPrice.currency === 'USD' ? '$' : resultItem.discogsPrice.currency === 'GBP' ? '\u00a3' : '\u20ac';
       html += '<a href="' + (resultItem.discogsPrice.marketplaceUrl || '#') + '" target="_blank" class="store-row discogs">' +
-        '<span class="store-name">Discogs</span>' +
+        '<span class="store-name"><img class="store-logo" src="img/discogs.png" alt="">Discogs</span>' +
         '<span class="match-info">' + resultItem.discogsPrice.numForSale + ' for sale</span>' +
         '<span class="price">' + currSymbol + resultItem.discogsPrice.lowestPrice.toFixed(2) + '</span>' +
         '<span class="arrow">&rarr;</span></a>';
