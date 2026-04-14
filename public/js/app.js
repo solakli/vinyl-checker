@@ -1103,6 +1103,7 @@ async function createYoutubePlaylist() {
 
 // Handle auth redirects (check URL params)
 var autoScanAfterAuth = false;
+var autoScanUsername = '';
 (function() {
   var params = new URLSearchParams(window.location.search);
   if (params.get('auth') === 'discogs') {
@@ -1110,7 +1111,8 @@ var autoScanAfterAuth = false;
     if (username) {
       document.getElementById('usernameInput').value = username;
       localStorage.setItem('vinyl-checker-username', username);
-      autoScanAfterAuth = true; // auto-scan after Discogs connect
+      autoScanAfterAuth = true;
+      autoScanUsername = username;
     }
     // Clean URL
     window.history.replaceState({}, '', window.location.pathname);
@@ -1122,11 +1124,26 @@ var autoScanAfterAuth = false;
   }
 })();
 
+// If returning from OAuth, show a connected state on the welcome page before scanning
+if (autoScanAfterAuth && autoScanUsername) {
+  var welcomeEl = document.getElementById('welcome');
+  var actionsEl = welcomeEl.querySelector('.welcome-actions');
+  if (actionsEl) {
+    actionsEl.innerHTML =
+      '<div class="welcome-connected">' +
+        '<div class="welcome-connected-icon">&#10003;</div>' +
+        '<h3>Connected as ' + autoScanUsername + '</h3>' +
+        '<p>Starting wantlist scan...</p>' +
+      '</div>';
+  }
+}
+
 // Init — load existing results first, then check auth
 loadExisting().then(function() {
   return checkAuthStatus();
 }).then(function() {
   if (autoScanAfterAuth) {
-    startScan(false);
+    // Small delay so user sees the "Connected" state
+    setTimeout(function() { startScan(false); }, 1200);
   }
 });
