@@ -506,7 +506,7 @@ app.get('/api/scan/:username', function (req, res) {
             res.write('event: ' + type + '\n');
             res.write('data: ' + JSON.stringify(data) + '\n\n');
             // End response when scan is done or errors
-            if (type === 'done' || type === 'error') {
+            if (type === 'done' || type === 'error' || type === 'scan-error') {
                 clearInterval(keepAlive);
                 closed = true;
                 res.end();

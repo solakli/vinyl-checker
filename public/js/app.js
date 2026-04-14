@@ -240,7 +240,7 @@ function startScan(force) {
     render();
   });
 
-  evtSource.addEventListener('error', function(e) {
+  evtSource.addEventListener('scan-error', function(e) {
     try {
       var data = JSON.parse(e.data);
       var msg = data.message || 'Unknown error';
@@ -263,8 +263,18 @@ function startScan(force) {
     document.getElementById('scanBtn').textContent = 'Check Wantlist';
     document.getElementById('liveBadge').style.display = 'none';
     // Keep progress section visible on error so user sees the message
-    // (don't remove 'active' class)
   });
+
+  // Handle native SSE connection errors
+  evtSource.onerror = function() {
+    if (!isScanning) return;
+    evtSource.close();
+    stopLoadingMessages();
+    isScanning = false;
+    document.getElementById('scanBtn').disabled = false;
+    document.getElementById('scanBtn').textContent = 'Check Wantlist';
+    document.getElementById('liveBadge').style.display = 'none';
+  };
 }
 
 // Try to load cached results from DB on page load
