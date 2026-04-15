@@ -281,12 +281,22 @@ function startScan(force) {
     isScanning = false;
     document.getElementById('scanBtn').disabled = false;
     document.getElementById('scanBtn').textContent = 'Check Wantlist';
-    if (isOAuthed) document.getElementById('userBarRescan').style.display = 'inline-block';
+    if (isOAuthed) {
+      document.getElementById('userBarRescan').style.display = 'inline-block';
+    } else {
+      document.getElementById('rescanBtn').style.display = 'inline-block';
+    }
     document.getElementById('liveBadge').style.display = 'none';
     document.getElementById('progressSection').classList.remove('active');
-    // Load whatever results we have cached (SSE drop doesn't mean no data)
+    // Show connection lost message
+    var partial = resultsData.length > 0 ? ' (' + resultsData.length + ' items loaded)' : '';
+    document.getElementById('timestamp').textContent = 'Connection lost \u2014 scan may still be running on server' + partial;
+    // Load whatever results we have cached
     if (resultsData.length === 0) {
       loadResultsForUser(username);
+    } else {
+      updateStats();
+      render();
     }
   };
 }
@@ -321,7 +331,10 @@ async function loadResultsForUser(username) {
         fetchChanges(username);
       }
     }
-  } catch(e) {}
+  } catch(e) {
+    console.error('Failed to load results:', e);
+    document.getElementById('timestamp').textContent = 'Failed to load results \u2014 try refreshing the page';
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -629,6 +642,14 @@ function render() {
 
   if (filtered.length === 0) {
     grid.innerHTML = '';
+    if (resultsData.length === 0) {
+      noResults.textContent = 'No wantlist items found \u2014 add records to your Discogs wantlist and scan again';
+    } else if (inStockOnly) {
+      var totalInStock = resultsData.filter(function(i) { return i.stores.some(function(s) { return s.inStock && !s.linkOnly; }); }).length;
+      noResults.textContent = totalInStock === 0 ? 'Nothing in stock right now \u2014 we check daily and will show new finds here' : 'No in-stock items match your current store/genre filters';
+    } else {
+      noResults.textContent = 'No items match your filters';
+    }
     noResults.style.display = 'block';
     return;
   }
@@ -1313,6 +1334,7 @@ async function disconnectDiscogs() {
     await fetch('api/logout', { method: 'POST' });
   } catch(e) {}
   // Clear local state
+  isOAuthed = false;
   localStorage.removeItem('vinyl-checker-username');
   // Reset UI to welcome
   document.getElementById('userBar').style.display = 'none';
@@ -1325,6 +1347,13 @@ async function disconnectDiscogs() {
   document.getElementById('stats').innerHTML = '';
   document.getElementById('timestamp').textContent = '';
   document.getElementById('rescanBtn').style.display = 'none';
+  document.getElementById('userBarRescan').style.display = 'none';
+  // Clear changes banner
+  var changesBanner = document.getElementById('changesBanner');
+  if (changesBanner) changesBanner.remove();
+  // Clear genre/style filters
+  document.getElementById('genreSection').style.display = 'none';
+  document.getElementById('styleSection').style.display = 'none';
   resultsData = [];
   activeGenres = new Set();
   activeStyles = new Set();
@@ -1427,7 +1456,12 @@ var autoScanUsername = '';
   } else if (params.get('auth') === 'youtube') {
     window.history.replaceState({}, '', window.location.pathname);
   } else if (params.get('auth_error')) {
-    document.getElementById('authStatus').textContent = 'Auth error: ' + params.get('auth_error');
+    var errCode = params.get('auth_error');
+    var errMsg = errCode === 'denied' ? 'You declined the Discogs authorization \u2014 click Connect to try again' :
+                 errCode === 'not_configured' ? 'Discogs OAuth is not configured on this server' :
+                 'Connection failed: ' + errCode + ' \u2014 please try again';
+    document.getElementById('authStatus').textContent = errMsg;
+    document.getElementById('authStatus').style.cssText = 'display:block;color:#ff6b6b;font-size:13px;margin-top:12px;text-align:center';
     window.history.replaceState({}, '', window.location.pathname);
   }
 })();
@@ -1450,6 +1484,7 @@ if (autoScanAfterAuth && autoScanUsername) {
 checkAuthStatus().then(function() {
   if (autoScanAfterAuth) {
     // Just came from OAuth — show connected splash, then auto-scan
+    document.getElementById('welcome').style.display = '';
     setTimeout(function() { startScan(false); }, 1200);
   } else if (authState && authState.discogs && authState.discogs.connected) {
     // Already connected — load cached results directly
@@ -1461,6 +1496,7 @@ checkAuthStatus().then(function() {
       document.getElementById('usernameInput').value = savedUsername;
       return loadExisting(savedUsername);
     }
+    // No saved state — show welcome page
+    document.getElementById('welcome').style.display = '';
   }
-  // No saved state — welcome page stays visible
 });
