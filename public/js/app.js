@@ -2,6 +2,7 @@
 
 let resultsData = [];
 let isScanning = false;
+let isOAuthed = false; // Track if user connected via Discogs OAuth
 let activeGenres = new Set();
 let activeStyles = new Set();
 let currentFilteredIds = []; // Track filtered item IDs for modal navigation
@@ -153,7 +154,9 @@ function startScan(force) {
   document.getElementById('liveBadge').style.display = 'inline-flex';
   document.getElementById('progressSection').classList.add('active');
   document.getElementById('welcome').style.display = 'none';
-  document.getElementById('scanSection').style.display = 'flex';
+  if (!isOAuthed) document.getElementById('scanSection').style.display = 'flex';
+  // Hide rescan in user bar during scan
+  if (isOAuthed) document.getElementById('userBarRescan').style.display = 'none';
   document.getElementById('controls').style.display = 'flex';
   document.getElementById('grid').innerHTML = '';
   document.getElementById('noResults').style.display = 'none';
@@ -224,7 +227,11 @@ function startScan(force) {
     isScanning = false;
     document.getElementById('scanBtn').disabled = false;
     document.getElementById('scanBtn').textContent = 'Check Wantlist';
-    document.getElementById('rescanBtn').style.display = 'inline-block';
+    if (isOAuthed) {
+      document.getElementById('userBarRescan').style.display = 'inline-block';
+    } else {
+      document.getElementById('rescanBtn').style.display = 'inline-block';
+    }
     document.getElementById('liveBadge').style.display = 'none';
     document.getElementById('progressSection').classList.remove('active');
     var msg = data.checked > 0
@@ -258,6 +265,7 @@ function startScan(force) {
     isScanning = false;
     document.getElementById('scanBtn').disabled = false;
     document.getElementById('scanBtn').textContent = 'Check Wantlist';
+    if (isOAuthed) document.getElementById('userBarRescan').style.display = 'inline-block';
     document.getElementById('liveBadge').style.display = 'none';
     // Try to load cached results even on error (user may have previous scan data)
     if (resultsData.length === 0) {
@@ -273,6 +281,7 @@ function startScan(force) {
     isScanning = false;
     document.getElementById('scanBtn').disabled = false;
     document.getElementById('scanBtn').textContent = 'Check Wantlist';
+    if (isOAuthed) document.getElementById('userBarRescan').style.display = 'inline-block';
     document.getElementById('liveBadge').style.display = 'none';
     document.getElementById('progressSection').classList.remove('active');
     // Load whatever results we have cached (SSE drop doesn't mean no data)
@@ -297,9 +306,13 @@ async function loadResultsForUser(username) {
       if (data.results && data.results.length > 0) {
         resultsData = data.results;
         document.getElementById('welcome').style.display = 'none';
-        document.getElementById('scanSection').style.display = 'flex';
+        if (!isOAuthed) {
+          document.getElementById('scanSection').style.display = 'flex';
+          document.getElementById('rescanBtn').style.display = 'inline-block';
+        } else {
+          document.getElementById('userBarRescan').style.display = 'inline-block';
+        }
         document.getElementById('controls').style.display = 'flex';
-        document.getElementById('rescanBtn').style.display = 'inline-block';
         var lastScan = data.lastScan ? new Date(data.lastScan).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'unknown';
         document.getElementById('timestamp').textContent = 'Cached \u00b7 Last full scan: ' + lastScan;
         updateStats();
@@ -1260,18 +1273,15 @@ async function checkAuthStatus() {
     var userBar = document.getElementById('userBar');
     var connectHeader = document.getElementById('connectDiscogsHeader');
 
-    // Discogs connected — show user bar + scan section
+    // Discogs connected — show user bar, hide redundant scan section
     if (data.discogs && data.discogs.connected) {
+      isOAuthed = true;
       userBar.style.display = 'flex';
       connectHeader.style.display = 'none';
       document.getElementById('userBarName').textContent = data.discogs.username;
-      document.getElementById('scanSection').style.display = 'flex';
-
-      // Auto-fill username input if empty
-      var usernameInput = document.getElementById('usernameInput');
-      if (!usernameInput.value) {
-        usernameInput.value = data.discogs.username;
-      }
+      // Set username for scan functions but don't show the input
+      document.getElementById('usernameInput').value = data.discogs.username;
+      document.getElementById('scanSection').style.display = 'none';
     } else if (data.discogsOAuthEnabled) {
       // Not connected but OAuth available — show connect button in header
       // (only when results are loaded, i.e. past the welcome page)

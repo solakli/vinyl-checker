@@ -32,6 +32,7 @@
     <div class="user-bar" id="userBar" style="display:none">
       <img class="store-logo" src="img/discogs.png" alt="" style="width:14px;height:14px;filter:none;opacity:0.8">
       <span class="user-bar-name" id="userBarName"></span>
+      <button class="scan-btn rescan-btn" id="userBarRescan" style="display:none" onclick="startScan(true)">Rescan All</button>
       <button class="user-bar-btn" id="disconnectBtn" onclick="disconnectDiscogs()">Disconnect</button>
       <span class="user-bar-sep">|</span>
       <button class="auth-btn youtube-auth" id="connectYoutube" style="display:none" onclick="window.location.href='api/auth/google'">
