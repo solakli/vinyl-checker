@@ -1133,37 +1133,85 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'ArrowRight') navigateModal(1);
 });
 
-// Touch swipe navigation for modal
+// Touch swipe navigation for modal — card follows finger
 (function() {
   var overlay = document.getElementById('modalOverlay');
   var touchStartX = 0;
   var touchStartY = 0;
   var touchStartTime = 0;
-  var swiping = false;
+  var tracking = false;
+  var locked = false; // locked to horizontal once determined
 
   overlay.addEventListener('touchstart', function(e) {
-    if (!currentModalId) return;
+    if (!currentModalId || _navLock) return;
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
     touchStartTime = Date.now();
-    swiping = true;
+    tracking = true;
+    locked = false;
+    var mc = document.querySelector('.modal-content');
+    if (mc) mc.style.transition = 'none'; // disable transition during drag
+  }, { passive: true });
+
+  overlay.addEventListener('touchmove', function(e) {
+    if (!tracking || !currentModalId) return;
+    var dx = e.touches[0].clientX - touchStartX;
+    var dy = e.touches[0].clientY - touchStartY;
+
+    // Determine direction lock on first significant movement
+    if (!locked && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+      if (Math.abs(dy) > Math.abs(dx)) {
+        // Vertical scroll — stop tracking
+        tracking = false;
+        var mc = document.querySelector('.modal-content');
+        if (mc) { mc.style.transform = ''; mc.style.opacity = ''; mc.style.transition = ''; }
+        return;
+      }
+      locked = true;
+    }
+
+    if (locked) {
+      var mc = document.querySelector('.modal-content');
+      if (mc) {
+        var opacity = Math.max(0.3, 1 - Math.abs(dx) / 400);
+        mc.style.transform = 'translateX(' + dx + 'px)';
+        mc.style.opacity = opacity;
+      }
+    }
   }, { passive: true });
 
   overlay.addEventListener('touchend', function(e) {
-    if (!swiping || !currentModalId) return;
-    swiping = false;
-    var touchEndX = e.changedTouches[0].clientX;
-    var touchEndY = e.changedTouches[0].clientY;
-    var dx = touchEndX - touchStartX;
-    var dy = touchEndY - touchStartY;
+    if (!tracking || !currentModalId) { tracking = false; return; }
+    tracking = false;
+    var mc = document.querySelector('.modal-content');
+    var dx = e.changedTouches[0].clientX - touchStartX;
     var elapsed = Date.now() - touchStartTime;
 
-    // Must be a horizontal swipe: >60px, mostly horizontal, within 500ms
-    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5 && elapsed < 500) {
-      if (dx > 0) {
-        navigateModal(-1); // swipe right = previous
-      } else {
-        navigateModal(1); // swipe left = next
+    // Reset transition
+    if (mc) mc.style.transition = '';
+
+    // Threshold: >80px drag or fast flick (>40px in <200ms)
+    var isSwipe = (Math.abs(dx) > 80) || (Math.abs(dx) > 40 && elapsed < 200);
+
+    if (isSwipe && locked) {
+      // Snap card off screen, then navigate
+      if (mc) {
+        mc.style.transition = 'transform 0.15s ease, opacity 0.15s ease';
+        mc.style.transform = 'translateX(' + (dx > 0 ? '120%' : '-120%') + ')';
+        mc.style.opacity = '0';
+      }
+      var direction = dx > 0 ? -1 : 1;
+      setTimeout(function() {
+        if (mc) { mc.style.transform = ''; mc.style.opacity = ''; mc.style.transition = ''; }
+        navigateModal(direction);
+      }, 150);
+    } else {
+      // Snap back
+      if (mc) {
+        mc.style.transition = 'transform 0.2s ease, opacity 0.2s ease';
+        mc.style.transform = '';
+        mc.style.opacity = '';
+        setTimeout(function() { if (mc) mc.style.transition = ''; }, 200);
       }
     }
   }, { passive: true });
