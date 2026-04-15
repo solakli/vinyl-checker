@@ -309,51 +309,45 @@ var TEST_ITEMS = [
 ];
 
 app.get('/api/test-stores', async function (req, res) {
-    const puppeteer = require('puppeteer');
-    const scrapers = require('./lib/scrapers');
+    var puppeteerExtra = require('puppeteer-extra');
+    var StealthPlugin = require('puppeteer-extra-plugin-stealth');
+    puppeteerExtra.use(StealthPlugin());
+    var scrapers = require('./lib/scrapers');
     var testIdx = parseInt(req.query.test) || 0;
     var testItem = TEST_ITEMS[testIdx % TEST_ITEMS.length];
     var UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36';
 
     try {
-        var browser = await puppeteer.launch({
+        var browser = await puppeteerExtra.launch({
             headless: 'new',
             protocolTimeout: 60000,
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
         });
         var results = {};
 
-        // Helper: create a configured page
-        async function makePage(blockStylesheets) {
-            var p = await browser.newPage();
-            p.setDefaultNavigationTimeout(15000);
-            p.setDefaultTimeout(15000);
-            await p.setUserAgent(UA);
-            await p.setRequestInterception(true);
-            p.on('request', function (r) {
-                var t = r.resourceType();
-                var blocked = ['image', 'media', 'font'];
-                if (blockStylesheets) blocked.push('stylesheet');
-                blocked.indexOf(t) !== -1 ? r.abort() : r.continue();
-            });
-            return p;
-        }
-
-        // Test scraped stores
+        // Test scraped stores — one page per store, no request interception (stealth needs clean state)
         var stores = [
-            { name: 'deejay', fn: scrapers.checkDeejay, blockCss: true },
-            { name: 'hhv', fn: scrapers.checkHHV, blockCss: false },
-            { name: 'juno', fn: scrapers.checkJuno, blockCss: true },
-            { name: 'hardwax', fn: scrapers.checkHardwax, blockCss: true },
-            { name: 'turntablelab', fn: scrapers.checkTurntableLab, blockCss: true },
-            { name: 'undergroundvinyl', fn: scrapers.checkUndergroundVinyl, blockCss: true }
+            { name: 'Deejay.de', fn: scrapers.checkDeejay },
+            { name: 'HHV', fn: scrapers.checkHHV, warmup: true },
+            { name: 'Juno', fn: scrapers.checkJuno },
+            { name: 'Hardwax', fn: scrapers.checkHardwax },
+            { name: 'Turntable Lab', fn: scrapers.checkTurntableLab },
+            { name: 'Underground Vinyl', fn: scrapers.checkUndergroundVinyl }
         ];
 
         for (var i = 0; i < stores.length; i++) {
             var store = stores[i];
             var startTime = Date.now();
             try {
-                var page = await makePage(store.blockCss);
+                var page = await browser.newPage();
+                page.setDefaultNavigationTimeout(15000);
+                page.setDefaultTimeout(15000);
+                await page.setUserAgent(UA);
+                // HHV needs warmup visit to establish session
+                if (store.warmup) {
+                    await page.goto('https://www.hhv.de/', { waitUntil: 'networkidle2', timeout: 15000 }).catch(function () {});
+                    await new Promise(function (r) { setTimeout(r, 2000); });
+                }
                 var result = await store.fn(page, testItem);
                 var elapsed = Date.now() - startTime;
                 results[store.name] = {
@@ -370,11 +364,11 @@ app.get('/api/test-stores', async function (req, res) {
             }
         }
 
-        // Test link-only stores (just verify URLs are valid)
+        // Link-only stores
         var linkStores = [
-            { name: 'phonica', fn: scrapers.getPhonicaLink },
-            { name: 'yoyaku', fn: scrapers.getYoyakuLink },
-            { name: 'decks', fn: scrapers.getDecksLink }
+            { name: 'Decks.de', fn: scrapers.getDecksLink },
+            { name: 'Phonica', fn: scrapers.getPhonicaLink },
+            { name: 'Yoyaku', fn: scrapers.getYoyakuLink }
         ];
         linkStores.forEach(function (ls) {
             var link = ls.fn(testItem);
@@ -383,7 +377,6 @@ app.get('/api/test-stores', async function (req, res) {
 
         await browser.close();
 
-        // Summary
         var scraped = Object.keys(results).filter(function (k) { return results[k].status !== 'link_only'; });
         var healthy = scraped.filter(function (k) { return results[k].status === 'found' || results[k].status === 'no_match'; });
         var broken = scraped.filter(function (k) { return results[k].status === 'error' || results[k].status === 'crash'; });
@@ -406,30 +399,24 @@ app.get('/api/test-stores', async function (req, res) {
     }
 });
 
-// Full validation: test all stores with all test items
+// Full validation: test all 6 scraped stores with all test items
 app.get('/api/validate', async function (req, res) {
-    const puppeteer = require('puppeteer');
-    const scrapers = require('./lib/scrapers');
+    var puppeteerExtra = require('puppeteer-extra');
+    var StealthPlugin = require('puppeteer-extra-plugin-stealth');
+    puppeteerExtra.use(StealthPlugin());
+    var scrapers = require('./lib/scrapers');
     var UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36';
 
     try {
-        var browser = await puppeteer.launch({
+        var browser = await puppeteerExtra.launch({
             headless: 'new',
             protocolTimeout: 60000,
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
         });
 
-        var page = await browser.newPage();
-        await page.setUserAgent(UA);
-        await page.setRequestInterception(true);
-        page.on('request', function (r) {
-            var t = r.resourceType();
-            (t === 'image' || t === 'media' || t === 'font') ? r.abort() : r.continue();
-        });
-
         var storeChecks = [
             { name: 'Deejay.de', fn: scrapers.checkDeejay },
-            { name: 'HHV', fn: scrapers.checkHHV },
+            { name: 'HHV', fn: scrapers.checkHHV, warmup: true },
             { name: 'Juno', fn: scrapers.checkJuno },
             { name: 'Hardwax', fn: scrapers.checkHardwax },
             { name: 'Turntable Lab', fn: scrapers.checkTurntableLab },
@@ -441,6 +428,14 @@ app.get('/api/validate', async function (req, res) {
             var store = storeChecks[s];
             report[store.name] = { tests: [], healthy: true, avgResponseTime: 0 };
             var totalTime = 0;
+
+            // Each store gets its own page (no interception conflicts)
+            var page = await browser.newPage();
+            await page.setUserAgent(UA);
+            if (store.warmup) {
+                await page.goto('https://www.hhv.de/', { waitUntil: 'networkidle2', timeout: 15000 }).catch(function () {});
+                await new Promise(function (r) { setTimeout(r, 2000); });
+            }
 
             for (var t = 0; t < TEST_ITEMS.length; t++) {
                 var item = TEST_ITEMS[t];
@@ -462,15 +457,14 @@ app.get('/api/validate', async function (req, res) {
                     report[store.name].tests.push({ query: item.searchQuery, error: e.message });
                     report[store.name].healthy = false;
                 }
-                // Delay between tests
                 await new Promise(function (r) { setTimeout(r, 1000); });
             }
             report[store.name].avgResponseTime = Math.round(totalTime / TEST_ITEMS.length) + 'ms';
+            await page.close();
         }
 
         await browser.close();
 
-        // Overall health
         var storeNames = Object.keys(report);
         var healthyCount = storeNames.filter(function (n) { return report[n].healthy; }).length;
 
