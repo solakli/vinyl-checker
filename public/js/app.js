@@ -108,7 +108,7 @@ function startLoadingMessages() {
   var msgEl = document.getElementById('progressCurrent');
   // Show first message immediately
   lastLoadingMsgIndex = Math.floor(Math.random() * loadingMessages.length);
-  msgEl.innerHTML = '<span class="loading-msg">' + loadingMessages[lastLoadingMsgIndex] + '</span>';
+  msgEl.innerHTML = '<span class="progress-item-name" style="font-style:italic;color:var(--gold);opacity:0.7">' + loadingMessages[lastLoadingMsgIndex] + '</span>';
   // Rotate every 3 seconds
   loadingMessageInterval = setInterval(function() {
     var idx;
@@ -116,7 +116,7 @@ function startLoadingMessages() {
     lastLoadingMsgIndex = idx;
     msgEl.classList.add('msg-fade');
     setTimeout(function() {
-      msgEl.innerHTML = '<span class="loading-msg">' + loadingMessages[idx] + '</span>';
+      msgEl.innerHTML = '<span class="progress-item-name" style="font-style:italic;color:var(--gold);opacity:0.7">' + loadingMessages[idx] + '</span>';
       msgEl.classList.remove('msg-fade');
     }, 200);
   }, 3000);
@@ -202,7 +202,7 @@ function startScan(force) {
     var suffix = data.fromCache ? ' (cached)' : (data.inStock ? ' ✓' : '');
     var itemText = data.item.artist + ' — ' + data.item.title + suffix;
     var currentMsg = lastLoadingMsgIndex >= 0 ? loadingMessages[lastLoadingMsgIndex] : '';
-    document.getElementById('progressCurrent').innerHTML = '<span class="progress-item-name">' + itemText + '</span>' +
+    document.getElementById('progressCurrent').innerHTML = '<span class="progress-item-name">' + escapeHtml(itemText) + '</span>' +
       (currentMsg ? '<span class="loading-msg">' + currentMsg + '</span>' : '');
 
     // Throttle renders during scan to avoid jank on large wantlists

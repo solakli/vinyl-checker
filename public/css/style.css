@@ -275,38 +275,29 @@ body {
 }
 
 .progress-current {
-  color: var(--text-sec);
-  font-size: 11px;
-  font-weight: 300;
-  margin-top: 4px;
-  letter-spacing: 0.5px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
+  margin-top: 8px;
   transition: opacity 0.2s ease;
 }
 .progress-current.msg-fade { opacity: 0.3; }
 .progress-current .progress-item-name {
-  flex: 1;
-  min-width: 0;
+  display: block;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .progress-current .loading-msg {
+  display: block;
   color: var(--gold);
-  font-size: 10px;
+  font-size: 13px;
   font-style: italic;
-  font-weight: 300;
+  font-weight: 400;
   letter-spacing: 0.8px;
-  white-space: nowrap;
-  opacity: 0.5;
-  flex-shrink: 0;
-}
-.progress-current .loading-msg::before {
-  content: '·  ';
-  opacity: 0.4;
+  margin-top: 4px;
+  opacity: 0.7;
 }
 
 /* CONTROLS */
@@ -1699,7 +1690,8 @@ body.light .changes-details { border-top-color: rgba(0,0,0,0.06); }
   .progress-section { padding: 6px 0; }
   .progress-bar-track { height: 3px; }
   .progress-info { font-size: 10px; }
-  .progress-current { font-size: 10px; }
+  .progress-current .progress-item-name { font-size: 13px; }
+  .progress-current .loading-msg { font-size: 11px; }
   .live-badge { font-size: 9px; padding: 2px 6px; }
 
   /* Collapsible filters on mobile */
