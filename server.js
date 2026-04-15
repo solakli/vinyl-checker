@@ -10,8 +10,27 @@
  * Open: http://localhost:3000
  */
 
-const express = require('express');
+// Load .env if present (no dependency needed)
+const fs = require('fs');
 const path = require('path');
+try {
+    var envPath = path.join(__dirname, '.env');
+    if (fs.existsSync(envPath)) {
+        fs.readFileSync(envPath, 'utf8').split('\n').forEach(function(line) {
+            line = line.trim();
+            if (line && !line.startsWith('#')) {
+                var eq = line.indexOf('=');
+                if (eq > 0) {
+                    var key = line.substring(0, eq).trim();
+                    var val = line.substring(eq + 1).trim();
+                    if (!process.env[key]) process.env[key] = val;
+                }
+            }
+        });
+    }
+} catch(e) {}
+
+const express = require('express');
 const db = require('./db');
 const discogs = require('./lib/discogs');
 const scanner = require('./lib/scanner');

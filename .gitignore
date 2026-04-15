@@ -4,3 +4,4 @@ results*.json
 *.log
 .DS_Store
 vinyl-checker.db*
+.env
