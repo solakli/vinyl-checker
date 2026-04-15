@@ -1185,6 +1185,52 @@ body.light .tag-badge .tag-stock { color: var(--gold); }
 
 .modal-close:hover { color: var(--gold); background: rgba(255,255,255,0.05); }
 
+/* Modal position indicator (subtle) */
+.modal-nav-indicator {
+  text-align: center;
+  padding: 10px 0 0;
+  font-size: 9px;
+  font-weight: 300;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--text-muted);
+  opacity: 0.5;
+  user-select: none;
+}
+
+/* Swipe slide transitions */
+.modal-content {
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.modal-content.slide-out-left {
+  transform: translateX(-40px);
+  opacity: 0;
+}
+
+.modal-content.slide-out-right {
+  transform: translateX(40px);
+  opacity: 0;
+}
+
+.modal-content.slide-in-right {
+  animation: slideInRight 0.25s ease;
+}
+
+.modal-content.slide-in-left {
+  animation: slideInLeft 0.25s ease;
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(40px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slideInLeft {
+  from { transform: translateX(-40px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
 .modal-hero {
   display: flex;
   gap: 24px;

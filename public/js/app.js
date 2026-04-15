@@ -4,6 +4,8 @@ let resultsData = [];
 let isScanning = false;
 let activeGenres = new Set();
 let activeStyles = new Set();
+let currentFilteredIds = []; // Track filtered item IDs for modal navigation
+let currentModalId = null; // Currently open modal item ID
 
 // Store logo filenames
 var storeLogoMap = {
@@ -620,6 +622,9 @@ function render() {
 
   noResults.style.display = 'none';
 
+  // Store filtered IDs for modal navigation (swipe prev/next)
+  currentFilteredIds = filtered.map(function(item) { return item.item.id; });
+
   grid.innerHTML = filtered.map(function(item) {
     var visibleStores = item.stores.filter(function(s) { return activeStores.indexOf(s.store) !== -1; });
     var inStockCount = visibleStores.filter(function(s) { return s.inStock && !s.linkOnly; }).length;
@@ -745,10 +750,45 @@ function escapeHtml(str) {
 // RELEASE DETAIL MODAL
 // ═══════════════════════════════════════════════════════════════
 
+var _navLock = false;
+function navigateModal(direction) {
+  if (_navLock || !currentModalId || currentFilteredIds.length === 0) return;
+  var idx = currentFilteredIds.indexOf(currentModalId);
+  if (idx === -1) return;
+  var newIdx = idx + direction;
+  if (newIdx < 0) newIdx = currentFilteredIds.length - 1;
+  if (newIdx >= currentFilteredIds.length) newIdx = 0;
+
+  _navLock = true;
+  var mc = document.querySelector('.modal-content');
+  var slideOut = direction > 0 ? 'slide-out-left' : 'slide-out-right';
+  var slideIn = direction > 0 ? 'slide-in-right' : 'slide-in-left';
+
+  if (mc) mc.classList.add(slideOut);
+
+  setTimeout(function() {
+    // Remove slide-out before opening new detail
+    if (mc) mc.classList.remove('slide-out-left', 'slide-out-right');
+    openReleaseDetail(currentFilteredIds[newIdx]);
+    // Re-grab modal (same element, new content)
+    var mc2 = document.querySelector('.modal-content');
+    if (mc2) {
+      mc2.classList.add(slideIn);
+      setTimeout(function() {
+        mc2.classList.remove('slide-in-left', 'slide-in-right');
+        _navLock = false;
+      }, 250);
+    } else {
+      _navLock = false;
+    }
+  }, 150);
+}
+
 function openReleaseDetail(discogsId) {
   var overlay = document.getElementById('modalOverlay');
   var content = document.getElementById('modalBody');
 
+  currentModalId = discogsId;
   overlay.classList.add('active');
   document.body.style.overflow = 'hidden';
 
@@ -777,6 +817,7 @@ function closeModal() {
   var overlay = document.getElementById('modalOverlay');
   overlay.classList.remove('active');
   document.body.style.overflow = '';
+  currentModalId = null;
 
   // Stop any playing videos
   var iframes = overlay.querySelectorAll('iframe');
@@ -785,6 +826,13 @@ function closeModal() {
 
 function renderReleaseDetail(data, resultItem) {
   var content = document.getElementById('modalBody');
+
+  // Subtle position indicator (no buttons — swipe to navigate)
+  var navIdx = currentModalId ? currentFilteredIds.indexOf(currentModalId) : -1;
+  var navHtml = '';
+  if (currentFilteredIds.length > 1 && navIdx !== -1) {
+    navHtml = '<div class="modal-nav-indicator">' + (navIdx + 1) + ' / ' + currentFilteredIds.length + '</div>';
+  }
 
   // Album art: prefer high-res from release details, fall back to thumb
   var albumArt = '';
@@ -832,7 +880,7 @@ function renderReleaseDetail(data, resultItem) {
   }
 
   // Hero section
-  var html = '<div class="modal-hero">';
+  var html = navHtml + '<div class="modal-hero">';
   if (albumArt) {
     html += '<div class="modal-art-wrap">' +
       '<img class="modal-album-art" src="' + escapeHtml(albumArt) + '" alt="">' +
@@ -1079,8 +1127,47 @@ document.getElementById('modalOverlay').addEventListener('click', function(e) {
   if (e.target === this) closeModal();
 });
 document.addEventListener('keydown', function(e) {
+  if (!currentModalId) return;
   if (e.key === 'Escape') closeModal();
+  if (e.key === 'ArrowLeft') navigateModal(-1);
+  if (e.key === 'ArrowRight') navigateModal(1);
 });
+
+// Touch swipe navigation for modal
+(function() {
+  var overlay = document.getElementById('modalOverlay');
+  var touchStartX = 0;
+  var touchStartY = 0;
+  var touchStartTime = 0;
+  var swiping = false;
+
+  overlay.addEventListener('touchstart', function(e) {
+    if (!currentModalId) return;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    touchStartTime = Date.now();
+    swiping = true;
+  }, { passive: true });
+
+  overlay.addEventListener('touchend', function(e) {
+    if (!swiping || !currentModalId) return;
+    swiping = false;
+    var touchEndX = e.changedTouches[0].clientX;
+    var touchEndY = e.changedTouches[0].clientY;
+    var dx = touchEndX - touchStartX;
+    var dy = touchEndY - touchStartY;
+    var elapsed = Date.now() - touchStartTime;
+
+    // Must be a horizontal swipe: >60px, mostly horizontal, within 500ms
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5 && elapsed < 500) {
+      if (dx > 0) {
+        navigateModal(-1); // swipe right = previous
+      } else {
+        navigateModal(1); // swipe left = next
+      }
+    }
+  }, { passive: true });
+})();
 
 // Mobile filter toggle
 document.getElementById('filterToggle').addEventListener('click', function() {
