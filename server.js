@@ -686,6 +686,131 @@ app.post('/api/changes/dismiss', function (req, res) {
 });
 
 // ═══════════════════════════════════════════════════════════════
+// HEALTH & ADMIN ENDPOINTS
+// ═══════════════════════════════════════════════════════════════
+
+// Health check — background job monitoring + rich analytics
+app.get('/api/health', function (req, res) {
+    try {
+        var d = db.getDb();
+
+        // Users summary
+        var users = d.prepare('SELECT id, username, last_full_scan, last_daily_rescan FROM users').all();
+        var userSummary = users.map(function (u) {
+            var wantlistCount = d.prepare('SELECT COUNT(*) as c FROM wantlist WHERE user_id = ? AND active = 1').get(u.id).c;
+            var resultCount = d.prepare('SELECT COUNT(DISTINCT wantlist_id) as c FROM store_results WHERE wantlist_id IN (SELECT id FROM wantlist WHERE user_id = ?)').get(u.id).c;
+            var inStockCount = d.prepare('SELECT COUNT(*) as c FROM store_results WHERE in_stock = 1 AND wantlist_id IN (SELECT id FROM wantlist WHERE user_id = ? AND active = 1)').get(u.id).c;
+            var changeCount = d.prepare('SELECT COUNT(*) as c FROM scan_changes WHERE user_id = ?').get(u.id).c;
+            var undismissedChanges = d.prepare('SELECT COUNT(*) as c FROM scan_changes WHERE user_id = ? AND dismissed = 0').get(u.id).c;
+            return {
+                id: u.id, username: u.username,
+                wantlistItems: wantlistCount, checkedItems: resultCount,
+                inStockResults: inStockCount, totalChanges: changeCount,
+                undismissedChanges: undismissedChanges,
+                lastFullScan: u.last_full_scan || null,
+                lastDailyRescan: u.last_daily_rescan || null,
+                scanAge: u.last_full_scan ? Math.round((Date.now() - new Date(u.last_full_scan).getTime()) / 3600000) + 'h ago' : 'never'
+            };
+        });
+
+        // Store results breakdown
+        var storeStats = d.prepare("SELECT store, COUNT(*) as total, SUM(CASE WHEN in_stock=1 THEN 1 ELSE 0 END) as in_stock, SUM(CASE WHEN error IS NOT NULL AND error != '' THEN 1 ELSE 0 END) as errors FROM store_results GROUP BY store").all();
+
+        // Most sought tracks (in stock at most stores)
+        var mostSought = d.prepare("SELECT w.artist, w.title, w.year, COUNT(DISTINCT sr.store) as store_count FROM store_results sr JOIN wantlist w ON w.id = sr.wantlist_id WHERE sr.in_stock = 1 GROUP BY sr.wantlist_id ORDER BY store_count DESC LIMIT 15").all();
+
+        // Most expensive items (by Discogs price)
+        var mostExpensive = d.prepare("SELECT w.artist, w.title, w.year, dp.lowest_price, dp.currency, dp.num_for_sale FROM discogs_prices dp JOIN wantlist w ON w.id = dp.wantlist_id WHERE dp.lowest_price IS NOT NULL ORDER BY dp.lowest_price DESC LIMIT 15").all();
+
+        // Cheapest finds (lowest store price across all matches)
+        var cheapestFinds = d.prepare("SELECT w.artist, w.title, sr.store, sr.matches FROM store_results sr JOIN wantlist w ON w.id = sr.wantlist_id WHERE sr.in_stock = 1 AND sr.matches IS NOT NULL ORDER BY sr.wantlist_id LIMIT 500").all();
+        var cheapest = [];
+        cheapestFinds.forEach(function(r) {
+            try {
+                var matches = JSON.parse(r.matches || '[]');
+                matches.forEach(function(m) {
+                    var priceNum = parseFloat((m.price || '').replace(/[^0-9.]/g, ''));
+                    if (priceNum && priceNum > 0) {
+                        cheapest.push({ artist: r.artist, title: r.title, store: r.store, price: m.price, priceNum: priceNum });
+                    }
+                });
+            } catch(e) {}
+        });
+        cheapest.sort(function(a, b) { return a.priceNum - b.priceNum; });
+        var cheapestItems = cheapest.slice(0, 15);
+
+        // Genre counts
+        var allGenres = {};
+        var allStyles = {};
+        var yearCounts = {};
+        var allWantlist = d.prepare("SELECT genres, styles, year FROM wantlist WHERE active = 1").all();
+        allWantlist.forEach(function(w) {
+            if (w.genres) w.genres.split(', ').forEach(function(g) { if (g) allGenres[g] = (allGenres[g] || 0) + 1; });
+            if (w.styles) w.styles.split(', ').forEach(function(s) { if (s) allStyles[s] = (allStyles[s] || 0) + 1; });
+            if (w.year) yearCounts[w.year] = (yearCounts[w.year] || 0) + 1;
+        });
+
+        // Sort and limit
+        var genreList = Object.keys(allGenres).map(function(g) { return { name: g, count: allGenres[g] }; }).sort(function(a,b) { return b.count - a.count; });
+        var styleList = Object.keys(allStyles).map(function(s) { return { name: s, count: allStyles[s] }; }).sort(function(a,b) { return b.count - a.count; }).slice(0, 25);
+        var yearList = Object.keys(yearCounts).map(function(y) { return { year: parseInt(y), count: yearCounts[y] }; }).filter(function(y) { return y.year > 1900; }).sort(function(a,b) { return a.year - b.year; });
+
+        // Average Discogs price
+        var avgPrice = d.prepare("SELECT AVG(lowest_price) as avg, MIN(lowest_price) as min, MAX(lowest_price) as max, COUNT(*) as cnt FROM discogs_prices WHERE lowest_price IS NOT NULL AND lowest_price > 0").get();
+
+        // Active scans & job health
+        var activeScanInfo = scanner.getActiveScans ? scanner.getActiveScans() : {};
+        var jobHealthData = scanner.getJobHealth ? scanner.getJobHealth() : {};
+
+        res.json({
+            status: 'ok',
+            timestamp: new Date().toISOString(),
+            uptime: Math.round(process.uptime()) + 's',
+            memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
+            users: userSummary,
+            storeStats: storeStats,
+            mostSought: mostSought,
+            mostExpensive: mostExpensive,
+            cheapestFinds: cheapestItems,
+            genres: genreList,
+            styles: styleList,
+            years: yearList,
+            priceStats: avgPrice,
+            activeScans: activeScanInfo,
+            jobHealth: jobHealthData,
+            workers: 3
+        });
+    } catch (e) {
+        res.status(500).json({ status: 'error', error: e.message });
+    }
+});
+
+// Admin dashboard — HTML page
+app.get('/admin', function (req, res) {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// Clean up dead/empty user accounts
+app.post('/api/admin/cleanup', function (req, res) {
+    try {
+        var d = db.getDb();
+        // Find users with no scan history
+        var deadUsers = d.prepare('SELECT id, username FROM users WHERE last_full_scan IS NULL').all();
+        var removed = [];
+        deadUsers.forEach(function (u) {
+            var wantlistCount = d.prepare('SELECT COUNT(*) as c FROM wantlist WHERE user_id = ?').get(u.id).c;
+            if (wantlistCount === 0) {
+                d.prepare('DELETE FROM users WHERE id = ?').run(u.id);
+                removed.push(u.username);
+            }
+        });
+        res.json({ ok: true, removed: removed, message: removed.length + ' dead accounts removed' });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════
 // BACKGROUND SYNC
 // ═══════════════════════════════════════════════════════════════
 
@@ -700,17 +825,23 @@ app.listen(PORT, function () {
     console.log('[sync] Background sync every ' + (SYNC_INTERVAL / 60000).toFixed(0) + ' minutes');
     if (NOTIFICATION_WEBHOOK) console.log('[sync] Notifications enabled (webhook)');
     setInterval(function () {
-        scanner.backgroundSync().catch(function (e) { console.error('[sync] Fatal:', e.message); });
+        scanner.backgroundSync()
+            .then(function() { scanner.trackJobRun('sync', true); })
+            .catch(function (e) { console.error('[sync] Fatal:', e.message); scanner.trackJobRun('sync', false, e.message); });
     }, SYNC_INTERVAL);
 
     // Daily full rescan scheduler — checks every 15 min if any user is due
     console.log('[daily] Daily rescan checker every 15 minutes');
     setInterval(function () {
-        scanner.dailyFullRescan().catch(function (e) { console.error('[daily] Fatal:', e.message); });
+        scanner.dailyFullRescan()
+            .then(function() { scanner.trackJobRun('daily', true); })
+            .catch(function (e) { console.error('[daily] Fatal:', e.message); scanner.trackJobRun('daily', false, e.message); });
     }, DAILY_CHECK_INTERVAL);
 
     // Also run daily check once on startup (after 2 min delay to let things settle)
     setTimeout(function () {
-        scanner.dailyFullRescan().catch(function (e) { console.error('[daily] Startup check fatal:', e.message); });
+        scanner.dailyFullRescan()
+            .then(function() { scanner.trackJobRun('daily', true); })
+            .catch(function (e) { console.error('[daily] Startup check fatal:', e.message); scanner.trackJobRun('daily', false, e.message); });
     }, 120000);
 });
