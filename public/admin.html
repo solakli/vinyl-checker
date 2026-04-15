@@ -199,7 +199,8 @@ tr:hover td { background: rgba(255,255,255,0.02); }
     <div class="section-title">Stock Validation (3-Step Verify)</div>
     <div id="validationSection">
       <div class="stat-grid" id="validationStats"></div>
-      <div class="data-table" id="validationResults" style="margin-top:8px"></div>
+      <div class="table-card" id="validationMatrix" style="margin-top:12px"></div>
+      <div class="table-card" id="validationResults" style="margin-top:8px"></div>
     </div>
 
     <!-- Active Scans -->
@@ -329,35 +330,86 @@ async function refreshDashboard() {
       '<div class="job-card"><div class="job-title">Daily Rescan</div>' +
         '<div class="job-stat"><span class="jl">Last Run</span><span class="jv">' + (jh.lastDailyRescan ? timeAgo(jh.lastDailyRescan) : 'not yet') + '</span></div>' +
         '<div class="job-stat"><span class="jl">Runs</span><span class="jv">' + (jh.dailyRescanCount || 0) + '</span></div>' +
-        '<div class="job-stat"><span class="jl">Errors</span><span class="jv ' + ((jh.dailyRescanErrors||0) > 0 ? 'bad' : 'good') + '">' + (jh.dailyRescanErrors || 0) + '</span></div>' +
-        (jh.lastError ? '<div class="job-stat"><span class="jl">Last Error</span><span class="jv bad">' + jh.lastError.error + '</span></div>' : '') + '</div>';
+        '<div class="job-stat"><span class="jl">Errors</span><span class="jv ' + ((jh.dailyRescanErrors||0) > 0 ? 'bad' : 'good') + '">' + (jh.dailyRescanErrors || 0) + '</span></div></div>' +
+      '<div class="job-card"><div class="job-title">Stock Validation</div>' +
+        '<div class="job-stat"><span class="jl">Last Run</span><span class="jv">' + (jh.lastValidation ? timeAgo(jh.lastValidation) : 'not yet') + '</span></div>' +
+        '<div class="job-stat"><span class="jl">Runs</span><span class="jv">' + (jh.validationCount || 0) + '</span></div>' +
+        '<div class="job-stat"><span class="jl">Errors</span><span class="jv ' + ((jh.validationErrors||0) > 0 ? 'bad' : 'good') + '">' + (jh.validationErrors || 0) + '</span></div></div>' +
+        (jh.lastError ? '<div class="job-card"><div class="job-title">Last Error</div><div class="job-stat"><span class="jl">' + jh.lastError.job + '</span><span class="jv bad">' + esc(jh.lastError.error) + '</span></div></div>' : '');
 
     // Stock Validation
     var vs = data.validation || {};
+    var sum = vs.lastSummary || {};
     document.getElementById('validationStats').innerHTML =
-      '<div class="stat-card"><div class="num">' + (vs.totalChecked || 0) + '</div><div class="label">Total Checked</div></div>' +
-      '<div class="stat-card"><div class="num green">' + (vs.totalConfirmed || 0) + '</div><div class="label">Confirmed In Stock</div></div>' +
-      '<div class="stat-card"><div class="num" style="color:var(--red)">' + (vs.totalFlipped || 0) + '</div><div class="label">Flipped to OOS</div></div>' +
-      '<div class="stat-card"><div class="num purple">' + (vs.runCount || 0) + '</div><div class="label">Runs</div></div>';
+      statCard(sum.tp || 0, 'True Positive', 'green') +
+      statCard(sum.fp || 0, 'False Positive', 'red') +
+      statCard(sum.fn || 0, 'False Negative', 'red') +
+      statCard(sum.tn || 0, 'True Negative', 'blue') +
+      statCard(sum.errors || 0, 'Errors', (sum.errors||0) > 0 ? 'red' : '') +
+      statCard(vs.runCount || 0, 'Runs', 'purple');
 
+    // Per-store confusion matrix
+    var ps = vs.perStore || {};
+    var storeKeys = Object.keys(ps);
+    if (storeKeys.length > 0) {
+      var mHtml = '<div class="card-header">Per-Store Confusion Matrix</div>' +
+        '<table><thead><tr><th>Store</th><th>TP</th><th>FP</th><th>FN</th><th>TN</th><th>Err</th><th>Checked</th><th>Precision</th><th>1a</th><th>1b</th><th>2a</th><th>2b</th><th>3a</th><th>3b</th><th>3c</th></tr></thead><tbody>';
+      storeKeys.forEach(function(store) {
+        var s = ps[store];
+        var prec = (s.tp + s.fp) > 0 ? ((s.tp / (s.tp + s.fp)) * 100).toFixed(0) + '%' : '—';
+        mHtml += '<tr><td><strong>' + store + '</strong></td>' +
+          '<td style="color:var(--green)">' + s.tp + '</td>' +
+          '<td style="color:var(--red)">' + s.fp + '</td>' +
+          '<td style="color:var(--red)">' + s.fn + '</td>' +
+          '<td style="color:var(--blue)">' + s.tn + '</td>' +
+          '<td style="color:' + (s.errors > 0 ? 'var(--red)' : 'var(--text-muted)') + '">' + s.errors + '</td>' +
+          '<td>' + s.checked + '</td>' +
+          '<td style="color:var(--gold);font-weight:500">' + prec + '</td>' +
+          '<td style="color:var(--text-muted)">' + (s.step1a_fail||0) + '</td>' +
+          '<td style="color:var(--text-muted)">' + (s.step1b_fail||0) + '</td>' +
+          '<td style="color:var(--text-muted)">' + (s.step2a_fail||0) + '</td>' +
+          '<td style="color:var(--text-muted)">' + (s.step2b_fail||0) + '</td>' +
+          '<td style="color:var(--text-muted)">' + (s.step3a_fail||0) + '</td>' +
+          '<td style="color:var(--text-muted)">' + (s.step3b_fail||0) + '</td>' +
+          '<td style="color:var(--text-muted)">' + (s.step3c_fail||0) + '</td></tr>';
+      });
+      mHtml += '</tbody></table>';
+      mHtml += '<div style="padding:8px 12px;font-size:9px;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase">' +
+        '1a: URL fail · 1b: No products · 2a: Artist mismatch · 2b: Title mismatch · 3a: Sold out · 3b: OOS signal · 3c: No stock signal</div>';
+      document.getElementById('validationMatrix').innerHTML = mHtml;
+    } else {
+      document.getElementById('validationMatrix').innerHTML = '';
+    }
+
+    // Validation results table
     var vResults = vs.lastResults || [];
     if (vResults.length > 0) {
-      var vHtml = '<table><tr><th>#</th><th>Artist</th><th>Title</th><th>Store</th><th>Step 1</th><th>Step 2</th><th>Step 3</th><th>Result</th></tr>';
+      var vHtml = '<div class="card-header">Last Run Results (' + timeAgo(vs.lastRun) + ')</div>' +
+        '<table><thead><tr><th>#</th><th>Phase</th><th>Artist</th><th>Title</th><th>Store</th><th>1a</th><th>1b</th><th>2a</th><th>2b</th><th>3a</th><th>3b</th><th>3c</th><th>Result</th></tr></thead><tbody>';
       vResults.forEach(function(r, i) {
-        var step1 = r.status === 'error' ? '⚠️' : '✓';
-        var step2 = r.status === 'error' ? '⚠️' : (r.failStep === 'NO_RESULTS' ? '✗' : '✓');
-        var step3 = r.status === 'error' ? '⚠️' : (r.failStep === 'NO_MATCH' || r.failStep === 'NO_RESULTS' ? '—' : (r.failStep === 'OUT_OF_STOCK' ? '✗' : '✓'));
-        var statusColor = r.status === 'confirmed' ? 'color:var(--green)' : r.status === 'flipped' ? 'color:var(--red)' : 'color:var(--yellow)';
-        var statusText = r.status === 'confirmed' ? 'IN STOCK' : r.status === 'flipped' ? 'FLIPPED' : 'ERROR';
-        vHtml += '<tr><td style="color:var(--gold)">' + (i+1) + '</td><td>' + (r.artist||'') + '</td><td>' + (r.title||'') + '</td>' +
-          '<td>' + r.store + '</td>' +
-          '<td style="text-align:center">' + step1 + '</td><td style="text-align:center">' + step2 + '</td><td style="text-align:center">' + step3 + '</td>' +
-          '<td style="' + statusColor + ';font-weight:500">' + statusText + '</td></tr>';
+        var st = r.steps || {};
+        var mark = function(key) { return st[key] ? '<span style="color:var(--green)">OK</span>' : '<span style="color:var(--text-muted)">—</span>'; };
+        var statusColor = r.status === 'TP' ? 'color:var(--green)' : r.status === 'TN' ? 'color:var(--blue)' :
+                          r.status === 'FP' ? 'color:var(--red)' : r.status === 'FN' ? 'color:var(--yellow)' : 'color:var(--text-muted)';
+        var statusLabel = r.status === 'TP' ? 'TRUE POS' : r.status === 'FP' ? 'FALSE POS' :
+                          r.status === 'FN' ? 'FALSE NEG' : r.status === 'TN' ? 'TRUE NEG' : 'ERROR';
+        var phaseLabel = r.phase === 'FP-check' ? 'FP' : 'FN';
+        vHtml += '<tr><td style="color:var(--gold)">' + (i+1) + '</td>' +
+          '<td style="font-size:9px;letter-spacing:1px">' + phaseLabel + '</td>' +
+          '<td>' + esc(r.artist||'') + '</td><td>' + esc(r.title||'') + '</td><td>' + esc(r.store) + '</td>' +
+          '<td style="text-align:center">' + mark('1a_url_resolves') + '</td>' +
+          '<td style="text-align:center">' + mark('1b_products_in_dom') + '</td>' +
+          '<td style="text-align:center">' + mark('2a_artist_match') + '</td>' +
+          '<td style="text-align:center">' + mark('2b_title_match') + '</td>' +
+          '<td style="text-align:center">' + mark('3a_no_soldout') + '</td>' +
+          '<td style="text-align:center">' + mark('3b_no_oos') + '</td>' +
+          '<td style="text-align:center">' + mark('3c_stock_signals') + '</td>' +
+          '<td style="' + statusColor + ';font-weight:500;font-size:9px;letter-spacing:1px">' + statusLabel + '</td></tr>';
       });
-      vHtml += '</table>';
-      document.getElementById('validationResults').innerHTML = '<div style="font-size:9px;color:var(--text-muted);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase">Last run: ' + (vs.lastRun ? timeAgo(vs.lastRun) : 'never') + ' · Step 1: Search has results · Step 2: Record matches · Step 3: Actually in stock</div>' + vHtml;
+      vHtml += '</tbody></table>';
+      document.getElementById('validationResults').innerHTML = vHtml;
     } else {
-      document.getElementById('validationResults').innerHTML = '<span style="color:var(--text-muted);font-size:11px">No validation results yet — first run in 5 minutes</span>';
+      document.getElementById('validationResults').innerHTML = '<div style="padding:14px 16px;color:var(--text-muted);font-size:11px;letter-spacing:1px">No validation results yet — first run in 5 minutes</div>';
     }
 
     // Active scans
