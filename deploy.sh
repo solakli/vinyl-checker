@@ -23,7 +23,7 @@ expect \"CHROMIUM_DONE\"
 
 # Step 2: Clone or pull repo
 puts \"\n>>> Setting up vinyl-checker...\"
-send \"if \[ -d $APP_DIR \]; then cd $APP_DIR && git pull; else git clone https://github.com/solakli/vinyl-checker.git $APP_DIR; fi; echo REPO_DONE\r\"
+send \"if \[ -d $APP_DIR \]; then cd $APP_DIR && git checkout -- . && git pull; else git clone https://github.com/solakli/vinyl-checker.git $APP_DIR; fi; echo REPO_DONE\r\"
 expect \"REPO_DONE\"
 
 # Step 3: Install npm dependencies
