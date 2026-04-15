@@ -632,7 +632,7 @@ function render() {
         if (s.linkOnly) {
           return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + '" onclick="event.stopPropagation()">' +
             '<span class="store-name">' + logoHtml + name + '</span>' +
-            '<span class="match-info"><span class="link-only">Search manually</span></span>' +
+            '<span class="match-info"><span class="link-only">Go to Store</span></span>' +
             shippingHtml +
             '<span class="arrow">&rarr;</span></a>';
         }
@@ -892,7 +892,7 @@ function renderReleaseDetail(data, resultItem) {
       if (s.linkOnly) {
         html += '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + '">' +
           '<span class="store-name">' + name + '</span>' +
-          '<span class="match-info"><span class="link-only">Search manually</span></span>' +
+          '<span class="match-info"><span class="link-only">Go to Store</span></span>' +
           shippingHtml +
           '<span class="arrow">&rarr;</span></a>';
       } else if (s.inStock && s.matches && s.matches.length > 0) {
