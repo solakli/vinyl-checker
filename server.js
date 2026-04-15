@@ -800,6 +800,11 @@ app.post('/api/admin/cleanup', function (req, res) {
         deadUsers.forEach(function (u) {
             var wantlistCount = d.prepare('SELECT COUNT(*) as c FROM wantlist WHERE user_id = ?').get(u.id).c;
             if (wantlistCount === 0) {
+                // Clean up any related records first
+                d.prepare('DELETE FROM discogs_prices WHERE wantlist_id IN (SELECT id FROM wantlist WHERE user_id = ?)').run(u.id);
+                d.prepare('DELETE FROM store_results WHERE wantlist_id IN (SELECT id FROM wantlist WHERE user_id = ?)').run(u.id);
+                d.prepare('DELETE FROM scan_changes WHERE user_id = ?').run(u.id);
+                d.prepare('DELETE FROM wantlist WHERE user_id = ?').run(u.id);
                 d.prepare('DELETE FROM users WHERE id = ?').run(u.id);
                 removed.push(u.username);
             }
