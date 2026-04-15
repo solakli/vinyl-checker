@@ -163,9 +163,11 @@ function startScan(force) {
   var scanUrl = 'api/scan/' + encodeURIComponent(username) + (force ? '?force=true' : '');
   var evtSource = new EventSource(scanUrl);
 
+  var thinkingDotsHtml = '<span class="thinking-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
+
   evtSource.addEventListener('status', function(e) {
     var data = JSON.parse(e.data);
-    document.getElementById('progressText').textContent = data.message;
+    document.getElementById('progressText').innerHTML = escapeHtml(data.message) + thinkingDotsHtml;
   });
 
   evtSource.addEventListener('wantlist', function(e) {
@@ -176,7 +178,7 @@ function startScan(force) {
 
   evtSource.addEventListener('batch-start', function(e) {
     var data = JSON.parse(e.data);
-    document.getElementById('progressText').textContent = 'Batch ' + data.batch + '/' + data.totalBatches;
+    document.getElementById('progressText').innerHTML = 'Batch ' + data.batch + '/' + data.totalBatches + thinkingDotsHtml;
     document.getElementById('progressCurrent').textContent = data.items.join(' | ');
   });
 
@@ -210,7 +212,7 @@ function startScan(force) {
 
   evtSource.addEventListener('batch-done', function(e) {
     var data = JSON.parse(e.data);
-    document.getElementById('progressText').textContent = 'Batch ' + data.batch + '/' + data.totalBatches + ' done';
+    document.getElementById('progressText').innerHTML = 'Batch ' + data.batch + '/' + data.totalBatches + ' done' + thinkingDotsHtml;
   });
 
   evtSource.addEventListener('done', function(e) {
@@ -619,9 +621,28 @@ function render() {
   noResults.style.display = 'none';
 
   grid.innerHTML = filtered.map(function(item) {
-    var storeRows = item.stores
-      .filter(function(s) { return activeStores.indexOf(s.store) !== -1; })
-      .map(function(s) {
+    var visibleStores = item.stores.filter(function(s) { return activeStores.indexOf(s.store) !== -1; });
+    var inStockCount = visibleStores.filter(function(s) { return s.inStock && !s.linkOnly; }).length;
+    var linkOnlyCount = visibleStores.filter(function(s) { return s.linkOnly; }).length;
+
+    // Stock summary line
+    var stockSummaryHtml = '';
+    if (inStockCount > 0) {
+      stockSummaryHtml = '<div class="stock-summary">' +
+        '<span class="stock-count">' + inStockCount + ' store' + (inStockCount > 1 ? 's' : '') + '</span>' +
+        '<span class="stock-label">in stock</span>' +
+        (linkOnlyCount > 0 ? '<span class="link-count">' + linkOnlyCount + ' links</span>' : '') +
+      '</div>';
+    }
+
+    // In-stock rows first, then not-found, then link-only
+    var sortedStores = visibleStores.slice().sort(function(a, b) {
+      var scoreA = a.inStock && !a.linkOnly ? 0 : (!a.linkOnly ? 1 : 2);
+      var scoreB = b.inStock && !b.linkOnly ? 0 : (!b.linkOnly ? 1 : 2);
+      return scoreA - scoreB;
+    });
+
+    var storeRows = stockSummaryHtml + sortedStores.map(function(s) {
         var cls = storeClassMap[s.store] || '';
         var name = storeDisplayName[s.store] || s.store;
 
@@ -630,15 +651,17 @@ function render() {
         var logoHtml = logoFile ? '<img class="store-logo" src="img/' + logoFile + '" alt="">' : '';
 
         if (s.linkOnly) {
-          return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + '" onclick="event.stopPropagation()">' +
+          return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' link-only-row" onclick="event.stopPropagation()">' +
+            '<span class="store-status link-only-dot"></span>' +
             '<span class="store-name">' + logoHtml + name + '</span>' +
             '<span class="match-info"><span class="link-only">Go to Store</span></span>' +
             shippingHtml +
-            '<span class="arrow">&rarr;</span></a>';
+            '</a>';
         }
 
         if (!s.inStock || !s.matches || s.matches.length === 0) {
           return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' out-of-stock" onclick="event.stopPropagation()">' +
+            '<span class="store-status not-found"></span>' +
             '<span class="store-name">' + logoHtml + name + '</span>' +
             '<span class="match-info"><span class="not-found">Not found</span></span>' +
             '<span class="arrow">&rarr;</span></a>';
@@ -647,7 +670,8 @@ function render() {
         var cheapest = s.matches.reduce(function(min, m) { return parsePrice(m.price) < parsePrice(min.price) ? m : min; }, s.matches[0]);
         var extras = s.matches.length > 1 ? ' +' + (s.matches.length - 1) + ' more' : '';
 
-        return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + '" onclick="event.stopPropagation()">' +
+        return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' in-stock-row" onclick="event.stopPropagation()">' +
+          '<span class="store-status in-stock"></span>' +
           '<span class="store-name">' + logoHtml + name + '</span>' +
           '<span class="match-info">' + escapeHtml(cheapest.title || '') + extras + '</span>' +
           '<span class="price">' + escapeHtml(cheapest.price || '') + '</span>' +
@@ -689,7 +713,10 @@ function render() {
       thumbHtml = '<div class="card-thumb" style="display:flex;align-items:center;justify-content:center;font-size:20px;color:#555;">&#9835;</div>';
     }
 
-    return '<div class="card" data-discogs-id="' + item.item.id + '" onclick="openReleaseDetail(' + item.item.id + ')">' +
+    var hasStock = inStockCount > 0;
+    var cardClass = hasStock ? 'card has-stock' : 'card no-stock';
+
+    return '<div class="' + cardClass + '" data-discogs-id="' + item.item.id + '" onclick="openReleaseDetail(' + item.item.id + ')">' +
       '<div class="card-header">' +
         thumbHtml +
         '<div class="card-info">' +
@@ -890,14 +917,16 @@ function renderReleaseDetail(data, resultItem) {
       var shippingHtml = s.usShipping ? '<span class="shipping">+' + s.usShipping + ' US ship</span>' : '';
 
       if (s.linkOnly) {
-        html += '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + '">' +
+        html += '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' link-only-row">' +
+          '<span class="store-status link-only-dot"></span>' +
           '<span class="store-name">' + name + '</span>' +
           '<span class="match-info"><span class="link-only">Go to Store</span></span>' +
           shippingHtml +
-          '<span class="arrow">&rarr;</span></a>';
+          '</a>';
       } else if (s.inStock && s.matches && s.matches.length > 0) {
         var cheapest = s.matches.reduce(function(min, m) { return parsePrice(m.price) < parsePrice(min.price) ? m : min; }, s.matches[0]);
-        html += '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + '">' +
+        html += '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' in-stock-row">' +
+          '<span class="store-status in-stock"></span>' +
           '<span class="store-name">' + name + '</span>' +
           '<span class="match-info">' + escapeHtml(cheapest.title || '') + '</span>' +
           '<span class="price">' + escapeHtml(cheapest.price || '') + '</span>' +
@@ -905,6 +934,7 @@ function renderReleaseDetail(data, resultItem) {
           '<span class="arrow">&rarr;</span></a>';
       } else {
         html += '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' out-of-stock">' +
+          '<span class="store-status not-found"></span>' +
           '<span class="store-name">' + name + '</span>' +
           '<span class="match-info"><span class="not-found">Not found</span></span>' +
           '<span class="arrow">&rarr;</span></a>';

@@ -198,7 +198,7 @@ body {
   transform: none;
 }
 
-/* PROGRESS BAR */
+/* PROGRESS BAR — Claude-style thinking animation */
 .progress-section {
   display: none;
   margin-bottom: 10px;
@@ -213,6 +213,7 @@ body {
   margin-bottom: 8px;
   border-radius: 2px;
   overflow: hidden;
+  position: relative;
 }
 
 .progress-bar-fill {
@@ -221,11 +222,51 @@ body {
   width: 0%;
   transition: width 0.3s ease;
   border-radius: 2px;
+  position: relative;
+}
+
+/* Shimmer sweep across the progress bar */
+.progress-bar-fill::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Thinking dots */
+.thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.thinking-dots .dot {
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--gold);
+  animation: thinking 1.4s ease-in-out infinite;
+}
+
+.thinking-dots .dot:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dots .dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes thinking {
+  0%, 80%, 100% { opacity: 0.15; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1.2); }
 }
 
 .progress-info {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   font-size: 10px;
   font-weight: 300;
   color: var(--text-muted);
@@ -503,11 +544,26 @@ body {
   overflow: hidden;
 }
 
+/* Cards with items in stock get a subtle green top border */
+.card.has-stock {
+  border-top: 2px solid var(--green);
+}
+
+.card.no-stock {
+  opacity: 0.65;
+}
+
+.card.no-stock:hover { opacity: 1; }
+
 .card:hover {
   border-color: var(--border-hover);
   background: var(--card-hover);
   transform: translateY(-2px);
   box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+}
+
+.card.has-stock:hover {
+  box-shadow: 0 12px 32px rgba(74,222,128,0.08), 0 4px 12px rgba(0,0,0,0.3);
 }
 
 .card-header {
@@ -558,24 +614,70 @@ body {
 .store-results {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   flex: 1;
+}
+
+/* Stock summary badge at top of store results */
+.stock-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+}
+
+.stock-summary .stock-count {
+  color: var(--green);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.stock-summary .stock-label {
+  color: var(--text-muted);
+  font-weight: 300;
+}
+
+.stock-summary .link-count {
+  color: var(--text-muted);
+  font-weight: 300;
+  font-size: 9px;
+  opacity: 0.6;
 }
 
 .store-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 5px 10px;
+  padding: 6px 10px;
   text-decoration: none;
   color: inherit;
   transition: all 0.15s;
   border-radius: 4px;
+  position: relative;
 }
 
 .store-row:hover { background: rgba(255,255,255,0.04); }
 
+/* Status indicator dot */
+.store-status {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-right: 6px;
+}
+
+.store-status.in-stock { background: var(--green); box-shadow: 0 0 6px rgba(74,222,128,0.4); }
+.store-status.not-found { background: #444; }
+.store-status.link-only-dot { background: transparent; border: 1px solid var(--text-muted); width: 5px; height: 5px; }
+
 .store-row .store-name {
+  display: inline-flex;
+  align-items: center;
   font-size: 10px; font-weight: 500;
   text-transform: uppercase; letter-spacing: 1.5px;
   min-width: 80px;
@@ -628,14 +730,39 @@ body {
 .store-row .link-only {
   font-size: 9px; color: var(--text-muted);
   text-transform: uppercase; letter-spacing: 1px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.store-row .link-only::after {
+  content: '\2197';
+  font-size: 10px;
+  opacity: 0.5;
 }
 
 .store-row .not-found {
-  font-size: 9px; color: #444;
+  font-size: 9px; color: #555;
   text-transform: uppercase; letter-spacing: 1px;
 }
 
-.store-row.out-of-stock { opacity: 0.25; }
+.store-row.out-of-stock { opacity: 0.3; }
+.store-row.out-of-stock:hover { opacity: 0.5; }
+
+/* Link-only stores get a subtle dashed border */
+.store-row.link-only-row {
+  border: 1px dashed rgba(255,255,255,0.06);
+  opacity: 0.6;
+}
+.store-row.link-only-row:hover { opacity: 0.85; border-color: rgba(255,255,255,0.12); }
+body.light .store-row.link-only-row { border-color: rgba(0,0,0,0.08); }
+body.light .store-row.link-only-row:hover { border-color: rgba(0,0,0,0.15); }
+
+/* In-stock row gets subtle green left accent */
+.store-row.in-stock-row {
+  border-left: 2px solid var(--green);
+  padding-left: 8px;
+}
 
 .arrow {
   color: var(--text-muted);
