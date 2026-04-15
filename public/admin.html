@@ -195,6 +195,13 @@ tr:hover td { background: rgba(255,255,255,0.02); }
     <div class="section-title">Background Jobs</div>
     <div class="stat-grid" id="jobsGrid"></div>
 
+    <!-- Stock Validation -->
+    <div class="section-title">Stock Validation (3-Step Verify)</div>
+    <div id="validationSection">
+      <div class="stat-grid" id="validationStats"></div>
+      <div class="data-table" id="validationResults" style="margin-top:8px"></div>
+    </div>
+
     <!-- Active Scans -->
     <div class="section-title">Active Scans</div>
     <div class="job-card" id="activeScans"><span style="color:var(--text-muted);font-size:11px;letter-spacing:1px">No active scans</span></div>
@@ -324,6 +331,34 @@ async function refreshDashboard() {
         '<div class="job-stat"><span class="jl">Runs</span><span class="jv">' + (jh.dailyRescanCount || 0) + '</span></div>' +
         '<div class="job-stat"><span class="jl">Errors</span><span class="jv ' + ((jh.dailyRescanErrors||0) > 0 ? 'bad' : 'good') + '">' + (jh.dailyRescanErrors || 0) + '</span></div>' +
         (jh.lastError ? '<div class="job-stat"><span class="jl">Last Error</span><span class="jv bad">' + jh.lastError.error + '</span></div>' : '') + '</div>';
+
+    // Stock Validation
+    var vs = data.validation || {};
+    document.getElementById('validationStats').innerHTML =
+      '<div class="stat-card"><div class="num">' + (vs.totalChecked || 0) + '</div><div class="label">Total Checked</div></div>' +
+      '<div class="stat-card"><div class="num green">' + (vs.totalConfirmed || 0) + '</div><div class="label">Confirmed In Stock</div></div>' +
+      '<div class="stat-card"><div class="num" style="color:var(--red)">' + (vs.totalFlipped || 0) + '</div><div class="label">Flipped to OOS</div></div>' +
+      '<div class="stat-card"><div class="num purple">' + (vs.runCount || 0) + '</div><div class="label">Runs</div></div>';
+
+    var vResults = vs.lastResults || [];
+    if (vResults.length > 0) {
+      var vHtml = '<table><tr><th>#</th><th>Artist</th><th>Title</th><th>Store</th><th>Step 1</th><th>Step 2</th><th>Step 3</th><th>Result</th></tr>';
+      vResults.forEach(function(r, i) {
+        var step1 = r.status === 'error' ? '⚠️' : '✓';
+        var step2 = r.status === 'error' ? '⚠️' : (r.failStep === 'NO_RESULTS' ? '✗' : '✓');
+        var step3 = r.status === 'error' ? '⚠️' : (r.failStep === 'NO_MATCH' || r.failStep === 'NO_RESULTS' ? '—' : (r.failStep === 'OUT_OF_STOCK' ? '✗' : '✓'));
+        var statusColor = r.status === 'confirmed' ? 'color:var(--green)' : r.status === 'flipped' ? 'color:var(--red)' : 'color:var(--yellow)';
+        var statusText = r.status === 'confirmed' ? 'IN STOCK' : r.status === 'flipped' ? 'FLIPPED' : 'ERROR';
+        vHtml += '<tr><td style="color:var(--gold)">' + (i+1) + '</td><td>' + (r.artist||'') + '</td><td>' + (r.title||'') + '</td>' +
+          '<td>' + r.store + '</td>' +
+          '<td style="text-align:center">' + step1 + '</td><td style="text-align:center">' + step2 + '</td><td style="text-align:center">' + step3 + '</td>' +
+          '<td style="' + statusColor + ';font-weight:500">' + statusText + '</td></tr>';
+      });
+      vHtml += '</table>';
+      document.getElementById('validationResults').innerHTML = '<div style="font-size:9px;color:var(--text-muted);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase">Last run: ' + (vs.lastRun ? timeAgo(vs.lastRun) : 'never') + ' · Step 1: Search has results · Step 2: Record matches · Step 3: Actually in stock</div>' + vHtml;
+    } else {
+      document.getElementById('validationResults').innerHTML = '<span style="color:var(--text-muted);font-size:11px">No validation results yet — first run in 5 minutes</span>';
+    }
 
     // Active scans
     var scans = data.activeScans || {};

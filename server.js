@@ -780,6 +780,7 @@ app.get('/api/health', function (req, res) {
         // Active scans & job health
         var activeScanInfo = scanner.getActiveScans ? scanner.getActiveScans() : {};
         var jobHealthData = scanner.getJobHealth ? scanner.getJobHealth() : {};
+        var validationData = scanner.getValidationStats ? scanner.getValidationStats() : {};
 
         res.json({
             status: 'ok',
@@ -797,6 +798,7 @@ app.get('/api/health', function (req, res) {
             priceStats: avgPrice,
             activeScans: activeScanInfo,
             jobHealth: jobHealthData,
+            validation: validationData,
             workers: 3
         });
     } catch (e) {
@@ -868,4 +870,20 @@ app.listen(PORT, function () {
             .then(function() { scanner.trackJobRun('daily', true); })
             .catch(function (e) { console.error('[daily] Startup check fatal:', e.message); scanner.trackJobRun('daily', false, e.message); });
     }, 120000);
+
+    // Stock validation — re-checks "in stock" items to catch false positives
+    var VALIDATE_INTERVAL = parseInt(process.env.VALIDATE_INTERVAL) || 4 * 60 * 60 * 1000; // 4 hours
+    console.log('[validate] Stock validation every ' + (VALIDATE_INTERVAL / 3600000).toFixed(1) + ' hours');
+    setInterval(function () {
+        scanner.validateInStockResults()
+            .then(function() { scanner.trackJobRun('validate', true); })
+            .catch(function (e) { console.error('[validate] Fatal:', e.message); scanner.trackJobRun('validate', false, e.message); });
+    }, VALIDATE_INTERVAL);
+
+    // Run first validation 5 min after startup
+    setTimeout(function () {
+        scanner.validateInStockResults()
+            .then(function() { scanner.trackJobRun('validate', true); })
+            .catch(function (e) { console.error('[validate] Startup validation fatal:', e.message); scanner.trackJobRun('validate', false, e.message); });
+    }, 300000);
 });
