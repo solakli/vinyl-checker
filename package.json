@@ -10,7 +10,9 @@
   "dependencies": {
     "better-sqlite3": "^12.8.0",
     "express": "^5.2.1",
-    "puppeteer": "^21.0.0"
+    "puppeteer": "^21.0.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   },
   "bin": {
     "vinyl-check": "./vinyl-checker-puppeteer.js"
