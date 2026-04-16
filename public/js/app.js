@@ -1,8 +1,5 @@
 /* Vinyl Checker Frontend */
 
-// API base path — ensures fetch works from /u/:username too
-var apiBase = window.location.pathname.match(/\/u\//) ? '/' : '';
-
 let resultsData = [];
 let isScanning = false;
 let isOAuthed = false; // Track if user connected via Discogs OAuth
@@ -146,7 +143,7 @@ function startScan(force, resume) {
   if (rb) rb.remove();
 
   // Create session cookie via API
-  fetch(apiBase + 'api/session', {
+  fetch('api/session', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username: username })
@@ -181,7 +178,7 @@ function startScan(force, resume) {
   connectSSE(username, force);}
 
 function connectSSE(username, force) {
-  var scanUrl = apiBase + 'api/scan/' + encodeURIComponent(username) + (force ? '?force=true' : '');
+  var scanUrl = 'api/scan/' + encodeURIComponent(username) + (force ? '?force=true' : '');
   var evtSource = new EventSource(scanUrl);
 
   var thinkingDotsHtml = '<span class="thinking-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
@@ -333,7 +330,7 @@ function connectSSE(username, force) {
 // Check if a scan is still running on the server (for resume after tab switch / browser close)
 async function checkScanAndResume(username) {
   try {
-    var res = await fetch(apiBase + 'api/scan-status/' + encodeURIComponent(username));
+    var res = await fetch('api/scan-status/' + encodeURIComponent(username));
     if (!res.ok) return false;
     var status = await res.json();
 
@@ -391,7 +388,7 @@ async function loadExisting(username) {
 
 async function loadResultsForUser(username) {
   try {
-    var res = await fetch(apiBase + 'api/results/' + encodeURIComponent(username));
+    var res = await fetch('api/results/' + encodeURIComponent(username));
     if (res.ok) {
       var data = await res.json();
       if (data.results && data.results.length > 0) {
@@ -424,7 +421,7 @@ async function loadResultsForUser(username) {
 
 async function fetchChanges(username) {
   try {
-    var res = await fetch(apiBase + 'api/changes/' + encodeURIComponent(username));
+    var res = await fetch('api/changes/' + encodeURIComponent(username));
     if (!res.ok) return;
     var data = await res.json();
     if (data.changes && data.changes.length > 0) {
@@ -498,7 +495,7 @@ function showChangesBanner(changes) {
 async function dismissChanges() {
   var banner = document.getElementById('changesBanner');
   try {
-    var res = await fetch(apiBase + 'api/changes/dismiss', {
+    var res = await fetch('api/changes/dismiss', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({})
@@ -507,12 +504,12 @@ async function dismissChanges() {
       // Session missing — create one from current username and retry
       var username = document.getElementById('usernameInput').value.trim();
       if (username) {
-        await fetch(apiBase + 'api/session', {
+        await fetch('api/session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: username })
         });
-        await fetch(apiBase + 'api/changes/dismiss', {
+        await fetch('api/changes/dismiss', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({})
@@ -768,7 +765,7 @@ function render() {
 
         var shippingHtml = s.usShipping ? '<span class="shipping">+' + s.usShipping + ' US ship</span>' : '';
         var logoFile = storeLogoMap[s.store] || '';
-        var logoHtml = logoFile ? '<img class="store-logo" src="/img/' + logoFile + '" alt="">' : '';
+        var logoHtml = logoFile ? '<img class="store-logo" src="img/' + logoFile + '" alt="">' : '';
 
         if (s.linkOnly) {
           return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' link-only-row" onclick="event.stopPropagation()">' +
@@ -813,14 +810,14 @@ function render() {
       var dShipping = item.discogsPrice.shipping ? '<span class="shipping">+' + item.discogsPrice.shipping + ' ship</span>' : '';
       var currSymbol = item.discogsPrice.currency === 'USD' ? '$' : item.discogsPrice.currency === 'GBP' ? '\u00a3' : item.discogsPrice.currency === 'JPY' ? '\u00a5' : '\u20ac';
       discogsPriceHtml = '<a href="' + (item.discogsPrice.marketplaceUrl || '#') + '" target="_blank" class="store-row discogs" onclick="event.stopPropagation()">' +
-        '<span class="store-name"><img class="store-logo" src="/img/discogs.png" alt="">Discogs</span>' +
+        '<span class="store-name"><img class="store-logo" src="img/discogs.png" alt="">Discogs</span>' +
         '<span class="match-info">' + item.discogsPrice.numForSale + ' for sale (ships to US)</span>' +
         '<span class="price">' + currSymbol + item.discogsPrice.lowestPrice.toFixed(2) + '</span>' +
         dShipping +
         '<span class="arrow">&rarr;</span></a>';
     } else if (item.discogsPrice) {
       discogsPriceHtml = '<a href="' + (item.discogsPrice.marketplaceUrl || '#') + '" target="_blank" class="store-row discogs out-of-stock" onclick="event.stopPropagation()">' +
-        '<span class="store-name"><img class="store-logo" src="/img/discogs.png" alt="">Discogs</span>' +
+        '<span class="store-name"><img class="store-logo" src="img/discogs.png" alt="">Discogs</span>' +
         '<span class="match-info"><span class="not-found">None for sale</span></span>' +
         '<span class="arrow">&rarr;</span></a>';
     }
@@ -914,7 +911,7 @@ function openReleaseDetail(discogsId) {
   var resultItem = resultsData.find(function(r) { return r.item.id === discogsId; });
 
   // Fetch release details
-  fetch(apiBase + 'api/release/' + discogsId)
+  fetch('api/release/' + discogsId)
     .then(function(res) { return res.json(); })
     .then(function(response) {
       if (response.error) {
@@ -1108,7 +1105,7 @@ function renderReleaseDetail(data, resultItem) {
     if (resultItem.discogsPrice && resultItem.discogsPrice.lowestPrice) {
       var currSymbol = resultItem.discogsPrice.currency === 'USD' ? '$' : resultItem.discogsPrice.currency === 'GBP' ? '\u00a3' : '\u20ac';
       html += '<a href="' + (resultItem.discogsPrice.marketplaceUrl || '#') + '" target="_blank" class="store-row discogs">' +
-        '<span class="store-name"><img class="store-logo" src="/img/discogs.png" alt="">Discogs</span>' +
+        '<span class="store-name"><img class="store-logo" src="img/discogs.png" alt="">Discogs</span>' +
         '<span class="match-info">' + resultItem.discogsPrice.numForSale + ' for sale</span>' +
         '<span class="price">' + currSymbol + resultItem.discogsPrice.lowestPrice.toFixed(2) + '</span>' +
         '<span class="arrow">&rarr;</span></a>';
@@ -1154,13 +1151,13 @@ function renderReleaseDetail(data, resultItem) {
   // Fetch price history and render sparkline
   var chartWrap = document.getElementById('priceChartWrap');
   if (chartWrap && chartWrap.dataset.discogsId) {
-    fetch(apiBase + 'api/price-history/' + chartWrap.dataset.discogsId)
+    fetch('api/price-history/' + chartWrap.dataset.discogsId)
       .then(function(res) { return res.json(); })
       .then(function(ph) { renderPriceChart(chartWrap, ph); })
       .catch(function() {});
 
     // Fetch full history (store stock + discogs prices)
-    fetch(apiBase + 'api/history/' + chartWrap.dataset.discogsId)
+    fetch('api/history/' + chartWrap.dataset.discogsId)
       .then(function(res) { return res.json(); })
       .then(function(hist) { renderStockHistory(hist); })
       .catch(function() {});
@@ -1460,7 +1457,7 @@ var authState = { discogs: false, youtube: false };
 
 async function checkAuthStatus() {
   try {
-    var res = await fetch(apiBase + 'api/auth/status');
+    var res = await fetch('api/auth/status');
     if (!res.ok) return;
     var data = await res.json();
     authState = data;
@@ -1504,8 +1501,8 @@ async function checkAuthStatus() {
 async function disconnectDiscogs() {
   if (!confirm('Disconnect and return to the welcome page?')) return;
   try {
-    await fetch(apiBase + 'api/auth/discogs/disconnect', { method: 'POST' });
-    await fetch(apiBase + 'api/logout', { method: 'POST' });
+    await fetch('api/auth/discogs/disconnect', { method: 'POST' });
+    await fetch('api/logout', { method: 'POST' });
   } catch(e) {}
   // Clear local state
   isOAuthed = false;
@@ -1552,7 +1549,7 @@ async function createYoutubePlaylist() {
   for (var i = 0; i < resultsData.length; i++) {
     var item = resultsData[i];
     try {
-      var res = await fetch(apiBase + 'api/release/' + item.item.id);
+      var res = await fetch('api/release/' + item.item.id);
       if (res.ok) {
         var data = await res.json();
         if (data.data && data.data.tracklistWithVideos) {
@@ -1589,7 +1586,7 @@ async function createYoutubePlaylist() {
 
   var username = document.getElementById('usernameInput').value.trim();
   try {
-    var res = await fetch(apiBase + 'api/youtube/create-playlist', {
+    var res = await fetch('api/youtube/create-playlist', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1654,14 +1651,20 @@ if (autoScanAfterAuth && autoScanUsername) {
   }
 }
 
-// Shared/read-only mode: detect /u/:username URL
+// Shared/read-only mode: detect ?share=username param
 var sharedMode = false;
 var sharedUsername = '';
 (function() {
-  var match = window.location.pathname.match(/\/u\/([^/]+)/);
-  if (match) {
+  var params = new URLSearchParams(window.location.search);
+  var share = params.get('share');
+  if (share) {
     sharedMode = true;
-    sharedUsername = decodeURIComponent(match[1]);
+    sharedUsername = share;
+    // Clean URL but keep share param
+    if (params.get('auth') || params.get('auth_error')) {
+      params.delete('auth'); params.delete('auth_error'); params.delete('username');
+      window.history.replaceState({}, '', '?' + params.toString());
+    }
   }
 })();
 
@@ -1714,7 +1717,7 @@ document.addEventListener('visibilitychange', function() {
   var username = document.getElementById('usernameInput').value.trim();
   if (!username) return;
   // Quick check — is a scan still running on the server?
-  fetch(apiBase + 'api/scan-status/' + encodeURIComponent(username))
+  fetch('api/scan-status/' + encodeURIComponent(username))
     .then(function(r) { return r.json(); })
     .then(function(status) {
       if (status.active && !status.done && status.total > 0) {

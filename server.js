@@ -691,9 +691,9 @@ app.get('/', function (req, res) {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Shareable wantlist page
+// Shareable wantlist page — redirect to ?share= so relative paths work
 app.get('/u/:username', function (req, res) {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.redirect('/?share=' + encodeURIComponent(req.params.username));
 });
 
 // Graceful shutdown

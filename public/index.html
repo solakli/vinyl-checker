@@ -6,7 +6,7 @@
 <title>Vinyl Checker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/css/style.css">
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body class="light">
 
@@ -30,20 +30,20 @@
 
   <div class="auth-section" id="authSection">
     <div class="user-bar" id="userBar" style="display:none">
-      <img class="store-logo" src="/img/discogs.png" alt="" style="width:14px;height:14px;filter:none;opacity:0.8">
+      <img class="store-logo" src="img/discogs.png" alt="" style="width:14px;height:14px;filter:none;opacity:0.8">
       <span class="user-bar-name" id="userBarName"></span>
       <button class="scan-btn rescan-btn" id="userBarRescan" style="display:none" onclick="startScan(true)">Rescan All</button>
       <button class="user-bar-btn" id="disconnectBtn" onclick="disconnectDiscogs()">Disconnect</button>
       <span class="user-bar-sep">|</span>
-      <button class="auth-btn youtube-auth" id="connectYoutube" style="display:none" onclick="window.location.href='/api/auth/google'">
+      <button class="auth-btn youtube-auth" id="connectYoutube" style="display:none" onclick="window.location.href='api/auth/google'">
         <span class="auth-icon">&#9654;</span> YouTube
       </button>
       <button class="auth-btn playlist-btn" id="createPlaylistBtn" style="display:none" onclick="createYoutubePlaylist()">
         <span class="auth-icon">&#9835;</span> Create Playlist
       </button>
     </div>
-    <button class="auth-btn discogs-connect-header" id="connectDiscogsHeader" style="display:none" onclick="window.location.href='/api/auth/discogs'">
-      <img class="store-logo" src="/img/discogs.png" alt="" style="width:12px;height:12px;filter:none;opacity:0.8;margin-right:4px;vertical-align:middle"> Connect Discogs
+    <button class="auth-btn discogs-connect-header" id="connectDiscogsHeader" style="display:none" onclick="window.location.href='api/auth/discogs'">
+      <img class="store-logo" src="img/discogs.png" alt="" style="width:12px;height:12px;filter:none;opacity:0.8;margin-right:4px;vertical-align:middle"> Connect Discogs
     </button>
     <span class="auth-status" id="authStatus"></span>
   </div>
@@ -80,15 +80,15 @@
       <div class="tag-filter-tags" id="styleTags"></div>
     </div>
     <div class="store-filter" id="storeFilter">
-      <div class="store-badge hhv active" data-store="HHV"><img class="store-logo" src="/img/hhv.png" alt="">HHV <span class="count"></span></div>
-      <div class="store-badge deejay active" data-store="Deejay.de"><img class="store-logo" src="/img/deejay.png" alt="">Deejay <span class="count"></span></div>
-      <div class="store-badge hardwax active" data-store="Hardwax"><img class="store-logo" src="/img/hardwax.png" alt="">Hardwax <span class="count"></span></div>
-      <div class="store-badge juno active" data-store="Juno"><img class="store-logo" src="/img/juno.png" alt="">Juno <span class="count"></span></div>
-      <div class="store-badge ttlab active" data-store="Turntable Lab"><img class="store-logo" src="/img/ttlab.png" alt="">TT Lab <span class="count"></span></div>
-      <div class="store-badge uvs active" data-store="Underground Vinyl"><img class="store-logo" src="/img/uvs.png" alt="">UVS <span class="count"></span></div>
-      <div class="store-badge decks active" data-store="Decks.de"><img class="store-logo" src="/img/decks.png" alt="">Decks <span class="count"></span></div>
-      <div class="store-badge phonica active" data-store="Phonica"><img class="store-logo" src="/img/phonica.png" alt="">Phonica <span class="count"></span></div>
-      <div class="store-badge yoyaku active" data-store="Yoyaku"><img class="store-logo" src="/img/yoyaku.png" alt="">Yoyaku <span class="count"></span></div>
+      <div class="store-badge hhv active" data-store="HHV"><img class="store-logo" src="img/hhv.png" alt="">HHV <span class="count"></span></div>
+      <div class="store-badge deejay active" data-store="Deejay.de"><img class="store-logo" src="img/deejay.png" alt="">Deejay <span class="count"></span></div>
+      <div class="store-badge hardwax active" data-store="Hardwax"><img class="store-logo" src="img/hardwax.png" alt="">Hardwax <span class="count"></span></div>
+      <div class="store-badge juno active" data-store="Juno"><img class="store-logo" src="img/juno.png" alt="">Juno <span class="count"></span></div>
+      <div class="store-badge ttlab active" data-store="Turntable Lab"><img class="store-logo" src="img/ttlab.png" alt="">TT Lab <span class="count"></span></div>
+      <div class="store-badge uvs active" data-store="Underground Vinyl"><img class="store-logo" src="img/uvs.png" alt="">UVS <span class="count"></span></div>
+      <div class="store-badge decks active" data-store="Decks.de"><img class="store-logo" src="img/decks.png" alt="">Decks <span class="count"></span></div>
+      <div class="store-badge phonica active" data-store="Phonica"><img class="store-logo" src="img/phonica.png" alt="">Phonica <span class="count"></span></div>
+      <div class="store-badge yoyaku active" data-store="Yoyaku"><img class="store-logo" src="img/yoyaku.png" alt="">Yoyaku <span class="count"></span></div>
     </div>
     <label class="filter-btn" id="inStockOnly">
       <input type="checkbox" style="display:none"> In Stock Only
@@ -103,15 +103,15 @@
       <p class="welcome-sub">Find your Discogs wantlist in stock across 9 vinyl stores worldwide</p>
     </div>
     <div class="welcome-actions">
-      <button class="welcome-cta" onclick="window.location.href='/api/auth/discogs'">
-        <img class="store-logo" src="/img/discogs.png" alt="" style="width:20px;height:20px;margin-right:8px;vertical-align:middle;filter:none;opacity:1"> Connect Your Discogs
+      <button class="welcome-cta" onclick="window.location.href='api/auth/discogs'">
+        <img class="store-logo" src="img/discogs.png" alt="" style="width:20px;height:20px;margin-right:8px;vertical-align:middle;filter:none;opacity:1"> Connect Your Discogs
       </button>
       <p class="welcome-hint">Authorize to scan your wantlist &mdash; works with private wantlists too</p>
     </div>
     <div class="welcome-stores">
       <span class="welcome-store-label">Stores we check:</span>
       <div class="welcome-store-logos">
-        <img src="/img/hhv.png" alt="HHV" title="HHV"><img src="/img/deejay.png" alt="Deejay.de" title="Deejay.de"><img src="/img/hardwax.png" alt="Hardwax" title="Hardwax"><img src="/img/juno.png" alt="Juno" title="Juno"><img src="/img/ttlab.png" alt="Turntable Lab" title="Turntable Lab"><img src="/img/phonica.png" alt="Phonica" title="Phonica"><img src="/img/decks.png" alt="Decks.de" title="Decks.de"><img src="/img/yoyaku.png" alt="Yoyaku" title="Yoyaku"><img src="/img/uvs.png" alt="Underground Vinyl" title="Underground Vinyl">
+        <img src="img/hhv.png" alt="HHV" title="HHV"><img src="img/deejay.png" alt="Deejay.de" title="Deejay.de"><img src="img/hardwax.png" alt="Hardwax" title="Hardwax"><img src="img/juno.png" alt="Juno" title="Juno"><img src="img/ttlab.png" alt="Turntable Lab" title="Turntable Lab"><img src="img/phonica.png" alt="Phonica" title="Phonica"><img src="img/decks.png" alt="Decks.de" title="Decks.de"><img src="img/yoyaku.png" alt="Yoyaku" title="Yoyaku"><img src="img/uvs.png" alt="Underground Vinyl" title="Underground Vinyl">
       </div>
     </div>
   </div>
@@ -127,7 +127,7 @@
   </div>
 </div>
 
-<script src="/js/app.js"></script>
+<script src="js/app.js"></script>
 
 </body>
 </html>
