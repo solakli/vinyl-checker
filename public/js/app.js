@@ -1,5 +1,8 @@
 /* Vinyl Checker Frontend */
 
+// API base path — ensures fetch works from /u/:username too
+var apiBase = window.location.pathname.match(/\/u\//) ? '/' : '';
+
 let resultsData = [];
 let isScanning = false;
 let isOAuthed = false; // Track if user connected via Discogs OAuth
@@ -143,7 +146,7 @@ function startScan(force, resume) {
   if (rb) rb.remove();
 
   // Create session cookie via API
-  fetch('api/session', {
+  fetch(apiBase + 'api/session', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username: username })
@@ -178,7 +181,7 @@ function startScan(force, resume) {
   connectSSE(username, force);}
 
 function connectSSE(username, force) {
-  var scanUrl = 'api/scan/' + encodeURIComponent(username) + (force ? '?force=true' : '');
+  var scanUrl = apiBase + 'api/scan/' + encodeURIComponent(username) + (force ? '?force=true' : '');
   var evtSource = new EventSource(scanUrl);
 
   var thinkingDotsHtml = '<span class="thinking-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
@@ -330,7 +333,7 @@ function connectSSE(username, force) {
 // Check if a scan is still running on the server (for resume after tab switch / browser close)
 async function checkScanAndResume(username) {
   try {
-    var res = await fetch('api/scan-status/' + encodeURIComponent(username));
+    var res = await fetch(apiBase + 'api/scan-status/' + encodeURIComponent(username));
     if (!res.ok) return false;
     var status = await res.json();
 
@@ -388,7 +391,7 @@ async function loadExisting(username) {
 
 async function loadResultsForUser(username) {
   try {
-    var res = await fetch('api/results/' + encodeURIComponent(username));
+    var res = await fetch(apiBase + 'api/results/' + encodeURIComponent(username));
     if (res.ok) {
       var data = await res.json();
       if (data.results && data.results.length > 0) {
@@ -421,7 +424,7 @@ async function loadResultsForUser(username) {
 
 async function fetchChanges(username) {
   try {
-    var res = await fetch('api/changes/' + encodeURIComponent(username));
+    var res = await fetch(apiBase + 'api/changes/' + encodeURIComponent(username));
     if (!res.ok) return;
     var data = await res.json();
     if (data.changes && data.changes.length > 0) {
@@ -495,7 +498,7 @@ function showChangesBanner(changes) {
 async function dismissChanges() {
   var banner = document.getElementById('changesBanner');
   try {
-    var res = await fetch('api/changes/dismiss', {
+    var res = await fetch(apiBase + 'api/changes/dismiss', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({})
@@ -504,12 +507,12 @@ async function dismissChanges() {
       // Session missing — create one from current username and retry
       var username = document.getElementById('usernameInput').value.trim();
       if (username) {
-        await fetch('api/session', {
+        await fetch(apiBase + 'api/session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: username })
         });
-        await fetch('api/changes/dismiss', {
+        await fetch(apiBase + 'api/changes/dismiss', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({})
@@ -765,7 +768,7 @@ function render() {
 
         var shippingHtml = s.usShipping ? '<span class="shipping">+' + s.usShipping + ' US ship</span>' : '';
         var logoFile = storeLogoMap[s.store] || '';
-        var logoHtml = logoFile ? '<img class="store-logo" src="img/' + logoFile + '" alt="">' : '';
+        var logoHtml = logoFile ? '<img class="store-logo" src="/img/' + logoFile + '" alt="">' : '';
 
         if (s.linkOnly) {
           return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' link-only-row" onclick="event.stopPropagation()">' +
@@ -810,14 +813,14 @@ function render() {
       var dShipping = item.discogsPrice.shipping ? '<span class="shipping">+' + item.discogsPrice.shipping + ' ship</span>' : '';
       var currSymbol = item.discogsPrice.currency === 'USD' ? '$' : item.discogsPrice.currency === 'GBP' ? '\u00a3' : item.discogsPrice.currency === 'JPY' ? '\u00a5' : '\u20ac';
       discogsPriceHtml = '<a href="' + (item.discogsPrice.marketplaceUrl || '#') + '" target="_blank" class="store-row discogs" onclick="event.stopPropagation()">' +
-        '<span class="store-name"><img class="store-logo" src="img/discogs.png" alt="">Discogs</span>' +
+        '<span class="store-name"><img class="store-logo" src="/img/discogs.png" alt="">Discogs</span>' +
         '<span class="match-info">' + item.discogsPrice.numForSale + ' for sale (ships to US)</span>' +
         '<span class="price">' + currSymbol + item.discogsPrice.lowestPrice.toFixed(2) + '</span>' +
         dShipping +
         '<span class="arrow">&rarr;</span></a>';
     } else if (item.discogsPrice) {
       discogsPriceHtml = '<a href="' + (item.discogsPrice.marketplaceUrl || '#') + '" target="_blank" class="store-row discogs out-of-stock" onclick="event.stopPropagation()">' +
-        '<span class="store-name"><img class="store-logo" src="img/discogs.png" alt="">Discogs</span>' +
+        '<span class="store-name"><img class="store-logo" src="/img/discogs.png" alt="">Discogs</span>' +
         '<span class="match-info"><span class="not-found">None for sale</span></span>' +
         '<span class="arrow">&rarr;</span></a>';
     }
@@ -911,7 +914,7 @@ function openReleaseDetail(discogsId) {
   var resultItem = resultsData.find(function(r) { return r.item.id === discogsId; });
 
   // Fetch release details
-  fetch('api/release/' + discogsId)
+  fetch(apiBase + 'api/release/' + discogsId)
     .then(function(res) { return res.json(); })
     .then(function(response) {
       if (response.error) {
@@ -1105,13 +1108,19 @@ function renderReleaseDetail(data, resultItem) {
     if (resultItem.discogsPrice && resultItem.discogsPrice.lowestPrice) {
       var currSymbol = resultItem.discogsPrice.currency === 'USD' ? '$' : resultItem.discogsPrice.currency === 'GBP' ? '\u00a3' : '\u20ac';
       html += '<a href="' + (resultItem.discogsPrice.marketplaceUrl || '#') + '" target="_blank" class="store-row discogs">' +
-        '<span class="store-name"><img class="store-logo" src="img/discogs.png" alt="">Discogs</span>' +
+        '<span class="store-name"><img class="store-logo" src="/img/discogs.png" alt="">Discogs</span>' +
         '<span class="match-info">' + resultItem.discogsPrice.numForSale + ' for sale</span>' +
         '<span class="price">' + currSymbol + resultItem.discogsPrice.lowestPrice.toFixed(2) + '</span>' +
         '<span class="arrow">&rarr;</span></a>';
     }
     html += '</div>';
   }
+
+  // Stock history timeline (loaded async)
+  html += '<div class="modal-section" id="stockHistorySection" style="display:none">' +
+    '<div class="modal-section-title">Availability History</div>' +
+    '<div id="stockHistoryContent"></div>' +
+  '</div>';
 
   // Credits
   if (data.extraartists && data.extraartists.length > 0) {
@@ -1145,9 +1154,15 @@ function renderReleaseDetail(data, resultItem) {
   // Fetch price history and render sparkline
   var chartWrap = document.getElementById('priceChartWrap');
   if (chartWrap && chartWrap.dataset.discogsId) {
-    fetch('api/price-history/' + chartWrap.dataset.discogsId)
+    fetch(apiBase + 'api/price-history/' + chartWrap.dataset.discogsId)
       .then(function(res) { return res.json(); })
       .then(function(ph) { renderPriceChart(chartWrap, ph); })
+      .catch(function() {});
+
+    // Fetch full history (store stock + discogs prices)
+    fetch(apiBase + 'api/history/' + chartWrap.dataset.discogsId)
+      .then(function(res) { return res.json(); })
+      .then(function(hist) { renderStockHistory(hist); })
       .catch(function() {});
   }
 }
@@ -1208,6 +1223,87 @@ function renderPriceChart(container, ph) {
   }
 
   container.innerHTML = statsHtml + sparkHtml;
+}
+
+function renderStockHistory(hist) {
+  var section = document.getElementById('stockHistorySection');
+  var container = document.getElementById('stockHistoryContent');
+  if (!section || !container) return;
+  if (!hist || (!hist.stores.length && !hist.discogs.length)) return;
+
+  section.style.display = '';
+
+  // Group store history by store
+  var byStore = {};
+  hist.stores.forEach(function(h) {
+    if (!byStore[h.store]) byStore[h.store] = [];
+    byStore[h.store].push(h);
+  });
+
+  // Get all unique dates across all stores
+  var allDates = [];
+  hist.stores.forEach(function(h) {
+    if (allDates.indexOf(h.recorded_at) === -1) allDates.push(h.recorded_at);
+  });
+  allDates.sort();
+
+  if (allDates.length < 2) {
+    container.innerHTML = '<div style="font-size:12px;color:var(--text-muted);font-weight:300">Tracking started today — history will appear after more scans</div>';
+    return;
+  }
+
+  // Build availability grid: rows = stores, columns = dates
+  var storeNames = Object.keys(byStore).sort();
+  var cellW = Math.max(6, Math.min(16, Math.floor(280 / allDates.length)));
+  var cellH = 14;
+  var labelW = 60;
+  var svgW = labelW + allDates.length * cellW + 4;
+  var svgH = storeNames.length * (cellH + 2) + 20;
+
+  var html = '<svg class="stock-grid" width="' + svgW + '" height="' + svgH + '" viewBox="0 0 ' + svgW + ' ' + svgH + '">';
+
+  // Date labels (first and last)
+  html += '<text x="' + labelW + '" y="10" fill="var(--text-muted)" font-size="9" font-family="Oswald">' + allDates[0] + '</text>';
+  html += '<text x="' + (labelW + (allDates.length - 1) * cellW) + '" y="10" fill="var(--text-muted)" font-size="9" font-family="Oswald" text-anchor="end">' + allDates[allDates.length - 1] + '</text>';
+
+  storeNames.forEach(function(store, si) {
+    var y = 18 + si * (cellH + 2);
+
+    // Store label
+    var shortName = (storeDisplayName[store] || store).substring(0, 8);
+    html += '<text x="' + (labelW - 4) + '" y="' + (y + cellH - 2) + '" fill="var(--text-sec)" font-size="9" font-family="Oswald" text-anchor="end">' + shortName + '</text>';
+
+    // Build date lookup for this store
+    var dateMap = {};
+    byStore[store].forEach(function(h) { dateMap[h.recorded_at] = h; });
+
+    // Cells for each date
+    allDates.forEach(function(date, di) {
+      var x = labelW + di * cellW;
+      var entry = dateMap[date];
+      var color = 'rgba(255,255,255,0.04)'; // no data
+      if (entry) {
+        color = entry.in_stock ? 'var(--green)' : 'rgba(255,0,0,0.25)';
+      }
+      html += '<rect x="' + x + '" y="' + y + '" width="' + (cellW - 1) + '" height="' + cellH + '" rx="1" fill="' + color + '">';
+      if (entry) {
+        var tip = store + ' · ' + date + (entry.in_stock ? ' · In Stock' : ' · Out of Stock') + (entry.price ? ' · ' + entry.price : '');
+        html += '<title>' + escapeHtml(tip) + '</title>';
+      }
+      html += '</rect>';
+    });
+  });
+
+  html += '</svg>';
+
+  // Legend
+  html += '<div class="stock-legend">' +
+    '<span><span class="legend-dot" style="background:var(--green)"></span> In Stock</span>' +
+    '<span><span class="legend-dot" style="background:rgba(255,0,0,0.4)"></span> Out of Stock</span>' +
+    '<span style="color:var(--text-muted);font-size:10px">' + allDates.length + ' days tracked</span>' +
+  '</div>';
+
+  container.innerHTML = html;
 }
 
 function extractYoutubeId(url) {
@@ -1364,7 +1460,7 @@ var authState = { discogs: false, youtube: false };
 
 async function checkAuthStatus() {
   try {
-    var res = await fetch('api/auth/status');
+    var res = await fetch(apiBase + 'api/auth/status');
     if (!res.ok) return;
     var data = await res.json();
     authState = data;
@@ -1408,8 +1504,8 @@ async function checkAuthStatus() {
 async function disconnectDiscogs() {
   if (!confirm('Disconnect and return to the welcome page?')) return;
   try {
-    await fetch('api/auth/discogs/disconnect', { method: 'POST' });
-    await fetch('api/logout', { method: 'POST' });
+    await fetch(apiBase + 'api/auth/discogs/disconnect', { method: 'POST' });
+    await fetch(apiBase + 'api/logout', { method: 'POST' });
   } catch(e) {}
   // Clear local state
   isOAuthed = false;
@@ -1456,7 +1552,7 @@ async function createYoutubePlaylist() {
   for (var i = 0; i < resultsData.length; i++) {
     var item = resultsData[i];
     try {
-      var res = await fetch('api/release/' + item.item.id);
+      var res = await fetch(apiBase + 'api/release/' + item.item.id);
       if (res.ok) {
         var data = await res.json();
         if (data.data && data.data.tracklistWithVideos) {
@@ -1493,7 +1589,7 @@ async function createYoutubePlaylist() {
 
   var username = document.getElementById('usernameInput').value.trim();
   try {
-    var res = await fetch('api/youtube/create-playlist', {
+    var res = await fetch(apiBase + 'api/youtube/create-playlist', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1558,6 +1654,37 @@ if (autoScanAfterAuth && autoScanUsername) {
   }
 }
 
+// Shared/read-only mode: detect /u/:username URL
+var sharedMode = false;
+var sharedUsername = '';
+(function() {
+  var match = window.location.pathname.match(/\/u\/([^/]+)/);
+  if (match) {
+    sharedMode = true;
+    sharedUsername = decodeURIComponent(match[1]);
+  }
+})();
+
+if (sharedMode) {
+  // Read-only shared view — hide all auth/scan controls
+  document.getElementById('authSection').style.display = 'none';
+  document.getElementById('scanSection').style.display = 'none';
+  document.getElementById('themeToggle').style.display = 'none';
+  document.querySelector('h1').innerHTML = '<span>' + escapeHtml(sharedUsername) + '</span> Wantlist';
+  document.getElementById('usernameInput').value = sharedUsername;
+  // Load results directly
+  loadResultsForUser(sharedUsername).then(function() {
+    if (resultsData.length === 0) {
+      document.getElementById('welcome').style.display = '';
+      var hero = document.querySelector('.welcome-hero');
+      if (hero) hero.innerHTML = '<h2>No results yet</h2><p class="welcome-sub">This wantlist hasn\'t been scanned yet</p>';
+      var actions = document.querySelector('.welcome-actions');
+      if (actions) actions.style.display = 'none';
+      var stores = document.querySelector('.welcome-stores');
+      if (stores) stores.style.display = 'none';
+    }
+  });
+} else {
 // Init — check auth first, then decide what to show
 checkAuthStatus().then(function() {
   if (autoScanAfterAuth) {
@@ -1578,6 +1705,7 @@ checkAuthStatus().then(function() {
     document.getElementById('welcome').style.display = '';
   }
 });
+}
 
 // Safari/mobile: when user switches back from another app, check if scan is still running
 document.addEventListener('visibilitychange', function() {
@@ -1586,7 +1714,7 @@ document.addEventListener('visibilitychange', function() {
   var username = document.getElementById('usernameInput').value.trim();
   if (!username) return;
   // Quick check — is a scan still running on the server?
-  fetch('api/scan-status/' + encodeURIComponent(username))
+  fetch(apiBase + 'api/scan-status/' + encodeURIComponent(username))
     .then(function(r) { return r.json(); })
     .then(function(status) {
       if (status.active && !status.done && status.total > 0) {

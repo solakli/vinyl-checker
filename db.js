@@ -119,12 +119,25 @@ function initTables() {
             FOREIGN KEY (wantlist_id) REFERENCES wantlist(id)
         );
 
+        CREATE TABLE IF NOT EXISTS store_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            wantlist_id INTEGER NOT NULL,
+            store TEXT NOT NULL,
+            in_stock INTEGER DEFAULT 0,
+            price REAL,
+            currency TEXT,
+            recorded_at TEXT,
+            FOREIGN KEY (wantlist_id) REFERENCES wantlist(id)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_wantlist_user ON wantlist(user_id);
         CREATE INDEX IF NOT EXISTS idx_wantlist_active ON wantlist(user_id, active);
         CREATE INDEX IF NOT EXISTS idx_store_results_wantlist ON store_results(wantlist_id);
         CREATE INDEX IF NOT EXISTS idx_discogs_prices_wantlist ON discogs_prices(wantlist_id);
         CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
         CREATE INDEX IF NOT EXISTS idx_price_history_wantlist ON price_history(wantlist_id);
+        CREATE INDEX IF NOT EXISTS idx_store_history_wantlist ON store_history(wantlist_id);
+        CREATE INDEX IF NOT EXISTS idx_store_history_lookup ON store_history(wantlist_id, store, recorded_at);
 
         CREATE TABLE IF NOT EXISTS scan_changes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -241,6 +254,7 @@ function getWantlistItem(wantlistId) {
 
 function saveStoreResult(wantlistId, result) {
     var d = getDb();
+    var now = new Date().toISOString();
     d.prepare(`
         INSERT INTO store_results (wantlist_id, store, in_stock, matches, search_url, link_only, us_shipping, error, checked_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -258,8 +272,24 @@ function saveStoreResult(wantlistId, result) {
         result.linkOnly ? 1 : 0,
         result.usShipping || null,
         result.error || null,
-        new Date().toISOString()
+        now
     );
+
+    // Save daily store history snapshot (one per store per item per day)
+    if (!result.linkOnly && !result.error) {
+        var today = now.slice(0, 10);
+        var price = null;
+        if (result.matches && result.matches.length > 0 && result.matches[0].price) {
+            var p = String(result.matches[0].price).replace(/[^0-9.,]/g, '').replace(',', '.');
+            price = parseFloat(p) || null;
+        }
+        var existing = d.prepare('SELECT id FROM store_history WHERE wantlist_id = ? AND store = ? AND recorded_at = ?').get(wantlistId, result.store, today);
+        if (existing) {
+            d.prepare('UPDATE store_history SET in_stock = ?, price = ? WHERE id = ?').run(result.inStock ? 1 : 0, price, existing.id);
+        } else {
+            d.prepare('INSERT INTO store_history (wantlist_id, store, in_stock, price, recorded_at) VALUES (?, ?, ?, ?, ?)').run(wantlistId, result.store, result.inStock ? 1 : 0, price, today);
+        }
+    }
 }
 
 function saveStoreResults(wantlistId, results) {
@@ -574,6 +604,30 @@ function getSessionLastSeen(token) {
     return row ? row.last_seen : null;
 }
 
+// ═══════════════════════════════════════════════════════════
+// HISTORY OPERATIONS
+// ═══════════════════════════════════════════════════════════
+
+function getStoreHistory(wantlistId, days) {
+    days = days || 90;
+    var since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+    return getDb().prepare(
+        'SELECT store, in_stock, price, recorded_at FROM store_history WHERE wantlist_id = ? AND recorded_at >= ? ORDER BY recorded_at'
+    ).all(wantlistId, since);
+}
+
+function getItemHistory(wantlistId, days) {
+    days = days || 90;
+    var since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+    var storeHist = getDb().prepare(
+        'SELECT store, in_stock, price, recorded_at FROM store_history WHERE wantlist_id = ? AND recorded_at >= ? ORDER BY recorded_at'
+    ).all(wantlistId, since);
+    var priceHist = getDb().prepare(
+        'SELECT lowest_price, num_for_sale, currency, recorded_at FROM price_history WHERE wantlist_id = ? AND recorded_at >= ? ORDER BY recorded_at'
+    ).all(wantlistId, since);
+    return { stores: storeHist, discogs: priceHist };
+}
+
 function close() {
     if (db) { db.close(); db = null; }
 }
@@ -611,5 +665,7 @@ module.exports = {
     getUsersDueForRescan: getUsersDueForRescan,
     updateUserDailyRescan: updateUserDailyRescan,
     getSessionLastSeen: getSessionLastSeen,
+    getStoreHistory: getStoreHistory,
+    getItemHistory: getItemHistory,
     close: close
 };

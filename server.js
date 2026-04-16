@@ -661,6 +661,20 @@ app.get('/api/price-history/:discogs_id', function (req, res) {
     res.json({ discogsId: discogsId, current: current, history: history, stats: stats });
 });
 
+// Full history for a release (store stock + Discogs price)
+app.get('/api/history/:discogs_id', function (req, res) {
+    var discogsId = parseInt(req.params.discogs_id, 10);
+    if (!discogsId || isNaN(discogsId)) return res.status(400).json({ error: 'Invalid discogs_id' });
+
+    var d = db.getDb();
+    var w = d.prepare('SELECT id FROM wantlist WHERE discogs_id = ? LIMIT 1').get(discogsId);
+    if (!w) return res.json({ stores: [], discogs: [] });
+
+    var days = parseInt(req.query.days, 10) || 90;
+    var history = db.getItemHistory(w.id, days);
+    res.json(history);
+});
+
 // Check scan status
 app.get('/api/status', function (req, res) {
     res.json({ scanning: Object.keys(scanner.activeScans).length > 0, users: Object.keys(scanner.activeScans) });
@@ -674,6 +688,11 @@ app.get('/api/scan-status/:username', function (req, res) {
 
 // Serve the app
 app.get('/', function (req, res) {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Shareable wantlist page
+app.get('/u/:username', function (req, res) {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
