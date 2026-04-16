@@ -1082,6 +1082,7 @@ body.light .tag-badge .tag-stock { color: var(--gold); }
   transition: all 0.2s;
 }
 .user-bar-btn:hover { border-color: var(--red-soft); color: var(--red-soft); }
+.user-bar-btn.share-btn:hover { border-color: var(--gold); color: var(--gold); }
 .user-bar-sep {
   color: var(--border);
   font-size: 10px;

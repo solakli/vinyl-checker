@@ -247,6 +247,7 @@ function connectSSE(username, force) {
     }
     document.getElementById('liveBadge').style.display = 'none';
     document.getElementById('progressSection').classList.remove('active');
+    document.getElementById('shareBtn').style.display = 'inline-block';
     var msg = data.checked > 0
       ? 'Scanned ' + data.checked + ' new items \u00b7 ' + (data.cached || 0) + ' from cache'
       : 'All results loaded from cache';
@@ -401,6 +402,7 @@ async function loadResultsForUser(username) {
           document.getElementById('userBarRescan').style.display = 'inline-block';
         }
         document.getElementById('controls').style.display = 'flex';
+        document.getElementById('shareBtn').style.display = 'inline-block';
         var lastScan = data.lastScan ? new Date(data.lastScan).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'unknown';
         document.getElementById('timestamp').textContent = 'Cached \u00b7 Last full scan: ' + lastScan;
         updateStats();
@@ -1498,6 +1500,28 @@ async function checkAuthStatus() {
   } catch(e) {}
 }
 
+function shareWantlist() {
+  var username = document.getElementById('usernameInput').value.trim();
+  if (!username) return;
+  var shareUrl = window.location.origin + window.location.pathname + '?share=' + encodeURIComponent(username);
+
+  // Try native share (mobile), fall back to clipboard
+  if (navigator.share) {
+    navigator.share({
+      title: username + ' — Vinyl Checker Wantlist',
+      url: shareUrl
+    }).catch(function() {});
+  } else if (navigator.clipboard) {
+    navigator.clipboard.writeText(shareUrl).then(function() {
+      var btn = document.getElementById('shareBtn');
+      btn.textContent = 'Copied!';
+      setTimeout(function() { btn.textContent = 'Share'; }, 2000);
+    });
+  } else {
+    prompt('Share this link:', shareUrl);
+  }
+}
+
 async function disconnectDiscogs() {
   if (!confirm('Disconnect and return to the welcome page?')) return;
   try {
@@ -1519,6 +1543,7 @@ async function disconnectDiscogs() {
   document.getElementById('timestamp').textContent = '';
   document.getElementById('rescanBtn').style.display = 'none';
   document.getElementById('userBarRescan').style.display = 'none';
+  document.getElementById('shareBtn').style.display = 'none';
   // Clear changes banner
   var changesBanner = document.getElementById('changesBanner');
   if (changesBanner) changesBanner.remove();
