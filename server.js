@@ -666,6 +666,12 @@ app.get('/api/status', function (req, res) {
     res.json({ scanning: Object.keys(scanner.activeScans).length > 0, users: Object.keys(scanner.activeScans) });
 });
 
+// Scan status for a specific user (used by resume UI)
+app.get('/api/scan-status/:username', function (req, res) {
+    var username = req.params.username.trim();
+    res.json(scanner.getScanStatus(username));
+});
+
 // Serve the app
 app.get('/', function (req, res) {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));

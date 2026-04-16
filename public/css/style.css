@@ -1528,6 +1528,51 @@ body.light .tag-badge .tag-stock { color: var(--gold); }
    CHANGES BANNER (new since last visit)
    ═══════════════════════════════════════════════════════════════ */
 
+/* RESUME BANNER — Welcome Back */
+.resume-banner {
+  background: linear-gradient(135deg, rgba(255,102,0,0.12) 0%, rgba(255,102,0,0.04) 100%);
+  border: 1px solid rgba(255,102,0,0.3);
+  border-radius: var(--radius-lg);
+  margin: 16px 28px 0;
+  padding: 18px 22px;
+  animation: slideDown 0.3s ease;
+  text-align: center;
+}
+.resume-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.resume-progress {
+  font-size: 13px;
+  color: var(--text-sec);
+  margin-bottom: 12px;
+}
+.resume-progress strong {
+  color: var(--gold);
+  font-weight: 600;
+}
+.resume-btn {
+  background: var(--gold);
+  color: #000;
+  border: none;
+  border-radius: var(--radius);
+  padding: 8px 24px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: opacity 0.2s;
+}
+.resume-btn:hover { opacity: 0.85; }
+body.light .resume-banner {
+  background: linear-gradient(135deg, rgba(255,102,0,0.06) 0%, rgba(255,102,0,0.02) 100%);
+  border-color: rgba(255,102,0,0.2);
+}
+
 .changes-banner {
   background: linear-gradient(135deg, rgba(255,102,0,0.08) 0%, rgba(74,222,128,0.06) 100%);
   border: 1px solid rgba(255,102,0,0.25);

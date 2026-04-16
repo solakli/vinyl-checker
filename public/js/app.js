@@ -129,11 +129,18 @@ function stopLoadingMessages() {
   }
 }
 
-function startScan(force) {
+var sseReconnectCount = 0;
+var maxSseReconnects = 3;
+
+function startScan(force, resume) {
   var username = document.getElementById('usernameInput').value.trim();
   if (!username || isScanning) return;
 
   localStorage.setItem('vinyl-checker-username', username);
+
+  // Remove resume banner if present
+  var rb = document.getElementById('resumeBanner');
+  if (rb) rb.remove();
 
   // Create session cookie via API
   fetch('api/session', {
@@ -143,9 +150,13 @@ function startScan(force) {
   }).catch(function() {});
 
   isScanning = true;
-  resultsData = [];
-  activeGenres = new Set();
-  activeStyles = new Set();
+  if (!resume) {
+    resultsData = [];
+    activeGenres = new Set();
+    activeStyles = new Set();
+    document.getElementById('grid').innerHTML = '';
+  }
+  sseReconnectCount = 0;
 
   // UI updates
   document.getElementById('scanBtn').disabled = true;
@@ -158,13 +169,15 @@ function startScan(force) {
   // Hide rescan in user bar during scan
   if (isOAuthed) document.getElementById('userBarRescan').style.display = 'none';
   document.getElementById('controls').style.display = 'flex';
-  document.getElementById('grid').innerHTML = '';
   document.getElementById('noResults').style.display = 'none';
 
   // Start fun loading messages
   startLoadingMessages();
 
   // Connect to SSE
+  connectSSE(username, force);}
+
+function connectSSE(username, force) {
   var scanUrl = 'api/scan/' + encodeURIComponent(username) + (force ? '?force=true' : '');
   var evtSource = new EventSource(scanUrl);
 
@@ -277,6 +290,19 @@ function startScan(force) {
   evtSource.onerror = function() {
     if (!isScanning) return;
     evtSource.close();
+
+    // Try auto-reconnect (Safari background tab, network blip)
+    if (sseReconnectCount < maxSseReconnects) {
+      sseReconnectCount++;
+      document.getElementById('progressText').innerHTML = 'Reconnecting... (attempt ' + sseReconnectCount + '/' + maxSseReconnects + ')' +
+        '<span class="thinking-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
+      setTimeout(function() {
+        if (isScanning) connectSSE(username, false);
+      }, 2000);
+      return;
+    }
+
+    // Max reconnects exhausted — show lost state
     stopLoadingMessages();
     isScanning = false;
     document.getElementById('scanBtn').disabled = false;
@@ -301,11 +327,63 @@ function startScan(force) {
   };
 }
 
+// Check if a scan is still running on the server (for resume after tab switch / browser close)
+async function checkScanAndResume(username) {
+  try {
+    var res = await fetch('api/scan-status/' + encodeURIComponent(username));
+    if (!res.ok) return false;
+    var status = await res.json();
+
+    if (status.active && !status.done && status.total > 0) {
+      // Scan is still running — show resume banner
+      showResumeBanner(username, status);
+      return true;
+    }
+    if (status.done && status.total > 0 && status.completed < status.total) {
+      // Scan finished but was partial — just load results
+      return false;
+    }
+  } catch(e) {}
+  return false;
+}
+
+function showResumeBanner(username, status) {
+  // Remove existing
+  var existing = document.getElementById('resumeBanner');
+  if (existing) existing.remove();
+
+  var pct = status.total > 0 ? Math.round(status.completed / status.total * 100) : 0;
+  var banner = document.createElement('div');
+  banner.id = 'resumeBanner';
+  banner.className = 'resume-banner';
+  banner.innerHTML =
+    '<div class="resume-title">Welcome back!</div>' +
+    '<div class="resume-progress">' +
+      'Your scan is still running \u2014 <strong>' + status.completed + ' / ' + status.total + '</strong> items checked (' + pct + '%)' +
+      (status.lastItem ? '<br><span style="font-size:12px;opacity:0.6">Last: ' + escapeHtml(status.lastItem) + '</span>' : '') +
+    '</div>' +
+    '<button class="resume-btn" onclick="resumeScan()">Resume Scan</button>';
+
+  var container = document.querySelector('.container');
+  container.insertBefore(banner, container.firstChild);
+
+  // Also load cached results behind the banner
+  loadResultsForUser(username);
+}
+
+function resumeScan() {
+  var username = document.getElementById('usernameInput').value.trim();
+  if (!username) return;
+  startScan(false, true);
+}
+
 // Load cached results for a connected user
 async function loadExisting(username) {
   if (!username) return;
   document.getElementById('usernameInput').value = username;
-  await loadResultsForUser(username);
+  // Check if a scan is still running on the server
+  var scanning = await checkScanAndResume(username);
+  if (!scanning) await loadResultsForUser(username);
 }
 
 async function loadResultsForUser(username) {
@@ -1499,4 +1577,21 @@ checkAuthStatus().then(function() {
     // No saved state — show welcome page
     document.getElementById('welcome').style.display = '';
   }
+});
+
+// Safari/mobile: when user switches back from another app, check if scan is still running
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState !== 'visible') return;
+  if (isScanning) return; // Already connected to SSE
+  var username = document.getElementById('usernameInput').value.trim();
+  if (!username) return;
+  // Quick check — is a scan still running on the server?
+  fetch('api/scan-status/' + encodeURIComponent(username))
+    .then(function(r) { return r.json(); })
+    .then(function(status) {
+      if (status.active && !status.done && status.total > 0) {
+        showResumeBanner(username, status);
+      }
+    })
+    .catch(function() {});
 });
