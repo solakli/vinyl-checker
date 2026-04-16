@@ -675,6 +675,33 @@ app.get('/api/history/:discogs_id', function (req, res) {
     res.json(history);
 });
 
+// Verify a single store result (user-triggered validation)
+app.post('/api/verify', async function (req, res) {
+    var store = req.body.store;
+    var searchUrl = req.body.searchUrl;
+    var artist = req.body.artist;
+    var title = req.body.title;
+    var discogsId = req.body.discogsId;
+    if (!store || !searchUrl || !artist) return res.status(400).json({ error: 'Missing params' });
+
+    try {
+        var item = { artist: artist, title: title, searchQuery: (artist + ' ' + title).trim() };
+        var result = await scanner.verifySingleStore(store, searchUrl, item);
+        // If the verify shows it's NOT in stock, update DB
+        if (discogsId && !result.verdict) {
+            var d = db.getDb();
+            var w = d.prepare('SELECT id FROM wantlist WHERE discogs_id = ? LIMIT 1').get(parseInt(discogsId, 10));
+            if (w) {
+                d.prepare('UPDATE store_results SET in_stock = 0, matches = ?, checked_at = ? WHERE wantlist_id = ? AND store = ?')
+                    .run('[]', new Date().toISOString(), w.id, store);
+            }
+        }
+        res.json(result);
+    } catch (e) {
+        res.json({ error: e.message, verdict: null, steps: {} });
+    }
+});
+
 // Check scan status
 app.get('/api/status', function (req, res) {
     res.json({ scanning: Object.keys(scanner.activeScans).length > 0, users: Object.keys(scanner.activeScans) });

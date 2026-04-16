@@ -654,6 +654,34 @@ body {
 
 .store-row:hover { background: rgba(255,255,255,0.04); }
 
+/* Verify button on in-stock store rows */
+.store-row-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+.store-row-wrap .store-row { flex: 1; }
+.verify-btn {
+  font-family: 'Oswald', sans-serif;
+  font-size: 8px;
+  font-weight: 300;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.verify-btn:hover { border-color: var(--gold); color: var(--gold); }
+.verify-btn.verifying { opacity: 0.5; cursor: wait; }
+.verify-btn.verified-ok { border-color: var(--green); color: var(--green); cursor: default; }
+.verify-btn.verified-bad { border-color: var(--red); color: var(--red); cursor: default; }
+
 /* Status indicator dot */
 .store-status {
   width: 6px; height: 6px;

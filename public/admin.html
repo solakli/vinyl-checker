@@ -353,16 +353,17 @@ async function refreshDashboard() {
     var storeKeys = Object.keys(ps);
     if (storeKeys.length > 0) {
       var mHtml = '<div class="card-header">Per-Store Confusion Matrix</div>' +
-        '<table><thead><tr><th>Store</th><th>TP</th><th>FP</th><th>FN</th><th>TN</th><th>Err</th><th>Checked</th><th>Precision</th><th>1a</th><th>1b</th><th>2a</th><th>2b</th><th>3a</th><th>3b</th><th>3c</th></tr></thead><tbody>';
+        '<table><thead><tr><th>Store</th><th>TP</th><th>FP</th><th>FN</th><th>TN</th><th>Err</th><th>Checked</th><th>Precision</th><th>1a</th><th>1b</th><th>2a</th><th>2b</th><th>3a</th><th>3b</th><th>3c</th><th>Timeout</th><th>Nav</th><th>Protocol</th><th>Other</th></tr></thead><tbody>';
       storeKeys.forEach(function(store) {
         var s = ps[store];
         var prec = (s.tp + s.fp) > 0 ? ((s.tp / (s.tp + s.fp)) * 100).toFixed(0) + '%' : '—';
+        var errColor = function(v) { return v > 0 ? 'color:var(--red)' : 'color:var(--text-muted)'; };
         mHtml += '<tr><td><strong>' + store + '</strong></td>' +
           '<td style="color:var(--green)">' + s.tp + '</td>' +
           '<td style="color:var(--red)">' + s.fp + '</td>' +
           '<td style="color:var(--red)">' + s.fn + '</td>' +
           '<td style="color:var(--blue)">' + s.tn + '</td>' +
-          '<td style="color:' + (s.errors > 0 ? 'var(--red)' : 'var(--text-muted)') + '">' + s.errors + '</td>' +
+          '<td style="' + errColor(s.errors) + '">' + s.errors + '</td>' +
           '<td>' + s.checked + '</td>' +
           '<td style="color:var(--gold);font-weight:500">' + prec + '</td>' +
           '<td style="color:var(--text-muted)">' + (s.step1a_fail||0) + '</td>' +
@@ -371,11 +372,15 @@ async function refreshDashboard() {
           '<td style="color:var(--text-muted)">' + (s.step2b_fail||0) + '</td>' +
           '<td style="color:var(--text-muted)">' + (s.step3a_fail||0) + '</td>' +
           '<td style="color:var(--text-muted)">' + (s.step3b_fail||0) + '</td>' +
-          '<td style="color:var(--text-muted)">' + (s.step3c_fail||0) + '</td></tr>';
+          '<td style="color:var(--text-muted)">' + (s.step3c_fail||0) + '</td>' +
+          '<td style="' + errColor(s.err_timeout||0) + '">' + (s.err_timeout||0) + '</td>' +
+          '<td style="' + errColor(s.err_nav||0) + '">' + (s.err_nav||0) + '</td>' +
+          '<td style="' + errColor(s.err_protocol||0) + '">' + (s.err_protocol||0) + '</td>' +
+          '<td style="' + errColor((s.err_selector||0)+(s.err_other||0)) + '">' + ((s.err_selector||0)+(s.err_other||0)) + '</td></tr>';
       });
       mHtml += '</tbody></table>';
       mHtml += '<div style="padding:8px 12px;font-size:9px;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase">' +
-        '1a: URL fail · 1b: No products · 2a: Artist mismatch · 2b: Title mismatch · 3a: Sold out · 3b: OOS signal · 3c: No stock signal</div>';
+        '1a: URL fail · 1b: No products · 2a: Artist mismatch · 2b: Title mismatch · 3a: Sold out · 3b: OOS signal · 3c: No stock signal · Err: Timeout/Nav/Protocol/Other</div>';
       document.getElementById('validationMatrix').innerHTML = mHtml;
     } else {
       document.getElementById('validationMatrix').innerHTML = '';
@@ -392,7 +397,8 @@ async function refreshDashboard() {
         var statusColor = r.status === 'TP' ? 'color:var(--green)' : r.status === 'TN' ? 'color:var(--blue)' :
                           r.status === 'FP' ? 'color:var(--red)' : r.status === 'FN' ? 'color:var(--yellow)' : 'color:var(--text-muted)';
         var statusLabel = r.status === 'TP' ? 'TRUE POS' : r.status === 'FP' ? 'FALSE POS' :
-                          r.status === 'FN' ? 'FALSE NEG' : r.status === 'TN' ? 'TRUE NEG' : 'ERROR';
+                          r.status === 'FN' ? 'FALSE NEG' : r.status === 'TN' ? 'TRUE NEG' :
+                          'ERR: ' + (r.errorType || 'unknown').replace('err_','').toUpperCase();
         var phaseLabel = r.phase === 'FP-check' ? 'FP' : 'FN';
         vHtml += '<tr><td style="color:var(--gold)">' + (i+1) + '</td>' +
           '<td style="font-size:9px;letter-spacing:1px">' + phaseLabel + '</td>' +

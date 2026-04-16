@@ -1087,13 +1087,17 @@ function renderReleaseDetail(data, resultItem) {
           '</a>';
       } else if (s.inStock && s.matches && s.matches.length > 0) {
         var cheapest = s.matches.reduce(function(min, m) { return parsePrice(m.price) < parsePrice(min.price) ? m : min; }, s.matches[0]);
-        html += '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' in-stock-row">' +
+        var verifyId = 'verify-' + s.store.replace(/[^a-zA-Z]/g, '') + '-' + (data.id || '');
+        html += '<div class="store-row-wrap">' +
+          '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' in-stock-row">' +
           '<span class="store-status in-stock"></span>' +
           '<span class="store-name">' + name + '</span>' +
           '<span class="match-info">' + escapeHtml(cheapest.title || '') + '</span>' +
           '<span class="price">' + escapeHtml(cheapest.price || '') + '</span>' +
           shippingHtml +
-          '<span class="arrow">&rarr;</span></a>';
+          '<span class="arrow">&rarr;</span></a>' +
+          '<button class="verify-btn" id="' + verifyId + '" onclick="verifyStore(\'' + escapeHtml(s.store) + '\', \'' + escapeHtml(s.searchUrl) + '\', \'' + escapeHtml(resultItem.item.artist) + '\', \'' + escapeHtml(resultItem.item.title) + '\', ' + (data.id || 0) + ', this); event.stopPropagation();">Verify</button>' +
+          '</div>';
       } else {
         html += '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' out-of-stock">' +
           '<span class="store-status not-found"></span>' +
@@ -1222,6 +1226,67 @@ function renderPriceChart(container, ph) {
   }
 
   container.innerHTML = statsHtml + sparkHtml;
+}
+
+function verifyStore(store, searchUrl, artist, title, discogsId, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Checking...';
+  btn.classList.add('verifying');
+
+  fetch('api/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ store: store, searchUrl: searchUrl, artist: artist, title: title, discogsId: discogsId })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(result) {
+    btn.classList.remove('verifying');
+    if (result.error) {
+      btn.textContent = 'Error';
+      btn.title = result.error;
+      return;
+    }
+
+    // Build step-by-step tooltip
+    var steps = result.steps || {};
+    var stepLabels = {
+      '1a_url_resolves': 'Page loaded',
+      '1b_products_in_dom': 'Products found',
+      '2a_artist_match': 'Artist match',
+      '2b_title_match': 'Title match',
+      '3a_no_soldout': 'Not sold out',
+      '3b_no_oos': 'No OOS signals',
+      '3c_stock_signals': 'Stock confirmed'
+    };
+    var tipParts = [];
+    Object.keys(stepLabels).forEach(function(key) {
+      tipParts.push((steps[key] ? '\u2705' : '\u274c') + ' ' + stepLabels[key]);
+    });
+    var tip = tipParts.join('\n');
+    if (result.reason) tip += '\n\nReason: ' + result.reason;
+
+    if (result.verdict) {
+      btn.textContent = '\u2705 Confirmed';
+      btn.classList.add('verified-ok');
+    } else {
+      btn.textContent = '\u274c Not in stock';
+      btn.classList.add('verified-bad');
+      // Update the store row visual
+      var row = btn.parentElement.querySelector('.store-row');
+      if (row) {
+        row.classList.remove('in-stock-row');
+        row.classList.add('out-of-stock');
+        var statusDot = row.querySelector('.store-status');
+        if (statusDot) { statusDot.classList.remove('in-stock'); statusDot.classList.add('not-found'); }
+      }
+    }
+    btn.title = tip;
+  })
+  .catch(function(e) {
+    btn.classList.remove('verifying');
+    btn.textContent = 'Failed';
+    btn.title = e.message;
+  });
 }
 
 function renderStockHistory(hist) {
