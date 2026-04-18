@@ -1,9 +1,22 @@
 # 🎵 Discogs Vinyl Wantlist Checker
 
 Automatically check if your Discogs wantlist items are in stock at:
-- **Phonica Records**
-- **Deejay.de**
-- **HHV**
+
+**EU stores (per-item scrape):**
+- **Phonica Records** (London) — HTTP API
+- **Deejay.de** (Berlin)
+- **HHV** (Berlin)
+- **Hardwax** (Berlin)
+- **Juno** (London)
+- **Decks.de** (Germany)
+- **Yoyaku** (Paris)
+
+**US stores (per-item scrape):**
+- **Turntable Lab** (NYC)
+- **Underground Vinyl Source** (LA)
+
+**US stores (catalog mirror — fast local match):**
+- **Gramaphone Records** (Chicago) — full ~6k catalog synced daily, matched in-process
 
 ## ✨ Features
 
@@ -182,6 +195,57 @@ async function checkPhonica(page, item) {
   });
 }
 ```
+
+## 🇺🇸 Catalog-Mirror Stores (Sync + Local Match)
+
+Some US stores (starting with **Gramaphone Records** in Chicago) ship their full
+catalog through a public Shopify `/products.json` endpoint. For these we mirror
+the catalog into a local SQLite table once a day and match wantlist items
+against it in-process. Benefits:
+
+- **Fast** — checking 200 wantlist items against Gramaphone's ~6,000 records
+  takes well under a second (no per-item HTTP, no Puppeteer page).
+- **Reliable** — no flaky DOM scraping, no Cloudflare/Sucuri challenges.
+- **Discovery-ready** — the synced `store_inventory` table is the foundation
+  for "what new records did Gramaphone add this week from labels I love?".
+
+### Architecture
+
+```
+┌─────────────────────┐    once per day    ┌──────────────────────┐
+│  Shopify storefront │ ─────────────────▶ │  store_inventory     │
+│  /products.json     │   (paginated)      │  (SQLite, ~6k rows)  │
+└─────────────────────┘                    └──────────┬───────────┘
+                                                      │ per scan
+                                                      ▼
+                                           ┌──────────────────────┐
+                                           │  checkGramaphone()   │
+                                           │  (fuzzy match local) │
+                                           └──────────────────────┘
+```
+
+### Sync triggers
+
+| Trigger             | When                                                          |
+|---------------------|---------------------------------------------------------------|
+| Auto (server)       | Piggybacks on the 15-min daily-rescan loop. Re-syncs if last sync was 20+ hours ago. |
+| Cron / one-off CLI  | `node sync-store.js gramaphone`                               |
+| Admin HTTP endpoint | `POST /api/admin/sync-store?secret=$CRON_SECRET&store=gramaphone` |
+
+### Adding another US Shopify store
+
+1. Verify the store exposes `/products.json` (most do — try
+   `curl -s https://STORE.com/products.json?limit=1`).
+2. Add a thin module under `lib/stores/<store>.js` that exports
+   `sync<Store>()` and `check<Store>()`. Use `lib/stores/shopify.js` for the
+   pagination + parsing primitives. Provide a store-specific `parseLabel`
+   function that knows the conventions in that store's `body_html`.
+3. Register the sync in `server.js` `STORE_SYNCERS` and the check in
+   `lib/scrapers.js` `checkItem()`.
+4. Add the CLI entry in `sync-store.js`.
+
+That pattern will cover **Underground Vinyl Source**, **Further Records**,
+**Octopus Records**, and most other US independent stores on Shopify.
 
 ## 📄 License
 

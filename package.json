@@ -5,7 +5,9 @@
   "main": "vinyl-checker-puppeteer.js",
   "scripts": {
     "check": "node vinyl-checker-puppeteer.js",
-    "install-deps": "npm install"
+    "install-deps": "npm install",
+    "sync-store": "node sync-store.js",
+    "test": "node test/gramaphone.test.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.8.0",
