@@ -17,6 +17,7 @@ Automatically check if your Discogs wantlist items are in stock at:
 
 **US stores (catalog mirror — fast local match):**
 - **Gramaphone Records** (Chicago) — full ~6k catalog synced daily, matched in-process
+- **Further Records** (Seattle) — ~25k catalog (caps at Shopify's 25k offset limit) synced daily, matched in-process
 
 ## ✨ Features
 
@@ -198,54 +199,82 @@ async function checkPhonica(page, item) {
 
 ## 🇺🇸 Catalog-Mirror Stores (Sync + Local Match)
 
-Some US stores (starting with **Gramaphone Records** in Chicago) ship their full
-catalog through a public Shopify `/products.json` endpoint. For these we mirror
-the catalog into a local SQLite table once a day and match wantlist items
-against it in-process. Benefits:
+Several US stores ship their full catalog through a public Shopify
+`/products.json` endpoint. For these we mirror the catalog into a local SQLite
+table once a day and match wantlist items against it in-process. Currently:
 
-- **Fast** — checking 200 wantlist items against Gramaphone's ~6,000 records
-  takes well under a second (no per-item HTTP, no Puppeteer page).
+- **Gramaphone Records** (Chicago) — ~6,000 products
+- **Further Records** (Seattle) — ~25,000 products (Shopify hard-caps the
+  unauthenticated offset at 25,000)
+
+Benefits over per-item Puppeteer scraping:
+
+- **Fast** — checking 200 wantlist items against the 25k+30k local rows takes
+  well under a second (no per-item HTTP, no browser page).
 - **Reliable** — no flaky DOM scraping, no Cloudflare/Sucuri challenges.
 - **Discovery-ready** — the synced `store_inventory` table is the foundation
-  for "what new records did Gramaphone add this week from labels I love?".
+  for "what new records did these stores add this week from labels I love?".
 
 ### Architecture
 
 ```
 ┌─────────────────────┐    once per day    ┌──────────────────────┐
 │  Shopify storefront │ ─────────────────▶ │  store_inventory     │
-│  /products.json     │   (paginated)      │  (SQLite, ~6k rows)  │
+│  /products.json     │   (paginated)      │  (SQLite, ~30k rows) │
 └─────────────────────┘                    └──────────┬───────────┘
                                                       │ per scan
                                                       ▼
                                            ┌──────────────────────┐
                                            │  checkGramaphone()   │
+                                           │  checkFurther()      │
                                            │  (fuzzy match local) │
                                            └──────────────────────┘
 ```
 
 ### Sync triggers
 
-| Trigger             | When                                                          |
-|---------------------|---------------------------------------------------------------|
-| Auto (server)       | Piggybacks on the 15-min daily-rescan loop. Re-syncs if last sync was 20+ hours ago. |
-| Cron / one-off CLI  | `node sync-store.js gramaphone`                               |
-| Admin HTTP endpoint | `POST /api/admin/sync-store?secret=$CRON_SECRET&store=gramaphone` |
+| Trigger             | When                                                              |
+|---------------------|-------------------------------------------------------------------|
+| Auto (server)       | Piggybacks on the 15-min daily-rescan loop. Re-syncs each store if its last sync was 20+ hours ago. |
+| Cron / one-off CLI  | `node sync-store.js gramaphone` &nbsp;·&nbsp; `node sync-store.js further` |
+| Admin HTTP endpoint | `POST /api/admin/sync-store?secret=$CRON_SECRET&store=<name>`     |
+
+### Per-store body_html parsing
+
+Each Shopify store formats its product description differently, so each
+`lib/stores/<store>.js` provides its own `parseLabel` (and optionally
+`parseArtistTitle`) callback that the generic `lib/stores/shopify.js`
+`parseShopifyProduct` calls.
+
+- **Gramaphone** uses prose like `Label: Rush Hour – RH-StoreJams031 Format: ...`
+  and has its parser anchor on the next field keyword (Format, Released, etc.)
+  to bound the catno cleanly.
+- **Further** mostly uses structured `Field: value` pairs (`Artist:`, `Title:`,
+  `Label:`, `Catalog:`, `Format:`) — handled with the generic
+  `shopify.parseStructuredFields(text, fieldNames)` helper. About 30% of the
+  catalog (the curated picks) instead use a free-form layout
+  `<title> (<format>) <Label> - <CATNO> <YEAR> <genres> <tracklist>`; both
+  shapes are parsed.
 
 ### Adding another US Shopify store
 
 1. Verify the store exposes `/products.json` (most do — try
    `curl -s https://STORE.com/products.json?limit=1`).
-2. Add a thin module under `lib/stores/<store>.js` that exports
-   `sync<Store>()` and `check<Store>()`. Use `lib/stores/shopify.js` for the
-   pagination + parsing primitives. Provide a store-specific `parseLabel`
-   function that knows the conventions in that store's `body_html`.
-3. Register the sync in `server.js` `STORE_SYNCERS` and the check in
-   `lib/scrapers.js` `checkItem()`.
-4. Add the CLI entry in `sync-store.js`.
+2. Inspect a few `body_html` samples to learn the label/catno convention.
+   If they use `Field: value` lines, you can reuse
+   `shopify.parseStructuredFields`. Otherwise write a regex anchored on a
+   stable terminator (e.g. a 4-digit year, or the next known field keyword).
+3. Add a thin module under `lib/stores/<store>.js` that exports
+   `sync<Store>()` and `check<Store>()`. Use `lib/stores/shopify.js` for
+   pagination + parsing primitives.
+4. Register the sync in `server.js` `STORE_SYNCERS`, the check in
+   `lib/scrapers.js` `checkItem()`, and the CLI in `sync-store.js`.
+5. Add a parser test under `test/<store>.test.js` and wire it into the
+   `npm test` script in `package.json`.
 
-That pattern will cover **Underground Vinyl Source**, **Further Records**,
-**Octopus Records**, and most other US independent stores on Shopify.
+That pattern covers **Underground Vinyl Source** and most other US
+independent stores on Shopify. Stores on custom CMSes (e.g. **Octopus Records
+NYC** runs on Wix, not Shopify) need the per-item Puppeteer pattern instead.
 
 ## 📄 License
 
