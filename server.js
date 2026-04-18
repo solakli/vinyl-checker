@@ -42,6 +42,10 @@ const STORE_SYNCERS = {
     gramaphone: function () {
         var m = require('./lib/stores/gramaphone');
         return { name: m.STORE_NAME, sync: m.syncGramaphone };
+    },
+    uvs: function () {
+        var m = require('./lib/stores/uvs');
+        return { name: m.STORE_NAME, sync: m.syncUVS };
     }
 };
 const SYNC_STALE_AFTER_MS = 20 * 60 * 60 * 1000; // re-sync if last run was 20+ hours ago
