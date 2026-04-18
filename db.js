@@ -154,6 +154,49 @@ function initTables() {
         );
 
         CREATE INDEX IF NOT EXISTS idx_scan_changes_user ON scan_changes(user_id, dismissed);
+
+        -- Cached inventory pulled from store catalogs (e.g. Shopify /products.json).
+        -- Lets us match wantlist items locally instead of hitting each store per scan.
+        CREATE TABLE IF NOT EXISTS store_inventory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            store TEXT NOT NULL,
+            product_id TEXT NOT NULL,
+            title_raw TEXT,
+            artist TEXT,
+            title TEXT,
+            label TEXT,
+            catno TEXT,
+            vendor TEXT,
+            product_type TEXT,
+            tags TEXT DEFAULT '[]',
+            price_usd REAL,
+            currency TEXT DEFAULT 'USD',
+            available INTEGER DEFAULT 0,
+            url TEXT,
+            image_url TEXT,
+            store_updated_at TEXT,
+            last_synced_at TEXT,
+            UNIQUE(store, product_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_store_inv_store_avail ON store_inventory(store, available);
+        CREATE INDEX IF NOT EXISTS idx_store_inv_artist ON store_inventory(artist);
+        CREATE INDEX IF NOT EXISTS idx_store_inv_label ON store_inventory(label);
+
+        -- Audit trail of catalog sync runs per store
+        CREATE TABLE IF NOT EXISTS store_sync_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            store TEXT NOT NULL,
+            started_at TEXT,
+            finished_at TEXT,
+            products_seen INTEGER DEFAULT 0,
+            products_added INTEGER DEFAULT 0,
+            products_updated INTEGER DEFAULT 0,
+            products_marked_unavailable INTEGER DEFAULT 0,
+            error TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_store_sync_log_store ON store_sync_log(store, started_at);
     `);
 
     // Migrations — add columns if missing
@@ -628,6 +671,146 @@ function getItemHistory(wantlistId, days) {
     return { stores: storeHist, discogs: priceHist };
 }
 
+// ═══════════════════════════════════════════════════════════
+// STORE INVENTORY OPERATIONS
+// ═══════════════════════════════════════════════════════════
+
+function startStoreSync(store) {
+    var info = getDb().prepare(
+        'INSERT INTO store_sync_log (store, started_at) VALUES (?, ?)'
+    ).run(store, new Date().toISOString());
+    return info.lastInsertRowid;
+}
+
+function finishStoreSync(syncId, stats) {
+    stats = stats || {};
+    getDb().prepare(`
+        UPDATE store_sync_log
+        SET finished_at = ?, products_seen = ?, products_added = ?,
+            products_updated = ?, products_marked_unavailable = ?, error = ?
+        WHERE id = ?
+    `).run(
+        new Date().toISOString(),
+        stats.seen || 0,
+        stats.added || 0,
+        stats.updated || 0,
+        stats.markedUnavailable || 0,
+        stats.error || null,
+        syncId
+    );
+}
+
+function getLastStoreSync(store) {
+    return getDb().prepare(
+        'SELECT * FROM store_sync_log WHERE store = ? ORDER BY started_at DESC LIMIT 1'
+    ).get(store);
+}
+
+// Upsert one inventory row. Returns 'added' | 'updated' so the caller can tally stats.
+function upsertInventoryItem(item) {
+    var d = getDb();
+    var now = new Date().toISOString();
+    var existing = d.prepare(
+        'SELECT id, available FROM store_inventory WHERE store = ? AND product_id = ?'
+    ).get(item.store, item.productId);
+
+    if (existing) {
+        d.prepare(`
+            UPDATE store_inventory SET
+                title_raw = ?, artist = ?, title = ?, label = ?, catno = ?,
+                vendor = ?, product_type = ?, tags = ?, price_usd = ?, currency = ?,
+                available = ?, url = ?, image_url = ?, store_updated_at = ?, last_synced_at = ?
+            WHERE id = ?
+        `).run(
+            item.titleRaw || null,
+            item.artist || null,
+            item.title || null,
+            item.label || null,
+            item.catno || null,
+            item.vendor || null,
+            item.productType || null,
+            JSON.stringify(item.tags || []),
+            item.priceUsd != null ? item.priceUsd : null,
+            item.currency || 'USD',
+            item.available ? 1 : 0,
+            item.url || null,
+            item.imageUrl || null,
+            item.storeUpdatedAt || null,
+            now,
+            existing.id
+        );
+        return 'updated';
+    } else {
+        d.prepare(`
+            INSERT INTO store_inventory (
+                store, product_id, title_raw, artist, title, label, catno,
+                vendor, product_type, tags, price_usd, currency, available,
+                url, image_url, store_updated_at, last_synced_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+            item.store,
+            item.productId,
+            item.titleRaw || null,
+            item.artist || null,
+            item.title || null,
+            item.label || null,
+            item.catno || null,
+            item.vendor || null,
+            item.productType || null,
+            JSON.stringify(item.tags || []),
+            item.priceUsd != null ? item.priceUsd : null,
+            item.currency || 'USD',
+            item.available ? 1 : 0,
+            item.url || null,
+            item.imageUrl || null,
+            item.storeUpdatedAt || null,
+            now
+        );
+        return 'added';
+    }
+}
+
+function upsertInventoryBatch(items) {
+    var d = getDb();
+    var stats = { added: 0, updated: 0, seen: items.length };
+    var run = d.transaction(function (rows) {
+        rows.forEach(function (row) {
+            var result = upsertInventoryItem(row);
+            stats[result]++;
+        });
+    });
+    run(items);
+    return stats;
+}
+
+// After a sync completes, mark items not seen during this sync as unavailable.
+// We treat items not present in the latest /products.json as sold out / delisted
+// rather than deleting them, so historical references and `scan_changes` still resolve.
+function markStaleInventoryUnavailable(store, syncedSince) {
+    var info = getDb().prepare(`
+        UPDATE store_inventory
+        SET available = 0
+        WHERE store = ? AND available = 1 AND (last_synced_at IS NULL OR last_synced_at < ?)
+    `).run(store, syncedSince);
+    return info.changes;
+}
+
+function getInStockInventory(store) {
+    return getDb().prepare(
+        'SELECT * FROM store_inventory WHERE store = ? AND available = 1'
+    ).all(store);
+}
+
+function getInventoryStats(store) {
+    return getDb().prepare(`
+        SELECT
+            COUNT(*) AS total,
+            SUM(available) AS in_stock,
+            COUNT(DISTINCT label) AS unique_labels
+        FROM store_inventory WHERE store = ?
+    `).get(store);
+}
+
 function close() {
     if (db) { db.close(); db = null; }
 }
@@ -667,5 +850,13 @@ module.exports = {
     getSessionLastSeen: getSessionLastSeen,
     getStoreHistory: getStoreHistory,
     getItemHistory: getItemHistory,
+    startStoreSync: startStoreSync,
+    finishStoreSync: finishStoreSync,
+    getLastStoreSync: getLastStoreSync,
+    upsertInventoryItem: upsertInventoryItem,
+    upsertInventoryBatch: upsertInventoryBatch,
+    markStaleInventoryUnavailable: markStaleInventoryUnavailable,
+    getInStockInventory: getInStockInventory,
+    getInventoryStats: getInventoryStats,
     close: close
 };
