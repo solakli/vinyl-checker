@@ -13,7 +13,7 @@ var storeLogoMap = {
   'HHV': 'hhv.png', 'Deejay.de': 'deejay.png', 'Hardwax': 'hardwax.png',
   'Juno': 'juno.png', 'Turntable Lab': 'ttlab.png', 'Underground Vinyl': 'uvs.png',
   'Decks.de': 'decks.png', 'Phonica': 'phonica.png', 'Yoyaku': 'yoyaku.png',
-  'Discogs': 'discogs.png'
+  'Gramaphone': 'gramaphone.png', 'Discogs': 'discogs.png'
 };
 
 var MAX_STYLES = 20; // Show top N styles
@@ -42,7 +42,7 @@ var loadingMessages = [
   'Mentally calculating shipping costs...',
   'Adding to cart... removing... adding back...',
   'Wondering if this is the right pressing...',
-  'Comparing prices across 9 stores...',
+  'Comparing prices across 10 stores...',
   'Eyeing someone else\'s finds...',
   'That "one more record" feeling...',
   'Pretending the budget still exists...',
@@ -68,13 +68,15 @@ var renderThrottleTimer = null;
 const storeClassMap = {
   'HHV': 'hhv', 'Deejay.de': 'deejay', 'Hardwax': 'hardwax',
   'Juno': 'juno', 'Turntable Lab': 'ttlab', 'Underground Vinyl': 'uvs',
-  'Decks.de': 'decks', 'Phonica': 'phonica', 'Yoyaku': 'yoyaku'
+  'Decks.de': 'decks', 'Phonica': 'phonica', 'Yoyaku': 'yoyaku',
+  'Gramaphone': 'gramaphone'
 };
 
 const storeDisplayName = {
   'HHV': 'HHV', 'Deejay.de': 'Deejay', 'Hardwax': 'Hardwax',
   'Juno': 'Juno', 'Turntable Lab': 'TT Lab', 'Underground Vinyl': 'UVS',
-  'Decks.de': 'Decks', 'Phonica': 'Phonica', 'Yoyaku': 'Yoyaku'
+  'Decks.de': 'Decks', 'Phonica': 'Phonica', 'Yoyaku': 'Yoyaku',
+  'Gramaphone': 'Gramaphone'
 };
 
 // Theme toggle (persisted)
