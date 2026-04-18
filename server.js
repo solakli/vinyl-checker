@@ -864,9 +864,15 @@ app.post('/api/deploy', function (req, res) {
                 console.log('[deploy] package.json changed — running npm install');
                 execSync('cd ' + appDir + ' && npm install --production 2>&1');
             }
-            // Reload PM2 gracefully (zero-downtime)
-            execSync('pm2 reload vinyl-checker --update-env 2>&1');
-            console.log('[deploy] PM2 reloaded — deploy complete');
+            // Reload PM2 via a detached child process — calling pm2 reload from within
+            // the process being reloaded causes SIGTERM mid-execSync. Detached spawn
+            // lets the child outlive the current process cleanly.
+            console.log('[deploy] Reloading via PM2...');
+            var child = require('child_process').spawn('pm2', ['reload', 'vinyl-checker', '--update-env'], {
+                detached: true,
+                stdio: 'ignore'
+            });
+            child.unref();
         } catch (e) {
             console.error('[deploy] ERROR: ' + e.message);
         }
