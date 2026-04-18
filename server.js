@@ -707,6 +707,47 @@ app.get('/api/status', function (req, res) {
     res.json({ scanning: Object.keys(scanner.activeScans).length > 0, users: Object.keys(scanner.activeScans) });
 });
 
+// Job health — shows last run times and counts for daily/validate/sync jobs
+app.get('/api/job-health', function (req, res) {
+    var health = scanner.getJobHealth ? scanner.getJobHealth() : {};
+    var d = db.getDb();
+    var users = d.prepare('SELECT username, last_full_scan, last_daily_rescan FROM users WHERE username != ?').all('testuser');
+    res.json({ jobs: health, users: users, serverUptime: process.uptime(), now: new Date().toISOString() });
+});
+
+// Cron trigger — allows a system cron job to kick off daily rescan + validation
+// Protected by a simple secret token so it's not publicly abusable
+app.post('/api/trigger', function (req, res) {
+    var secret = process.env.CRON_SECRET || '';
+    var token = req.headers['x-cron-secret'] || req.query.secret || '';
+    if (!secret || token !== secret) return res.status(401).json({ error: 'unauthorized' });
+
+    var job = req.query.job || 'daily';
+    if (job === 'daily') {
+        scanner.dailyFullRescan()
+            .then(function () { scanner.trackJobRun('daily', true); })
+            .catch(function (e) { scanner.trackJobRun('daily', false, e.message); });
+        res.json({ triggered: 'daily', at: new Date().toISOString() });
+    } else if (job === 'validate') {
+        scanner.validateInStockResults()
+            .then(function () { scanner.trackJobRun('validate', true); })
+            .catch(function (e) { scanner.trackJobRun('validate', false, e.message); });
+        res.json({ triggered: 'validate', at: new Date().toISOString() });
+    } else if (job === 'all') {
+        scanner.dailyFullRescan()
+            .then(function () { scanner.trackJobRun('daily', true); })
+            .catch(function (e) { scanner.trackJobRun('daily', false, e.message); });
+        setTimeout(function () {
+            scanner.validateInStockResults()
+                .then(function () { scanner.trackJobRun('validate', true); })
+                .catch(function (e) { scanner.trackJobRun('validate', false, e.message); });
+        }, 5 * 60 * 1000); // validate 5 min after daily starts
+        res.json({ triggered: 'daily+validate', at: new Date().toISOString() });
+    } else {
+        res.status(400).json({ error: 'unknown job, use: daily, validate, all' });
+    }
+});
+
 // Scan status for a specific user (used by resume UI)
 app.get('/api/scan-status/:username', function (req, res) {
     var username = req.params.username.trim();
