@@ -36,6 +36,16 @@ const discogs = require('./lib/discogs');
 const scanner = require('./lib/scanner');
 const oauth = require('./lib/oauth');
 
+// Catalog-sync stores: registry of stores whose full inventory we mirror locally
+// (rather than scraping per-item). Add a new store by adding its module here.
+const STORE_SYNCERS = {
+    gramaphone: function () {
+        var m = require('./lib/stores/gramaphone');
+        return { name: m.STORE_NAME, sync: m.syncGramaphone };
+    }
+};
+const SYNC_STALE_AFTER_MS = 20 * 60 * 60 * 1000; // re-sync if last run was 20+ hours ago
+
 // Prevent unhandled errors from crashing the server
 process.on('uncaughtException', function (e) { console.error('Uncaught:', e.message); });
 process.on('unhandledRejection', function (e) { console.error('Unhandled:', e && e.message); });
@@ -751,6 +761,62 @@ app.post('/api/trigger', function (req, res) {
     }
 });
 
+// Trigger a one-off catalog sync for a single store. Same auth as /api/trigger.
+//   POST /api/admin/sync-store?secret=...&store=gramaphone
+app.post('/api/admin/sync-store', function (req, res) {
+    var secret = process.env.CRON_SECRET || '';
+    var token = req.headers['x-cron-secret'] || req.query.secret || '';
+    if (!secret || token !== secret) return res.status(401).json({ error: 'unauthorized' });
+
+    var storeKey = (req.query.store || (req.body && req.body.store) || '').toLowerCase();
+    var loader = STORE_SYNCERS[storeKey];
+    if (!loader) {
+        return res.status(400).json({
+            error: 'unknown store',
+            available: Object.keys(STORE_SYNCERS)
+        });
+    }
+
+    var store = loader();
+    res.json({ triggered: 'sync-store', store: storeKey, at: new Date().toISOString() });
+
+    store.sync({
+        onProgress: function (p) {
+            if (p.phase === 'fetch') console.log('[sync-store:' + storeKey + '] page ' + p.page + ' (+' + p.count + ', ' + p.total + ' total)');
+            else if (p.phase === 'done') console.log('[sync-store:' + storeKey + '] done', p.stats);
+        }
+    })
+    .then(function () { scanner.trackJobRun && scanner.trackJobRun('sync-store-' + storeKey, true); })
+    .catch(function (e) {
+        console.error('[sync-store:' + storeKey + '] failed:', e.message);
+        scanner.trackJobRun && scanner.trackJobRun('sync-store-' + storeKey, false, e.message);
+    });
+});
+
+// Run any catalog syncs that are stale. Called from the daily-rescan interval.
+function syncStaleStores() {
+    Object.keys(STORE_SYNCERS).forEach(function (storeKey) {
+        var last = db.getLastStoreSync(storeKey);
+        var stale = !last || !last.finished_at ||
+            (Date.now() - new Date(last.finished_at).getTime()) > SYNC_STALE_AFTER_MS;
+        if (!stale) return;
+
+        var loader = STORE_SYNCERS[storeKey];
+        var store = loader();
+        console.log('[sync-store:' + storeKey + '] auto-sync starting (last=' + (last ? last.finished_at : 'never') + ')');
+        store.sync({
+            onProgress: function (p) {
+                if (p.phase === 'done') console.log('[sync-store:' + storeKey + '] auto-sync done', p.stats);
+            }
+        })
+        .then(function () { scanner.trackJobRun && scanner.trackJobRun('sync-store-' + storeKey, true); })
+        .catch(function (e) {
+            console.error('[sync-store:' + storeKey + '] auto-sync failed:', e.message);
+            scanner.trackJobRun && scanner.trackJobRun('sync-store-' + storeKey, false, e.message);
+        });
+    });
+}
+
 // GitHub webhook — auto-deploy on push to master
 // Set GITHUB_WEBHOOK_SECRET in ecosystem.config.js env, then add webhook in GitHub repo settings
 // Payload URL: https://stream.ronautradio.la/vinyl/api/deploy
@@ -1014,6 +1080,8 @@ app.listen(PORT, function () {
         scanner.dailyFullRescan()
             .then(function() { scanner.trackJobRun('daily', true); })
             .catch(function (e) { console.error('[daily] Fatal:', e.message); scanner.trackJobRun('daily', false, e.message); });
+        // Piggyback on the same cadence to refresh any stale catalog mirrors.
+        syncStaleStores();
     }, DAILY_CHECK_INTERVAL);
 
     // Also run daily check once on startup (after 2 min delay to let things settle)
@@ -1021,6 +1089,7 @@ app.listen(PORT, function () {
         scanner.dailyFullRescan()
             .then(function() { scanner.trackJobRun('daily', true); })
             .catch(function (e) { console.error('[daily] Startup check fatal:', e.message); scanner.trackJobRun('daily', false, e.message); });
+        syncStaleStores();
     }, 120000);
 
     // Stock validation — re-checks "in stock" items to catch false positives
