@@ -14,7 +14,9 @@ module.exports = {
             DISCOGS_CONSUMER_SECRET: 'XIexsqsiEyJUZjKhyFNBcUGHTVSoPsAV',
             BASE_URL: 'https://stream.ronautradio.la/vinyl',
             // Cron-triggered runs use a secret token so /api/trigger is not public
-            CRON_SECRET: 'vc-cron-2026'
+            CRON_SECRET: 'vc-cron-2026',
+            // GitHub webhook secret — must match what you set in GitHub repo settings
+            GITHUB_WEBHOOK_SECRET: 'vc-deploy-2026'
         },
         error_file: '/root/vinyl-checker-err.log',
         out_file: '/root/vinyl-checker-out.log',

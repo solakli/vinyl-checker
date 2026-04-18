@@ -45,7 +45,10 @@ const PORT = process.env.PORT || 3000;
 
 // Serve static files from public/
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json());
+// Parse JSON bodies, capturing raw body for GitHub webhook HMAC verification
+app.use(express.json({
+    verify: function (req, res, buf) { req.rawBody = buf.toString(); }
+}));
 
 // Cookie parsing middleware (simple, no dependency)
 app.use(function (req, res, next) {
@@ -746,6 +749,62 @@ app.post('/api/trigger', function (req, res) {
     } else {
         res.status(400).json({ error: 'unknown job, use: daily, validate, all' });
     }
+});
+
+// GitHub webhook — auto-deploy on push to master
+// Set GITHUB_WEBHOOK_SECRET in ecosystem.config.js env, then add webhook in GitHub repo settings
+// Payload URL: https://stream.ronautradio.la/vinyl/api/deploy
+// Content type: application/json, Secret: same as GITHUB_WEBHOOK_SECRET
+app.post('/api/deploy', function (req, res) {
+    var crypto = require('crypto');
+    var { execSync } = require('child_process');
+    var secret = process.env.GITHUB_WEBHOOK_SECRET || '';
+
+    // Verify GitHub HMAC signature
+    if (secret) {
+        var sig = req.headers['x-hub-signature-256'] || '';
+        var expected = 'sha256=' + crypto.createHmac('sha256', secret).update(req.rawBody || '').digest('hex');
+        if (sig !== expected) {
+            console.log('[deploy] Webhook signature mismatch — rejected');
+            return res.status(401).json({ error: 'invalid signature' });
+        }
+    }
+
+    var payload = req.body || {};
+    var branch = (payload.ref || '').replace('refs/heads/', '');
+    if (branch && branch !== 'master') {
+        console.log('[deploy] Push to branch "' + branch + '" — skipping (only deploy master)');
+        return res.json({ skipped: true, reason: 'not master branch' });
+    }
+
+    var pusher = payload.pusher ? payload.pusher.name : 'unknown';
+    var commits = payload.commits ? payload.commits.length : 0;
+    console.log('[deploy] GitHub push from ' + pusher + ' (' + commits + ' commit(s)) — pulling...');
+
+    res.json({ ok: true, deploying: true, pusher: pusher, commits: commits });
+
+    // Run git pull + pm2 reload in background (after response sent)
+    setTimeout(function () {
+        try {
+            var appDir = __dirname;
+            var pullOut = execSync('cd ' + appDir + ' && git pull origin master 2>&1').toString().trim();
+            console.log('[deploy] git pull: ' + pullOut);
+            if (pullOut.indexOf('Already up to date') !== -1) {
+                console.log('[deploy] Nothing new to deploy');
+                return;
+            }
+            // Reinstall deps if package.json changed
+            if (pullOut.indexOf('package.json') !== -1) {
+                console.log('[deploy] package.json changed — running npm install');
+                execSync('cd ' + appDir + ' && npm install --production 2>&1');
+            }
+            // Reload PM2 gracefully (zero-downtime)
+            execSync('pm2 reload vinyl-checker --update-env 2>&1');
+            console.log('[deploy] PM2 reloaded — deploy complete');
+        } catch (e) {
+            console.error('[deploy] ERROR: ' + e.message);
+        }
+    }, 100);
 });
 
 // Scan status for a specific user (used by resume UI)
