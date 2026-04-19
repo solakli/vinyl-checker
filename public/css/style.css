@@ -23,6 +23,8 @@
   --uvs: #20c997;
   --yoyaku: #ffd43b;
   --gramaphone: #c8102e;
+  --further: #d97706;
+  --octopus: #3a9bd5;
   --discogs: #ff6200;
   --radius: 6px;
   --radius-lg: 10px;
@@ -499,6 +501,8 @@ body {
 .store-badge.uvs { color: var(--text); font-weight: 400; letter-spacing: 2px; }
 .store-badge.yoyaku { color: var(--text); font-weight: 200; letter-spacing: 4px; }
 .store-badge.gramaphone { color: var(--text); font-weight: 600; letter-spacing: 2px; }
+.store-badge.further { color: var(--text); font-weight: 500; letter-spacing: 1.5px; }
+.store-badge.octopus { color: var(--text); font-weight: 600; letter-spacing: 1px; }
 .store-badge { border-color: rgba(255, 102, 0, 0.25); }
 .store-badge.active { border-color: rgba(255, 102, 0, 0.5); background: rgba(255,102,0,0.04); }
 .store-badge .count { opacity: 0.5; font-weight: 300; }
@@ -725,6 +729,10 @@ body {
 .store-row.yoyaku:hover .store-name { color: var(--yoyaku); }
 .store-row.gramaphone .store-name { color: var(--text-sec); font-weight: 600; letter-spacing: 2px; font-size: 9px; }
 .store-row.gramaphone:hover .store-name { color: var(--gramaphone); }
+.store-row.further .store-name { color: var(--text-sec); font-weight: 500; letter-spacing: 1.5px; font-size: 10px; }
+.store-row.further:hover .store-name { color: var(--further); }
+.store-row.octopus .store-name { color: var(--text-sec); font-weight: 600; letter-spacing: 1px; font-size: 10px; }
+.store-row.octopus:hover .store-name { color: var(--octopus); }
 .store-row.discogs .store-name { color: var(--text-sec); font-weight: 600; letter-spacing: 1px; font-size: 10px; }
 .store-row.discogs:hover .store-name { color: var(--discogs); }
 
@@ -1060,6 +1068,8 @@ body.light {
   --uvs: #18a080;
   --yoyaku: #d4a32a;
   --gramaphone: #a00c24;
+  --further: #b85c00;
+  --octopus: #2479a8;
 }
 
 body.light .header {

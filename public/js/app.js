@@ -13,7 +13,8 @@ var storeLogoMap = {
   'HHV': 'hhv.png', 'Deejay.de': 'deejay.png', 'Hardwax': 'hardwax.png',
   'Juno': 'juno.png', 'Turntable Lab': 'ttlab.png', 'Underground Vinyl': 'uvs.png',
   'Decks.de': 'decks.png', 'Phonica': 'phonica.png', 'Yoyaku': 'yoyaku.png',
-  'Gramaphone': 'gramaphone.png', 'Discogs': 'discogs.png'
+  'Gramaphone': 'gramaphone.png', 'Further Records': 'further.png',
+  'Octopus Records NYC': 'octopus.png', 'Discogs': 'discogs.png'
 };
 
 var MAX_STYLES = 20; // Show top N styles
@@ -42,7 +43,7 @@ var loadingMessages = [
   'Mentally calculating shipping costs...',
   'Adding to cart... removing... adding back...',
   'Wondering if this is the right pressing...',
-  'Comparing prices across 10 stores...',
+  'Comparing prices across 12 stores...',
   'Eyeing someone else\'s finds...',
   'That "one more record" feeling...',
   'Pretending the budget still exists...',
@@ -69,14 +70,16 @@ const storeClassMap = {
   'HHV': 'hhv', 'Deejay.de': 'deejay', 'Hardwax': 'hardwax',
   'Juno': 'juno', 'Turntable Lab': 'ttlab', 'Underground Vinyl': 'uvs',
   'Decks.de': 'decks', 'Phonica': 'phonica', 'Yoyaku': 'yoyaku',
-  'Gramaphone': 'gramaphone'
+  'Gramaphone': 'gramaphone', 'Further Records': 'further',
+  'Octopus Records NYC': 'octopus'
 };
 
 const storeDisplayName = {
   'HHV': 'HHV', 'Deejay.de': 'Deejay', 'Hardwax': 'Hardwax',
   'Juno': 'Juno', 'Turntable Lab': 'TT Lab', 'Underground Vinyl': 'UVS',
   'Decks.de': 'Decks', 'Phonica': 'Phonica', 'Yoyaku': 'Yoyaku',
-  'Gramaphone': 'Gramaphone'
+  'Gramaphone': 'Gramaphone', 'Further Records': 'Further',
+  'Octopus Records NYC': 'Octopus'
 };
 
 // Theme toggle (persisted)
