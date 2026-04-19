@@ -12,21 +12,31 @@ var openAppBtn     = document.getElementById('openApp');
 
 var pollTimer = null;
 
-// ── Load saved settings + check if sync is already running ───────────────────
-chrome.storage.local.get(['serverUrl', 'username', 'syncState'], function (data) {
+// ── Load saved settings ───────────────────────────────────────────────────────
+chrome.storage.local.get(['serverUrl', 'username', 'syncState', 'lastSynced'], function (data) {
     if (data.serverUrl) serverUrlInput.value = data.serverUrl;
     if (data.username)  usernameInput.value  = data.username;
     updateOpenBtn();
 
-    // If a sync was already running before popup was closed, show its progress
+    if (data.lastSynced) {
+        lastSyncedEl.textContent = 'Last synced: ' + new Date(data.lastSynced).toLocaleString();
+    }
+
     var state = data.syncState;
-    if (state) {
-        if (state.running) {
-            setSyncing(true);
-            startPolling();
-        } else if (state.completedAt) {
-            showDone(state);
+    if (!state) return;
+
+    // Detect stale "running" state — if it's been > 3 min with no progress, clear it
+    if (state.running) {
+        var age = Date.now() - (state.startedAt || 0);
+        var stale = age > 3 * 60 * 1000 && state.done === 0;
+        if (stale) {
+            chrome.storage.local.set({ syncState: null });
+            return; // show fresh UI
         }
+        setSyncing(true);
+        startPolling();
+    } else if (state.completedAt) {
+        showDone(state);
     }
 });
 
@@ -54,19 +64,24 @@ syncBtn.addEventListener('click', function () {
     var username = usernameInput.value.trim();
     if (!server || !username) { showStatus('Fill in server URL and username.', 'error'); return; }
 
-    save();
-    // Clear any previous done state
-    chrome.storage.local.set({ syncState: null });
+    // Clear stale state
+    chrome.storage.local.set({ syncState: { running: true, startedAt: Date.now(), done: 0, total: 0, found: 0 } });
     statusEl.style.display = 'none';
+    save();
 
-    // Tell background worker to start
-    chrome.runtime.sendMessage({ action: 'startSync', server: server, username: username });
+    // Open dedicated sync window (stays alive when popup closes)
+    chrome.windows.create({
+        url: chrome.runtime.getURL('sync-window.html'),
+        type: 'popup',
+        width: 380,
+        height: 220,
+        focused: true
+    });
 
-    setSyncing(true);
-    startPolling();
+    window.close(); // close the popup — sync window takes over
 });
 
-// ── Polling — reads state from background service worker ──────────────────────
+// ── Polling (shown when sync window is open and running) ──────────────────────
 function startPolling() {
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(function () {
@@ -94,8 +109,8 @@ function startPolling() {
 }
 
 function setSyncing(on) {
-    syncBtn.disabled        = on;
-    syncBtn.textContent     = on ? 'Syncing...' : '⛏ Sync & Build Cart';
+    syncBtn.disabled           = on;
+    syncBtn.textContent        = on ? 'Syncing...' : '⛏ Sync & Build Cart';
     progressWrap.style.display = on ? 'block' : 'none';
     if (on) progressFill.style.width = '0%';
 }

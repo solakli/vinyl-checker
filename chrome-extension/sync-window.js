@@ -19,6 +19,8 @@ chrome.storage.local.get(['serverUrl', 'username'], async function (data) {
     await runSync(server, username);
 });
 
+var syncStartedAt = Date.now();
+
 async function runSync(server, username) {
     // Step 1: fetch wantlist
     label.textContent = 'Fetching wantlist...';
@@ -52,7 +54,7 @@ async function runSync(server, username) {
 
         // Save progress so popup can read it
         chrome.storage.local.set({ syncState: {
-            running: true, done: i + 1, total: items.length, found: allListings.length
+            running: true, startedAt: syncStartedAt, done: i + 1, total: items.length, found: allListings.length
         }});
 
         await sleep(350);
