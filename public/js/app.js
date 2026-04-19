@@ -259,6 +259,9 @@ function connectSSE(username, force) {
     document.getElementById('timestamp').textContent = msg + ' \u00b7 ' + new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     updateStats();
     render();
+    // Show optimizer banner when there are in-stock results
+    var inStockCount = allItems.filter(function(i) { return i.stores && i.stores.some(function(s) { return s.inStock; }); }).length;
+    if (inStockCount > 0) document.getElementById('optimizerBanner').style.display = 'flex';
     // Check for changes detected by background rescans
     fetchChanges(username);
   });
@@ -1821,3 +1824,173 @@ document.addEventListener('visibilitychange', function() {
     })
     .catch(function() {});
 });
+
+// ═══════════════════════════════════════════════════════════════
+// CART OPTIMIZER
+// ═══════════════════════════════════════════════════════════════
+
+function openOptimizer() {
+  document.getElementById('optimizerOverlay').style.display = 'flex';
+  showOptimizerPrefs();
+}
+
+document.getElementById('optimizerClose').addEventListener('click', function() {
+  document.getElementById('optimizerOverlay').style.display = 'none';
+});
+document.getElementById('optimizerOverlay').addEventListener('click', function(e) {
+  if (e.target === this) this.style.display = 'none';
+});
+
+function showOptimizerPrefs() {
+  document.getElementById('optimizerPrefs').style.display = 'block';
+  document.getElementById('optimizerProgress').style.display = 'none';
+  document.getElementById('optimizerResults').style.display = 'none';
+}
+
+function getCurrentUsername() {
+  var barName = document.getElementById('userBarName');
+  if (barName && barName.textContent.trim()) return barName.textContent.trim();
+  var el = document.getElementById('usernameInput');
+  if (el && el.value.trim()) return el.value.trim();
+  return null;
+}
+
+function runOptimizer() {
+  var username = getCurrentUsername();
+  if (!username) { alert('No username found — please scan your wantlist first.'); return; }
+
+  var country   = document.getElementById('optCountry').value;
+  var maxPrice  = document.getElementById('optMaxPrice').value.trim();
+
+  document.getElementById('optimizerPrefs').style.display = 'none';
+  document.getElementById('optimizerProgress').style.display = 'block';
+  document.getElementById('optimizerResults').style.display = 'none';
+  document.getElementById('optProgressFill').style.width = '30%';
+  document.getElementById('optProgressText').textContent = 'Crunching the numbers…';
+  document.getElementById('optimizeRunBtn').disabled = true;
+
+  var body = { buyerCountry: country };
+  if (maxPrice) body.maxPriceUsd = parseFloat(maxPrice);
+
+  fetch('api/optimize/' + encodeURIComponent(username), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(result) {
+    document.getElementById('optimizeRunBtn').disabled = false;
+    if (result.error) throw new Error(result.error);
+    document.getElementById('optProgressFill').style.width = '100%';
+    setTimeout(function() { showOptimizerResults(result); }, 200);
+  })
+  .catch(function(e) {
+    document.getElementById('optimizeRunBtn').disabled = false;
+    document.getElementById('optProgressText').textContent = '⚠ ' + e.message;
+  });
+}
+
+function showOptimizerResults(result) {
+  document.getElementById('optimizerProgress').style.display = 'none';
+  document.getElementById('optimizerResults').style.display = 'block';
+
+  // Summary stats
+  document.getElementById('optSummary').innerHTML = [
+    optStat('$' + result.grandTotalUsd.toFixed(2), 'Total Cost'),
+    optStat('$' + result.grandRecordsUsd.toFixed(2), 'Records'),
+    optStat('$' + result.grandShippingUsd.toFixed(2), 'Shipping'),
+    optStat(result.covered + ' / ' + result.total, 'Covered'),
+    optStat(result.numSellers, result.numSellers === 1 ? 'Store' : 'Stores'),
+  ].join('');
+
+  // Coverage bar
+  var covPct = result.total > 0 ? Math.round((result.covered / result.total) * 100) : 0;
+  var covColor = covPct >= 80 ? 'var(--green,#22c55e)' : covPct >= 50 ? '#f59e0b' : 'var(--orange,#f97316)';
+
+  // Store cards
+  var stores = result.cart.sort(function(a,b){ return b.items.length - a.items.length; });
+
+  function sellerCard(entry) {
+    var shipping = entry.shippingCostUsd === 0
+      ? '<span style="color:var(--green,#22c55e)">Free shipping</span>'
+      : '+$' + entry.shippingCostUsd.toFixed(2) + ' shipping';
+
+    var itemsHtml = entry.items.map(function(item) {
+      var priceHtml = item.url
+        ? '<a href="' + item.url + '" target="_blank" rel="noopener" class="sc-item-price">$' + item.priceUsd.toFixed(2) + '</a>'
+        : '<span class="sc-item-price">$' + item.priceUsd.toFixed(2) + '</span>';
+      return '<div class="sc-item">' +
+        '<span class="sc-item-title">' + escHtml(item.title) +
+          (item.artist ? ' <span class="sc-item-artist">— ' + escHtml(item.artist) + '</span>' : '') +
+        '</span>' +
+        (item.catno ? '<span class="sc-item-catno">' + escHtml(item.catno) + '</span>' : '') +
+        priceHtml +
+      '</div>';
+    }).join('');
+
+    return '<div class="sc-seller open">' +
+      '<div class="sc-seller-header" onclick="this.parentElement.classList.toggle(\'open\')">' +
+        '<div class="sc-seller-left">' +
+          '<div class="sc-seller-name">' + escHtml(entry.sourceName) + '</div>' +
+          '<div class="sc-seller-sub">' + entry.country + ' · ' + shipping + '</div>' +
+        '</div>' +
+        '<div class="sc-seller-right">' +
+          '<div class="sc-seller-price">$' + entry.totalUsd.toFixed(2) + '</div>' +
+          '<div class="sc-seller-rec">' + entry.items.length + ' record' + (entry.items.length !== 1 ? 's' : '') + '</div>' +
+        '</div>' +
+        '<div class="sc-chevron">▼</div>' +
+      '</div>' +
+      '<div class="sc-items">' + itemsHtml + '</div>' +
+    '</div>';
+  }
+
+  document.getElementById('optBreakdown').innerHTML =
+    '<div class="bk-coverage">' +
+      '<div class="bk-coverage-label">' +
+        '<span>Wantlist coverage</span>' +
+        '<span style="color:' + covColor + ';font-weight:700">' + covPct + '% — ' + result.covered + ' of ' + result.total + ' records</span>' +
+      '</div>' +
+      '<div class="bk-coverage-track"><div class="bk-coverage-fill" style="width:' + covPct + '%;background:' + covColor + '"></div></div>' +
+    '</div>' +
+    '<div class="sc-split">' +
+      '<div class="sc-card stores">' +
+        '<div class="sc-card-header">' +
+          '<div>' +
+            '<div class="sc-card-label stores">Retail Stores</div>' +
+            '<div class="sc-card-desc">' + result.covered + ' records · ' + stores.length + ' stores · fixed prices</div>' +
+          '</div>' +
+          '<div class="sc-card-total">$' + result.grandTotalUsd.toFixed(2) + '</div>' +
+        '</div>' +
+        stores.map(sellerCard).join('') +
+      '</div>' +
+    '</div>';
+
+  // Uncovered
+  var unc = document.getElementById('optUncovered');
+  if (result.uncoveredItems && result.uncoveredItems.length) {
+    unc.innerHTML = '<h3 style="margin:20px 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--text-sec)">' +
+      result.uncoveredItems.length + ' not found in any store</h3>' +
+      '<div class="opt-uncovered-list">' +
+      result.uncoveredItems.map(function(w) {
+        var url = w.discogsId
+          ? 'https://www.discogs.com/release/' + w.discogsId
+          : 'https://www.discogs.com/search/?q=' + encodeURIComponent((w.artist||'') + ' ' + (w.title||''));
+        return '<div class="opt-uncovered-item">' +
+          '<span>' + escHtml((w.artist ? w.artist + ' — ' : '') + w.title) + '</span>' +
+          (w.catno ? '<span class="opt-item-catno">' + escHtml(w.catno) + '</span>' : '') +
+          '<a href="' + url + '" target="_blank" rel="noopener">Discogs ↗</a>' +
+        '</div>';
+      }).join('') + '</div>';
+  } else {
+    unc.innerHTML = '<p style="color:var(--green,#22c55e);font-size:13px;margin-top:16px">✓ All wantlist items found!</p>';
+  }
+}
+
+function optStat(value, label) {
+  return '<div class="opt-stat"><div class="opt-stat-value">' + value + '</div><div class="opt-stat-label">' + label + '</div></div>';
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}

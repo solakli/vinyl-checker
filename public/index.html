@@ -100,6 +100,10 @@
   </div>
 </div>
 
+<div class="optimizer-banner" id="optimizerBanner" style="display:none">
+  <button class="optimize-trigger-btn" id="optimizeTrigger" onclick="openOptimizer()">Find Cheapest Cart</button>
+</div>
+
 <div class="container">
   <div id="welcome" class="welcome" style="display:none">
     <div class="welcome-hero">
@@ -128,6 +132,62 @@
   <div class="modal-content">
     <button class="modal-close" id="modalClose">&times;</button>
     <div id="modalBody"></div>
+  </div>
+</div>
+
+<!-- Cart Optimizer Panel -->
+<div class="optimizer-overlay" id="optimizerOverlay" style="display:none">
+  <div class="optimizer-panel">
+    <div class="optimizer-header">
+      <h2>Cart <span>Optimizer</span></h2>
+      <button class="modal-close" id="optimizerClose">&times;</button>
+    </div>
+
+    <!-- Preferences form -->
+    <div class="optimizer-prefs" id="optimizerPrefs">
+      <p class="optimizer-desc">Find the cheapest combination of stores to buy your entire in-stock wantlist — shipping included.</p>
+      <div class="pref-row">
+        <label>Your country</label>
+        <select id="optCountry">
+          <option value="US">United States</option>
+          <option value="GB">United Kingdom</option>
+          <option value="DE">Germany</option>
+          <option value="FR">France</option>
+          <option value="NL">Netherlands</option>
+          <option value="JP">Japan</option>
+          <option value="AU">Australia</option>
+          <option value="CA">Canada</option>
+          <option value="IT">Italy</option>
+          <option value="ES">Spain</option>
+          <option value="SE">Sweden</option>
+          <option value="BE">Belgium</option>
+          <option value="AT">Austria</option>
+          <option value="CH">Switzerland</option>
+          <option value="PL">Poland</option>
+          <option value="TR">Turkey</option>
+          <option value="XX">Other</option>
+        </select>
+      </div>
+      <div class="pref-row">
+        <label>Max price per record</label>
+        <input type="number" id="optMaxPrice" placeholder="No limit" min="1" max="9999" step="1">
+      </div>
+      <button class="optimize-btn" id="optimizeRunBtn" onclick="runOptimizer()">Find Best Cart</button>
+    </div>
+
+    <!-- Progress -->
+    <div class="optimizer-progress" id="optimizerProgress" style="display:none">
+      <div class="opt-progress-bar-track"><div class="opt-progress-bar-fill" id="optProgressFill"></div></div>
+      <div class="opt-progress-text" id="optProgressText">Optimizing...</div>
+    </div>
+
+    <!-- Results -->
+    <div class="optimizer-results" id="optimizerResults" style="display:none">
+      <div class="opt-summary" id="optSummary"></div>
+      <div class="opt-breakdown" id="optBreakdown"></div>
+      <div class="opt-uncovered" id="optUncovered"></div>
+      <button class="optimize-btn opt-rerun-btn" onclick="showOptimizerPrefs()">Change Preferences</button>
+    </div>
   </div>
 </div>
 

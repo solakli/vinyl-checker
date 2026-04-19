@@ -958,6 +958,62 @@ app.post('/api/changes/dismiss', function (req, res) {
 // ═══════════════════════════════════════════════════════════════
 
 // Health check — background job monitoring + rich analytics
+// ─── Cart Optimizer ───────────────────────────────────────────────────────────
+app.post('/api/optimize/:username', function (req, res) {
+    var username = req.params.username;
+    var opts = {
+        buyerCountry: req.body.buyerCountry || 'US',
+        maxPriceUsd: req.body.maxPriceUsd ? parseFloat(req.body.maxPriceUsd) : undefined
+    };
+
+    try {
+        var storeOptimizer = require('./lib/store-optimizer');
+        var result = storeOptimizer.optimizeStoreCart(username, opts);
+
+        // Flatten to JSON-serialisable shape (strip shippingPolicyFn functions)
+        var cart = result.cart.map(function(c) {
+            return {
+                sourceId: c.source.sourceId,
+                sourceName: c.source.sourceName,
+                sourceType: c.source.sourceType,
+                country: c.source.country,
+                sellerRating: c.source.sellerRating,
+                sellerNumRatings: c.source.sellerNumRatings,
+                shippingCostUsd: c.shippingCostUsd,
+                subtotalUsd: c.subtotalUsd,
+                totalUsd: c.totalUsd,
+                items: c.assignedListings.map(function(l) {
+                    return {
+                        itemId: l.itemId,
+                        artist: l.artist || '',
+                        title: l.title || '',
+                        catno: l.catno || '',
+                        priceUsd: l.priceUsd,
+                        condition: l.condition || '',
+                        url: l.url || ''
+                    };
+                })
+            };
+        });
+
+        res.json({
+            cart: cart,
+            covered: result.covered,
+            total: result.total,
+            uncoveredItems: result.uncoveredItems.map(function(w) {
+                return { artist: w.artist, title: w.title, catno: w.catno, discogsId: w.discogs_id };
+            }),
+            grandTotalUsd: result.grandTotalUsd,
+            grandShippingUsd: result.grandShippingUsd,
+            grandRecordsUsd: result.grandRecordsUsd,
+            numSellers: result.numSellers
+        });
+    } catch (e) {
+        console.error('[optimize] error for', username, ':', e.message);
+        res.status(400).json({ error: e.message });
+    }
+});
+
 app.get('/api/health', function (req, res) {
     try {
         var d = db.getDb();

@@ -359,6 +359,21 @@ function getStoreResults(wantlistId) {
     });
 }
 
+/**
+ * Returns the most recent in-stock store_results row for each
+ * (wantlist_id, store) pair for a user. Used by the cart optimizer.
+ */
+function getLatestInStockResults(userId) {
+    return getDb().prepare(`
+        SELECT sr.wantlist_id, sr.store, sr.matches, sr.search_url, sr.checked_at
+        FROM store_results sr
+        INNER JOIN wantlist w ON w.id = sr.wantlist_id
+        WHERE w.user_id = ? AND w.active = 1 AND sr.in_stock = 1
+        GROUP BY sr.wantlist_id, sr.store
+        HAVING sr.checked_at = MAX(sr.checked_at)
+    `).all(userId);
+}
+
 function getItemsNeedingCheck(userId) {
     var d = getDb();
 
@@ -826,6 +841,7 @@ module.exports = {
     saveStoreResult: saveStoreResult,
     saveStoreResults: saveStoreResults,
     getStoreResults: getStoreResults,
+    getLatestInStockResults: getLatestInStockResults,
     getItemsNeedingCheck: getItemsNeedingCheck,
     saveDiscogsPrice: saveDiscogsPrice,
     getDiscogsPrice: getDiscogsPrice,
