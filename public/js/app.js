@@ -2040,8 +2040,10 @@ function showOptimizerResults(result) {
   var covColor = covPct >= 80 ? 'var(--green)' : covPct >= 50 ? '#ff9900' : 'var(--orange)';
 
   // ── Split cards ───────────────────────────────────────────────
-  var stores = result.cart.filter(function(e) { return e.sourceType === 'store'; });
-  var discogs = result.cart.filter(function(e) { return e.sourceType !== 'store'; });
+  var stores = result.cart.filter(function(e) { return e.sourceType === 'store'; })
+    .sort(function(a, b) { return b.items.length - a.items.length || b.totalUsd - a.totalUsd; });
+  var discogs = result.cart.filter(function(e) { return e.sourceType !== 'store'; })
+    .sort(function(a, b) { return b.items.length - a.items.length || b.totalUsd - a.totalUsd; });
 
   function sellerRows(entries) {
     return entries.map(function(entry, i) {
