@@ -1,141 +1,127 @@
 'use strict';
 
-// ── Keep-alive alarm (MV3 service workers die after ~30s of inactivity) ───────
+// Keep items in memory (don't store giant array in chrome.storage)
+var _items   = [];
+var _running = false;
+
+// ── Keep-alive alarm ──────────────────────────────────────────────────────────
 chrome.alarms.create('keepAlive', { periodInMinutes: 0.4 });
-chrome.alarms.onAlarm.addListener(function (alarm) {
-    if (alarm.name === 'keepAlive') {
-        // Just waking up — check if a sync is running and continue if needed
-        chrome.storage.local.get('syncState', function (data) {
-            var state = data.syncState;
-            if (state && state.running && !state.workerActive) {
-                // Worker was killed mid-sync — resume
-                resumeSync(state);
-            }
-        });
-    }
-});
+chrome.alarms.onAlarm.addListener(function () { /* just wakes the worker */ });
 
 // ── Message handler from popup ────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     if (msg.action === 'startSync') {
-        startSync(msg.server, msg.username);
+        if (_running) { sendResponse({ ok: true, alreadyRunning: true }); return; }
         sendResponse({ ok: true });
+        startSync(msg.server, msg.username);
     }
-    if (msg.action === 'getStatus') {
-        chrome.storage.local.get('syncState', function (data) {
-            sendResponse(data.syncState || { running: false });
-        });
-        return true; // async
-    }
+    return false;
 });
 
-// ── Sync orchestration ────────────────────────────────────────────────────────
+// ── Main sync entry point ─────────────────────────────────────────────────────
 async function startSync(server, username) {
-    // Fetch wantlist from server
-    var items = [];
+    _running = true;
+
+    // Reset progress
+    await setProgress({ running: true, done: 0, total: 0, found: 0, error: null, completedAt: null });
+
+    console.log('[GoldDigger] Fetching wantlist for', username, 'from', server);
+
+    // Fetch wantlist
     try {
         var res  = await fetch(server + '/api/results/' + encodeURIComponent(username));
         var data = await res.json();
-        items = (data.results || []).filter(function (r) { return r.item && r.item.id; });
+        _items   = (data.results || []).filter(function (r) { return r.item && r.item.id; });
     } catch (e) {
-        setState({ running: false, error: 'Could not reach server: ' + e.message });
+        console.error('[GoldDigger] Failed to fetch wantlist:', e.message);
+        await setProgress({ running: false, error: 'Could not reach server: ' + e.message });
+        _running = false;
         return;
     }
 
-    if (!items.length) {
-        setState({ running: false, error: 'No wantlist items found. Run a scan first.' });
+    console.log('[GoldDigger] Got', _items.length, 'wantlist items');
+    await setProgress({ running: true, done: 0, total: _items.length, found: 0 });
+
+    // Get Discogs cookies once
+    var cookieHeader = await getDiscogsCookieHeader();
+    console.log('[GoldDigger] Cookie header length:', cookieHeader.length);
+
+    if (!cookieHeader) {
+        await setProgress({ running: false, error: 'Not logged into Discogs — open discogs.com and log in first.' });
+        _running = false;
         return;
     }
 
-    setState({ running: true, workerActive: true, done: 0, total: items.length,
-               found: 0, server: server, username: username, items: items, cursor: 0 });
-
-    await runSyncLoop();
-}
-
-async function resumeSync(state) {
-    setState({ workerActive: true });
-    await runSyncLoop();
-}
-
-async function runSyncLoop() {
-    var data  = await getState();
-    var state = data.syncState;
-    if (!state || !state.running) return;
-
-    var items    = state.items;
-    var server   = state.server;
-    var username = state.username;
-    var cursor   = state.cursor || 0;
-    var found    = state.found  || 0;
+    // Fetch each release
     var allListings = [];
-
-    for (var i = cursor; i < items.length; i++) {
-        var item    = items[i];
-        var sellers = await fetchMarketplacePage(item.item.id, item.wantlistId);
+    for (var i = 0; i < _items.length; i++) {
+        var item    = _items[i];
+        var sellers = await fetchMarketplacePage(item.item.id, item.wantlistId, cookieHeader);
         allListings = allListings.concat(sellers);
-        found += sellers.length;
 
-        setState({ running: true, workerActive: true, done: i + 1,
-                   total: items.length, found: found, cursor: i + 1,
-                   server: server, username: username, items: items });
-
+        await setProgress({ running: true, done: i + 1, total: _items.length, found: allListings.length });
         await sleep(400);
     }
 
-    // Post all listings to server
+    // Post to server
+    console.log('[GoldDigger] Posting', allListings.length, 'listings to server');
     try {
-        await fetch(server + '/api/discogs-listings/' + encodeURIComponent(username), {
+        var postRes = await fetch(server + '/api/discogs-listings/' + encodeURIComponent(username), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ listings: allListings })
         });
-    } catch (e) {}
+        console.log('[GoldDigger] POST result:', postRes.status);
+    } catch (e) {
+        console.error('[GoldDigger] Failed to post listings:', e.message);
+    }
 
-    setState({ running: false, workerActive: false, done: items.length,
-               total: items.length, found: found, completedAt: Date.now() });
+    await setProgress({ running: false, done: _items.length, total: _items.length,
+                        found: allListings.length, completedAt: Date.now() });
+    _running = false;
+    console.log('[GoldDigger] Sync complete');
 }
 
-// ── Get Discogs cookies (service workers can't use credentials: 'include') ────
+// ── Discogs cookies ───────────────────────────────────────────────────────────
 async function getDiscogsCookieHeader() {
     return new Promise(function (resolve) {
         chrome.cookies.getAll({ domain: 'discogs.com' }, function (cookies) {
-            console.log('[GoldDigger] Discogs cookies found:', cookies ? cookies.length : 0);
+            console.log('[GoldDigger] Cookies found:', cookies ? cookies.length : 0);
             if (!cookies || !cookies.length) { resolve(''); return; }
-            var header = cookies.map(function (c) { return c.name + '=' + c.value; }).join('; ');
-            resolve(header);
+            resolve(cookies.map(function (c) { return c.name + '=' + c.value; }).join('; '));
         });
     });
 }
 
 // ── Fetch + parse Discogs marketplace page ────────────────────────────────────
-async function fetchMarketplacePage(discogsId, wantlistId) {
+async function fetchMarketplacePage(discogsId, wantlistId, cookieHeader) {
     try {
-        var cookieHeader = await getDiscogsCookieHeader();
-        var headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9'
-        };
-        if (cookieHeader) headers['Cookie'] = cookieHeader;
-
         var url = 'https://www.discogs.com/sell/release/' + discogsId;
-        var res = await fetch(url, { headers: headers });
-        console.log('[GoldDigger] fetch', url, '→', res.status);
+        var res = await fetch(url, {
+            headers: {
+                'Cookie': cookieHeader,
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9'
+            }
+        });
+        console.log('[GoldDigger]', url, '→', res.status);
         if (!res.ok) return [];
-        var html = await res.text();
-        var parsed = parseHtml(html, wantlistId);
-        console.log('[GoldDigger] parsed', parsed.length, 'listings for release', discogsId);
+        var html    = await res.text();
+        var parsed  = parseHtml(html, wantlistId);
+        console.log('[GoldDigger] parsed', parsed.length, 'listings for', discogsId);
         return parsed;
     } catch (e) {
+        console.error('[GoldDigger] fetch error for', discogsId, ':', e.message);
         return [];
     }
 }
 
+// ── HTML parser ───────────────────────────────────────────────────────────────
 function parseHtml(html, wantlistId) {
     var listings = [];
 
-    // Try __NEXT_DATA__ JSON first (most reliable)
+    // Try __NEXT_DATA__ JSON (most reliable)
     var match = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
     if (match) {
         try {
@@ -152,7 +138,7 @@ function parseHtml(html, wantlistId) {
                     sellerRating:     l.seller.stats && parseFloat(l.seller.stats.rating),
                     sellerNumRatings: l.seller.stats && l.seller.stats.total,
                     priceOriginal:    l.price && l.price.value,
-                    currency:         l.price && l.price.currency || 'USD',
+                    currency:         (l.price && l.price.currency) || 'USD',
                     condition:        l.condition || '',
                     shipsFrom:        l.ships_from || '',
                     listingUrl:       'https://www.discogs.com/sell/item/' + l.id
@@ -162,17 +148,17 @@ function parseHtml(html, wantlistId) {
         } catch (e) {}
     }
 
-    // Fallback: parse HTML table rows
-    var rowMatches = html.matchAll(/<tr[^>]*class="[^"]*shortcut_navigable[^"]*"[^>]*>([\s\S]*?)<\/tr>/g);
-    for (var row of rowMatches) {
+    // Fallback: regex on HTML rows
+    var rowRe = /<tr[^>]*class="[^"]*shortcut_navigable[^"]*"[^>]*>([\s\S]*?)<\/tr>/g;
+    var row;
+    while ((row = rowRe.exec(html)) !== null) {
         try {
-            var cell    = row[1];
-            var seller  = (cell.match(/\/seller\/([^"/?]+)/) || [])[1];
-            var price   = parseFloat((cell.match(/[\$£€¥]([\d,]+\.?\d*)/) || ['', '0'])[1].replace(',', ''));
-            var listId  = (cell.match(/\/sell\/item\/(\d+)/) || [])[1];
-            var cond    = (cell.match(/class="[^"]*condition[^"]*"[^>]*>([^<]+)/) || [])[1] || '';
-            var ships   = (cell.match(/Ships From.*?<.*?>([^<]+)/) || [])[1] || '';
+            var cell   = row[1];
+            var seller = (cell.match(/\/seller\/([^"/?]+)/) || [])[1];
             if (!seller) continue;
+            var price  = parseFloat(((cell.match(/[\$£€¥]([\d,]+\.?\d*)/) || ['','0'])[1]).replace(/,/g,''));
+            var listId = (cell.match(/\/sell\/item\/(\d+)/) || [])[1];
+            var cond   = (cell.match(/title="([^"]+)"[^>]*>[^<]*<\/span>\s*<\/td>\s*<td/) || [])[1] || '';
             listings.push({
                 wantlistId:     wantlistId,
                 listingId:      listId ? parseInt(listId) : null,
@@ -180,7 +166,7 @@ function parseHtml(html, wantlistId) {
                 priceOriginal:  price || null,
                 currency:       'USD',
                 condition:      cond.trim(),
-                shipsFrom:      ships.trim(),
+                shipsFrom:      '',
                 listingUrl:     listId ? 'https://www.discogs.com/sell/item/' + listId : ''
             });
         } catch (e) {}
@@ -190,19 +176,12 @@ function parseHtml(html, wantlistId) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function setState(patch) {
+function setProgress(patch) {
     return new Promise(function (resolve) {
         chrome.storage.local.get('syncState', function (data) {
-            var current = data.syncState || {};
-            var next    = Object.assign({}, current, patch);
+            var next = Object.assign({}, data.syncState || {}, patch);
             chrome.storage.local.set({ syncState: next }, resolve);
         });
-    });
-}
-
-function getState() {
-    return new Promise(function (resolve) {
-        chrome.storage.local.get('syncState', resolve);
     });
 }
 
