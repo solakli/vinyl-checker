@@ -72,6 +72,7 @@ const PORT = process.env.PORT || 3000;
 app.use(express.static(path.join(__dirname, 'public')));
 // Parse JSON bodies, capturing raw body for GitHub webhook HMAC verification
 app.use(express.json({
+    limit: '20mb',
     verify: function (req, res, buf) { req.rawBody = buf.toString(); }
 }));
 
