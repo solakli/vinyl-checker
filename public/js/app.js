@@ -1,4 +1,4 @@
-/* Vinyl Checker Frontend */
+/* Gold Digger Frontend */
 
 let resultsData = [];
 let isScanning = false;
@@ -13,7 +13,8 @@ var storeLogoMap = {
   'HHV': 'hhv.png', 'Deejay.de': 'deejay.png', 'Hardwax': 'hardwax.png',
   'Juno': 'juno.png', 'Turntable Lab': 'ttlab.png', 'Underground Vinyl': 'uvs.png',
   'Decks.de': 'decks.png', 'Phonica': 'phonica.png', 'Yoyaku': 'yoyaku.png',
-  'Discogs': 'discogs.png'
+  'Gramaphone': 'gramaphone.png', 'Further Records': 'further.png',
+  'Octopus Records NYC': 'octopus.png', 'Discogs': 'discogs.png'
 };
 
 var MAX_STYLES = 20; // Show top N styles
@@ -42,7 +43,7 @@ var loadingMessages = [
   'Mentally calculating shipping costs...',
   'Adding to cart... removing... adding back...',
   'Wondering if this is the right pressing...',
-  'Comparing prices across 9 stores...',
+  'Comparing prices across 12 stores...',
   'Eyeing someone else\'s finds...',
   'That "one more record" feeling...',
   'Pretending the budget still exists...',
@@ -68,18 +69,22 @@ var renderThrottleTimer = null;
 const storeClassMap = {
   'HHV': 'hhv', 'Deejay.de': 'deejay', 'Hardwax': 'hardwax',
   'Juno': 'juno', 'Turntable Lab': 'ttlab', 'Underground Vinyl': 'uvs',
-  'Decks.de': 'decks', 'Phonica': 'phonica', 'Yoyaku': 'yoyaku'
+  'Decks.de': 'decks', 'Phonica': 'phonica', 'Yoyaku': 'yoyaku',
+  'Gramaphone': 'gramaphone', 'Further Records': 'further',
+  'Octopus Records NYC': 'octopus'
 };
 
 const storeDisplayName = {
   'HHV': 'HHV', 'Deejay.de': 'Deejay', 'Hardwax': 'Hardwax',
   'Juno': 'Juno', 'Turntable Lab': 'TT Lab', 'Underground Vinyl': 'UVS',
-  'Decks.de': 'Decks', 'Phonica': 'Phonica', 'Yoyaku': 'Yoyaku'
+  'Decks.de': 'Decks', 'Phonica': 'Phonica', 'Yoyaku': 'Yoyaku',
+  'Gramaphone': 'Gramaphone', 'Further Records': 'Further',
+  'Octopus Records NYC': 'Octopus'
 };
 
 // Theme toggle (persisted)
 (function() {
-  var saved = localStorage.getItem('vinyl-checker-theme');
+  var saved = localStorage.getItem('gold-digger-theme');
   if (saved === 'dark') {
     document.body.classList.remove('light');
     document.getElementById('themeToggle').textContent = 'Light';
@@ -92,7 +97,7 @@ document.getElementById('themeToggle').addEventListener('click', function() {
   document.body.classList.toggle('light');
   var isLight = document.body.classList.contains('light');
   this.textContent = isLight ? 'Dark' : 'Light';
-  localStorage.setItem('vinyl-checker-theme', isLight ? 'light' : 'dark');
+  localStorage.setItem('gold-digger-theme', isLight ? 'light' : 'dark');
 });
 
 // Scan button
@@ -136,7 +141,7 @@ function startScan(force, resume) {
   var username = document.getElementById('usernameInput').value.trim();
   if (!username || isScanning) return;
 
-  localStorage.setItem('vinyl-checker-username', username);
+  localStorage.setItem('gold-digger-username', username);
 
   // Remove resume banner if present
   var rb = document.getElementById('resumeBanner');
@@ -254,6 +259,9 @@ function connectSSE(username, force) {
     document.getElementById('timestamp').textContent = msg + ' \u00b7 ' + new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     updateStats();
     render();
+    // Show optimizer banner when there are in-stock results
+    var inStockCount = allItems.filter(function(i) { return i.stores && i.stores.some(function(s) { return s.inStock; }); }).length;
+    if (inStockCount > 0) document.getElementById('optimizerBanner').style.display = 'flex';
     // Check for changes detected by background rescans
     fetchChanges(username);
   });
@@ -407,11 +415,9 @@ async function loadResultsForUser(username) {
         document.getElementById('timestamp').textContent = 'Cached \u00b7 Last full scan: ' + lastScan;
         updateStats();
         render();
-        // Show the optimizer trigger once we have results
-        var trigger = document.getElementById('optimizeTrigger');
-        var banner = document.getElementById('optimizerBanner');
-        if (trigger) trigger.style.display = 'inline-block';
-        if (banner) banner.style.display = 'flex';
+        // Show optimizer banner if any in-stock items exist
+        var inStockCount = resultsData.filter(function(i) { return i.stores && i.stores.some(function(s) { return s.inStock; }); }).length;
+        if (inStockCount > 0) document.getElementById('optimizerBanner').style.display = 'flex';
         // Check for changes after loading results
         fetchChanges(username);
       }
@@ -1578,7 +1584,7 @@ function shareWantlist() {
   // Try native share (mobile), fall back to clipboard
   if (navigator.share) {
     navigator.share({
-      title: username + ' — Vinyl Checker Wantlist',
+      title: username + ' — Gold Digger Wantlist',
       url: shareUrl
     }).catch(function() {});
   } else if (navigator.clipboard) {
@@ -1629,7 +1635,7 @@ async function disconnectDiscogs() {
   } catch(e) {}
   // Clear local state
   isOAuthed = false;
-  localStorage.removeItem('vinyl-checker-username');
+  localStorage.removeItem('gold-digger-username');
   // Reset UI to welcome
   document.getElementById('userBar').style.display = 'none';
   document.getElementById('connectDiscogsHeader').style.display = 'none';
@@ -1715,7 +1721,7 @@ async function createYoutubePlaylist() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: username + "'s Vinyl Wantlist",
-        description: 'Auto-generated playlist from Discogs wantlist by Vinyl Checker. ' + videoIds.length + ' tracks from ' + resultsData.length + ' releases.',
+        description: 'Auto-generated playlist from Discogs wantlist by Gold Digger. ' + videoIds.length + ' tracks from ' + resultsData.length + ' releases.',
         videoIds: videoIds
       })
     });
@@ -1742,7 +1748,7 @@ var autoScanUsername = '';
     var username = params.get('username');
     if (username) {
       document.getElementById('usernameInput').value = username;
-      localStorage.setItem('vinyl-checker-username', username);
+      localStorage.setItem('gold-digger-username', username);
       autoScanAfterAuth = true;
       autoScanUsername = username;
     }
@@ -1823,7 +1829,7 @@ checkAuthStatus().then(function() {
     return loadExisting(authState.discogs.username);
   } else {
     // Not OAuth-connected — check localStorage for a saved username (manual flow)
-    var savedUsername = localStorage.getItem('vinyl-checker-username');
+    var savedUsername = localStorage.getItem('gold-digger-username');
     if (savedUsername) {
       document.getElementById('usernameInput').value = savedUsername;
       return loadExisting(savedUsername);
@@ -1873,6 +1879,29 @@ function openOptimizer() {
       })
       .catch(function() {});
   }
+function checkDiscogsSyncStatus() {
+  var username = getCurrentUsername();
+  if (!username) return;
+  // Check if we have any synced Discogs listings in the DB already
+  fetch('api/discogs-listings-count/' + encodeURIComponent(username))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var hint = document.getElementById('discogsExtHint');
+      var done = document.getElementById('discogsSyncDone');
+      if (data.count > 0) {
+        if (hint) hint.style.display = 'none';
+        done.textContent = '✓ ' + data.count + ' Discogs seller listings ready — included in optimizer';
+        done.style.color = 'var(--green)';
+        done.style.display = 'block';
+      }
+    }).catch(function() {});
+}
+
+function showDiscogsSyncDone(msg, isError) {
+  var el = document.getElementById('discogsSyncDone');
+  el.textContent = msg;
+  el.style.color = isError ? 'var(--red-soft)' : 'var(--green)';
+  el.style.display = 'block';
 }
 
 document.getElementById('optimizerClose').addEventListener('click', function() {

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Vinyl Checker</title>
+<title>Gold Digger</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
@@ -15,7 +15,7 @@
 <div class="header">
   <div class="header-top">
     <div class="header-left">
-      <h1><span>Vinyl</span> Checker</h1>
+      <h1><span>Gold</span> Digger</h1>
       <div class="live-badge" id="liveBadge" style="display:none"><div class="live-dot"></div> Scanning</div>
       <div class="stats" id="stats"></div>
     </div>
@@ -90,6 +90,9 @@
       <div class="store-badge decks active" data-store="Decks.de"><img class="store-logo" src="img/decks.png" alt="">Decks <span class="count"></span></div>
       <div class="store-badge phonica active" data-store="Phonica"><img class="store-logo" src="img/phonica.png" alt="">Phonica <span class="count"></span></div>
       <div class="store-badge yoyaku active" data-store="Yoyaku"><img class="store-logo" src="img/yoyaku.png" alt="">Yoyaku <span class="count"></span></div>
+      <div class="store-badge gramaphone active" data-store="Gramaphone"><img class="store-logo" src="img/gramaphone.png" alt="">Gramaphone <span class="count"></span></div>
+      <div class="store-badge further active" data-store="Further Records"><img class="store-logo" src="img/further.png" alt="">Further <span class="count"></span></div>
+      <div class="store-badge octopus active" data-store="Octopus Records NYC"><img class="store-logo" src="img/octopus.png" alt="">Octopus <span class="count"></span></div>
     </div>
     <label class="filter-btn" id="inStockOnly">
       <input type="checkbox" style="display:none"> In Stock Only
@@ -98,14 +101,14 @@
 </div>
 
 <div class="optimizer-banner" id="optimizerBanner" style="display:none">
-  <button class="optimize-trigger-btn" id="optimizeTrigger" onclick="openOptimizer()">HIT ME WITH THE BEST CART GOLDY</button>
+  <button class="optimize-trigger-btn" id="optimizeTrigger" onclick="openOptimizer()">Dig For Gold</button>
 </div>
 
 <div class="container">
   <div id="welcome" class="welcome" style="display:none">
     <div class="welcome-hero">
-      <h2><span>Vinyl</span> Checker</h2>
-      <p class="welcome-sub">Find your Discogs wantlist in stock across 9 vinyl stores worldwide</p>
+      <h2><span>Gold</span> Digger</h2>
+      <p class="welcome-sub">Find your Discogs wantlist in stock across 12 vinyl stores worldwide</p>
     </div>
     <div class="welcome-actions">
       <button class="welcome-cta" onclick="handleConnectDiscogs()">
@@ -120,7 +123,7 @@
     <div class="welcome-stores">
       <span class="welcome-store-label">Stores we check:</span>
       <div class="welcome-store-logos">
-        <img src="img/hhv.png" alt="HHV" title="HHV"><img src="img/deejay.png" alt="Deejay.de" title="Deejay.de"><img src="img/hardwax.png" alt="Hardwax" title="Hardwax"><img src="img/juno.png" alt="Juno" title="Juno"><img src="img/ttlab.png" alt="Turntable Lab" title="Turntable Lab"><img src="img/phonica.png" alt="Phonica" title="Phonica"><img src="img/decks.png" alt="Decks.de" title="Decks.de"><img src="img/yoyaku.png" alt="Yoyaku" title="Yoyaku"><img src="img/uvs.png" alt="Underground Vinyl" title="Underground Vinyl">
+        <img src="img/hhv.png" alt="HHV" title="HHV"><img src="img/deejay.png" alt="Deejay.de" title="Deejay.de"><img src="img/hardwax.png" alt="Hardwax" title="Hardwax"><img src="img/juno.png" alt="Juno" title="Juno"><img src="img/ttlab.png" alt="Turntable Lab" title="Turntable Lab"><img src="img/phonica.png" alt="Phonica" title="Phonica"><img src="img/decks.png" alt="Decks.de" title="Decks.de"><img src="img/yoyaku.png" alt="Yoyaku" title="Yoyaku"><img src="img/uvs.png" alt="Underground Vinyl" title="Underground Vinyl"><img src="img/gramaphone.png" alt="Gramaphone" title="Gramaphone"><img src="img/further.png" alt="Further Records" title="Further Records"><img src="img/octopus.png" alt="Octopus Records NYC" title="Octopus Records NYC">
       </div>
     </div>
   </div>
@@ -173,6 +176,18 @@
         <label>Max price per record</label>
         <input type="number" id="optMaxPrice" placeholder="No limit" min="1" max="9999" step="1">
       </div>
+
+      <div class="discogs-sync-row" id="discogsSyncRow">
+        <div class="discogs-sync-header">
+          <img src="img/discogs.png" style="width:13px;height:13px;opacity:0.7;vertical-align:middle;margin-right:5px">
+          <span>Discogs marketplace sellers</span>
+        </div>
+        <div class="discogs-sync-done" id="discogsSyncDone" style="display:none"></div>
+        <div class="discogs-ext-hint" id="discogsExtHint">
+          Use the <strong>Gold Digger Chrome Extension</strong> to sync seller listings from your Discogs session — Discogs blocks direct server access.
+        </div>
+      </div>
+
       <button class="optimize-btn" id="optimizeRunBtn" onclick="runOptimizer()">Find Best Cart</button>
     </div>
 

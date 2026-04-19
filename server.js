@@ -46,6 +46,10 @@ const STORE_SYNCERS = {
         var m = require('./lib/stores/gramaphone');
         return { name: m.STORE_NAME, sync: m.syncGramaphone };
     },
+    uvs: function () {
+        var m = require('./lib/stores/uvs');
+        return { name: m.STORE_NAME, sync: m.syncUVS };
+    },
     further: function () {
         var m = require('./lib/stores/further');
         return { name: m.STORE_NAME, sync: m.syncFurther };
@@ -905,27 +909,38 @@ app.post('/api/admin/sync-store', function (req, res) {
 });
 
 // Run any catalog syncs that are stale. Called from the daily-rescan interval.
-function syncStaleStores() {
-    Object.keys(STORE_SYNCERS).forEach(function (storeKey) {
+// Runs catalog store syncs one at a time (sequential, not parallel) to avoid
+// triggering Shopify's IP-level rate limiter when multiple stores are fetched
+// simultaneously. A 5-second gap between stores gives the CDN time to breathe.
+async function syncStaleStores() {
+    var keys = Object.keys(STORE_SYNCERS);
+    var syncedAny = false;
+    for (var i = 0; i < keys.length; i++) {
+        var storeKey = keys[i];
         var last = db.getLastStoreSync(storeKey);
         var stale = !last || !last.finished_at ||
             (Date.now() - new Date(last.finished_at).getTime()) > SYNC_STALE_AFTER_MS;
-        if (!stale) return;
+        if (!stale) continue;
+
+        // Gap between stores so we don't hammer Shopify's CDN back-to-back.
+        if (syncedAny) await new Promise(function (r) { setTimeout(r, 5000); });
+        syncedAny = true;
 
         var loader = STORE_SYNCERS[storeKey];
         var store = loader();
         console.log('[sync-store:' + storeKey + '] auto-sync starting (last=' + (last ? last.finished_at : 'never') + ')');
-        store.sync({
-            onProgress: function (p) {
-                if (p.phase === 'done') console.log('[sync-store:' + storeKey + '] auto-sync done', p.stats);
-            }
-        })
-        .then(function () { scanner.trackJobRun && scanner.trackJobRun('sync-store-' + storeKey, true); })
-        .catch(function (e) {
+        try {
+            await store.sync({
+                onProgress: function (p) {
+                    if (p.phase === 'done') console.log('[sync-store:' + storeKey + '] auto-sync done', p.stats);
+                }
+            });
+            scanner.trackJobRun && scanner.trackJobRun('sync-store-' + storeKey, true);
+        } catch (e) {
             console.error('[sync-store:' + storeKey + '] auto-sync failed:', e.message);
             scanner.trackJobRun && scanner.trackJobRun('sync-store-' + storeKey, false, e.message);
-        });
-    });
+        }
+    }
 }
 
 // GitHub webhook — auto-deploy on push to master
@@ -975,9 +990,15 @@ app.post('/api/deploy', function (req, res) {
                 console.log('[deploy] package.json changed — running npm install');
                 execSync('cd ' + appDir + ' && npm install --production 2>&1');
             }
-            // Reload PM2 gracefully (zero-downtime)
-            execSync('pm2 reload vinyl-checker --update-env 2>&1');
-            console.log('[deploy] PM2 reloaded — deploy complete');
+            // Reload PM2 via a detached child process — calling pm2 reload from within
+            // the process being reloaded causes SIGTERM mid-execSync. Detached spawn
+            // lets the child outlive the current process cleanly.
+            console.log('[deploy] Reloading via PM2...');
+            var child = require('child_process').spawn('pm2', ['reload', 'vinyl-checker', '--update-env'], {
+                detached: true,
+                stdio: 'ignore'
+            });
+            child.unref();
         } catch (e) {
             console.error('[deploy] ERROR: ' + e.message);
         }
@@ -1038,6 +1059,175 @@ app.post('/api/changes/dismiss', function (req, res) {
 // ═══════════════════════════════════════════════════════════════
 
 // Health check — background job monitoring + rich analytics
+// ─── Cart Optimizer ───────────────────────────────────────────────────────────
+app.post('/api/optimize/:username', function (req, res) {
+    var username = req.params.username;
+    var opts = {
+        buyerCountry: req.body.buyerCountry || 'US',
+        maxPriceUsd: req.body.maxPriceUsd ? parseFloat(req.body.maxPriceUsd) : undefined
+    };
+
+    try {
+        var storeOptimizer = require('./lib/store-optimizer');
+        var result = storeOptimizer.optimizeStoreCart(username, opts);
+
+        // Flatten to JSON-serialisable shape (strip shippingPolicyFn functions)
+        var cart = result.cart.map(function(c) {
+            return {
+                sourceId: c.source.sourceId,
+                sourceName: c.source.sourceName,
+                sourceType: c.source.sourceType,
+                country: c.source.country,
+                sellerRating: c.source.sellerRating,
+                sellerNumRatings: c.source.sellerNumRatings,
+                shippingCostUsd: c.shippingCostUsd,
+                subtotalUsd: c.subtotalUsd,
+                totalUsd: c.totalUsd,
+                items: c.assignedListings.map(function(l) {
+                    return {
+                        itemId: l.itemId,
+                        artist: l.artist || '',
+                        title: l.title || '',
+                        catno: l.catno || '',
+                        priceUsd: l.priceUsd,
+                        condition: l.condition || '',
+                        url: l.url || ''
+                    };
+                })
+            };
+        });
+
+        res.json({
+            cart: cart,
+            covered: result.covered,
+            total: result.total,
+            uncoveredItems: result.uncoveredItems.map(function(w) {
+                return { artist: w.artist, title: w.title, catno: w.catno, discogsId: w.discogs_id };
+            }),
+            grandTotalUsd: result.grandTotalUsd,
+            grandShippingUsd: result.grandShippingUsd,
+            grandRecordsUsd: result.grandRecordsUsd,
+            numSellers: result.numSellers
+        });
+    } catch (e) {
+        console.error('[optimize] error for', username, ':', e.message);
+        res.status(400).json({ error: e.message });
+    }
+});
+
+// ─── Discogs Listings count (for optimizer panel status) ─────────────────────
+app.get('/api/discogs-listings-count/:username', function (req, res) {
+    try {
+        var user = db.getOrCreateUser(req.params.username);
+        if (!user) return res.json({ count: 0 });
+        var listings = db.getDiscogsListings(user.id);
+        res.json({ count: listings.length });
+    } catch (e) {
+        res.json({ count: 0 });
+    }
+});
+
+// ─── Discogs Listings (from Chrome extension) ────────────────────────────────
+app.post('/api/discogs-listings/:username', function (req, res) {
+    try {
+        var username = req.params.username;
+        var user = db.getOrCreateUser(username);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        var listings = req.body.listings || [];
+        if (!listings.length) return res.status(400).json({ error: 'No listings provided' });
+
+        // Group by wantlistId and save
+        var byWantlist = {};
+        listings.forEach(function (l) {
+            if (!l.wantlistId) return;
+            if (!byWantlist[l.wantlistId]) byWantlist[l.wantlistId] = [];
+            byWantlist[l.wantlistId].push(l);
+        });
+
+        var saved = 0;
+        var marketplace = require('./lib/discogs-marketplace');
+        Object.keys(byWantlist).forEach(function (wid) {
+            var rows = byWantlist[wid].map(function (l) {
+                return {
+                    listingId:        l.listingId || null,
+                    sellerUsername:   l.sellerUsername || '',
+                    sellerRating:     l.sellerRating || null,
+                    sellerNumRatings: l.sellerNumRatings || null,
+                    priceOriginal:    l.priceOriginal || null,
+                    currency:         l.currency || 'USD',
+                    priceUsd:         marketplace.toUSD(l.priceOriginal || 0, l.currency || 'USD'),
+                    condition:        l.condition || '',
+                    shipsFrom:        marketplace.countryToISO(l.shipsFrom || ''),
+                    listingUrl:       l.listingUrl || ''
+                };
+            });
+            db.saveDiscogsListings(parseInt(wid), rows);
+            saved += rows.length;
+        });
+
+        res.json({ saved: saved, wantlistItems: Object.keys(byWantlist).length });
+    } catch (e) {
+        console.error('[discogs-listings] error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ─── Discogs Marketplace Sync ─────────────────────────────────────────────────
+
+// In-memory sync state per username
+var marketplaceSyncState = {};
+
+app.post('/api/marketplace-sync/:username', async function (req, res) {
+    var username = req.params.username;
+    var user = db.getOrCreateUser(username);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Already running?
+    if (marketplaceSyncState[username] && marketplaceSyncState[username].running) {
+        return res.json({ started: false, message: 'Sync already in progress' });
+    }
+
+    // Get OAuth token
+    var oauthToken = db.getOAuthToken(user.id, 'discogs');
+    if (!oauthToken || !oauthToken.access_token) {
+        return res.status(403).json({ error: 'No Discogs OAuth token — please reconnect Discogs' });
+    }
+
+    var wantlistItems = db.getActiveWantlist(user.id);
+    var total = wantlistItems.filter(function (w) { return w.discogs_id; }).length;
+
+    marketplaceSyncState[username] = { running: true, done: 0, total: total, errors: 0, startedAt: Date.now() };
+    res.json({ started: true, total: total });
+
+    // Run sync in background
+    var discogsMarketplace = require('./lib/discogs-marketplace');
+    var oauthLib = require('./lib/oauth');
+    var authHeaderFn = function (method, url) {
+        return oauthLib.discogsAuthHeader(method, url, oauthToken.access_token, oauthToken.access_secret);
+    };
+
+    try {
+        await discogsMarketplace.syncMarketplace(wantlistItems, authHeaderFn, db, function (done, total, item) {
+            marketplaceSyncState[username].done = done;
+            marketplaceSyncState[username].total = total;
+        });
+        marketplaceSyncState[username].running = false;
+        marketplaceSyncState[username].completedAt = Date.now();
+    } catch (e) {
+        console.error('[marketplace-sync] error for', username, ':', e.message);
+        marketplaceSyncState[username].running = false;
+        marketplaceSyncState[username].error = e.message;
+    }
+});
+
+app.get('/api/marketplace-sync/:username/status', function (req, res) {
+    var username = req.params.username;
+    var state = marketplaceSyncState[username];
+    if (!state) return res.json({ running: false, done: 0, total: 0 });
+    res.json(state);
+});
+
 app.get('/api/health', function (req, res) {
     try {
         var d = db.getDb();

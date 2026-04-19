@@ -130,6 +130,23 @@ function initTables() {
             FOREIGN KEY (wantlist_id) REFERENCES wantlist(id)
         );
 
+        CREATE TABLE IF NOT EXISTS discogs_listings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            wantlist_id INTEGER NOT NULL,
+            listing_id INTEGER,
+            seller_username TEXT NOT NULL,
+            seller_rating REAL,
+            seller_num_ratings INTEGER,
+            price_usd REAL,
+            price_original REAL,
+            currency TEXT DEFAULT 'USD',
+            condition TEXT,
+            ships_from TEXT,
+            listing_url TEXT,
+            fetched_at TEXT,
+            FOREIGN KEY (wantlist_id) REFERENCES wantlist(id)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_wantlist_user ON wantlist(user_id);
         CREATE INDEX IF NOT EXISTS idx_wantlist_active ON wantlist(user_id, active);
         CREATE INDEX IF NOT EXISTS idx_store_results_wantlist ON store_results(wantlist_id);
@@ -418,6 +435,21 @@ function getStoreResults(wantlistId) {
     });
 }
 
+/**
+ * Returns the most recent in-stock store_results row for each
+ * (wantlist_id, store) pair for a user. Used by the cart optimizer.
+ */
+function getLatestInStockResults(userId) {
+    return getDb().prepare(`
+        SELECT sr.wantlist_id, sr.store, sr.matches, sr.search_url, sr.checked_at
+        FROM store_results sr
+        INNER JOIN wantlist w ON w.id = sr.wantlist_id
+        WHERE w.user_id = ? AND w.active = 1 AND sr.in_stock = 1
+        GROUP BY sr.wantlist_id, sr.store
+        HAVING sr.checked_at = MAX(sr.checked_at)
+    `).all(userId);
+}
+
 function getItemsNeedingCheck(userId) {
     var d = getDb();
 
@@ -480,6 +512,56 @@ function saveDiscogsPrice(wantlistId, priceData) {
 
 function getDiscogsPrice(wantlistId) {
     return getDb().prepare('SELECT * FROM discogs_prices WHERE wantlist_id = ?').get(wantlistId);
+}
+
+// ═══════════════════════════════════════════════════════════
+// DISCOGS LISTINGS (individual seller listings for optimizer)
+// ═══════════════════════════════════════════════════════════
+
+function saveDiscogsListings(wantlistId, listings) {
+    var d = getDb();
+    var now = new Date().toISOString();
+    // Clear old listings for this item first
+    d.prepare('DELETE FROM discogs_listings WHERE wantlist_id = ?').run(wantlistId);
+    var insert = d.prepare(`
+        INSERT INTO discogs_listings
+            (wantlist_id, listing_id, seller_username, seller_rating, seller_num_ratings,
+             price_usd, price_original, currency, condition, ships_from, listing_url, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    var insertMany = d.transaction(function (rows) {
+        rows.forEach(function (l) {
+            insert.run(
+                wantlistId, l.listingId || null, l.sellerUsername || '',
+                l.sellerRating || null, l.sellerNumRatings || null,
+                l.priceUsd || null, l.priceOriginal || null, l.currency || 'USD',
+                l.condition || '', l.shipsFrom || '', l.listingUrl || '', now
+            );
+        });
+    });
+    insertMany(listings);
+}
+
+function getDiscogsListings(userId) {
+    return getDb().prepare(`
+        SELECT dl.*, w.artist, w.title, w.catno, w.discogs_id
+        FROM discogs_listings dl
+        JOIN wantlist w ON w.id = dl.wantlist_id
+        WHERE w.user_id = ? AND w.active = 1
+        ORDER BY dl.seller_username, dl.price_usd ASC
+    `).all(userId);
+}
+
+function getMarketplaceSyncStatus(userId) {
+    var row = getDb().prepare(`
+        SELECT COUNT(*) as total,
+               SUM(CASE WHEN fetched_at IS NOT NULL THEN 1 ELSE 0 END) as synced,
+               MAX(fetched_at) as last_synced
+        FROM discogs_listings dl
+        JOIN wantlist w ON w.id = dl.wantlist_id
+        WHERE w.user_id = ? AND w.active = 1
+    `).get(userId);
+    return row;
 }
 
 function getPriceHistory(wantlistId, limit) {
@@ -1060,6 +1142,7 @@ module.exports = {
     saveStoreResult: saveStoreResult,
     saveStoreResults: saveStoreResults,
     getStoreResults: getStoreResults,
+    getLatestInStockResults: getLatestInStockResults,
     getItemsNeedingCheck: getItemsNeedingCheck,
     saveDiscogsPrice: saveDiscogsPrice,
     getDiscogsPrice: getDiscogsPrice,
@@ -1107,5 +1190,8 @@ module.exports = {
     completeOptimizerJob: completeOptimizerJob,
     failOptimizerJob: failOptimizerJob,
     cleanupOldOptimizerJobs: cleanupOldOptimizerJobs,
+    saveDiscogsListings: saveDiscogsListings,
+    getDiscogsListings: getDiscogsListings,
+    getMarketplaceSyncStatus: getMarketplaceSyncStatus,
     close: close
 };
