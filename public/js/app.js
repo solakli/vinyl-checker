@@ -1,4 +1,4 @@
-/* Vinyl Checker Frontend */
+/* Gold Digger Frontend */
 
 let resultsData = [];
 let isScanning = false;
@@ -84,7 +84,7 @@ const storeDisplayName = {
 
 // Theme toggle (persisted)
 (function() {
-  var saved = localStorage.getItem('vinyl-checker-theme');
+  var saved = localStorage.getItem('gold-digger-theme');
   if (saved === 'dark') {
     document.body.classList.remove('light');
     document.getElementById('themeToggle').textContent = 'Light';
@@ -97,7 +97,7 @@ document.getElementById('themeToggle').addEventListener('click', function() {
   document.body.classList.toggle('light');
   var isLight = document.body.classList.contains('light');
   this.textContent = isLight ? 'Dark' : 'Light';
-  localStorage.setItem('vinyl-checker-theme', isLight ? 'light' : 'dark');
+  localStorage.setItem('gold-digger-theme', isLight ? 'light' : 'dark');
 });
 
 // Scan button
@@ -141,7 +141,7 @@ function startScan(force, resume) {
   var username = document.getElementById('usernameInput').value.trim();
   if (!username || isScanning) return;
 
-  localStorage.setItem('vinyl-checker-username', username);
+  localStorage.setItem('gold-digger-username', username);
 
   // Remove resume banner if present
   var rb = document.getElementById('resumeBanner');
@@ -1581,7 +1581,7 @@ function shareWantlist() {
   // Try native share (mobile), fall back to clipboard
   if (navigator.share) {
     navigator.share({
-      title: username + ' — Vinyl Checker Wantlist',
+      title: username + ' — Gold Digger Wantlist',
       url: shareUrl
     }).catch(function() {});
   } else if (navigator.clipboard) {
@@ -1603,7 +1603,7 @@ async function disconnectDiscogs() {
   } catch(e) {}
   // Clear local state
   isOAuthed = false;
-  localStorage.removeItem('vinyl-checker-username');
+  localStorage.removeItem('gold-digger-username');
   // Reset UI to welcome
   document.getElementById('userBar').style.display = 'none';
   document.getElementById('connectDiscogsHeader').style.display = 'none';
@@ -1689,7 +1689,7 @@ async function createYoutubePlaylist() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: username + "'s Vinyl Wantlist",
-        description: 'Auto-generated playlist from Discogs wantlist by Vinyl Checker. ' + videoIds.length + ' tracks from ' + resultsData.length + ' releases.',
+        description: 'Auto-generated playlist from Discogs wantlist by Gold Digger. ' + videoIds.length + ' tracks from ' + resultsData.length + ' releases.',
         videoIds: videoIds
       })
     });
@@ -1716,7 +1716,7 @@ var autoScanUsername = '';
     var username = params.get('username');
     if (username) {
       document.getElementById('usernameInput').value = username;
-      localStorage.setItem('vinyl-checker-username', username);
+      localStorage.setItem('gold-digger-username', username);
       autoScanAfterAuth = true;
       autoScanUsername = username;
     }
@@ -1797,7 +1797,7 @@ checkAuthStatus().then(function() {
     return loadExisting(authState.discogs.username);
   } else {
     // Not OAuth-connected — check localStorage for a saved username (manual flow)
-    var savedUsername = localStorage.getItem('vinyl-checker-username');
+    var savedUsername = localStorage.getItem('gold-digger-username');
     if (savedUsername) {
       document.getElementById('usernameInput').value = savedUsername;
       return loadExisting(savedUsername);
