@@ -1976,6 +1976,64 @@ body.light .changes-details { border-top-color: rgba(0,0,0,0.06); }
 .optimize-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
 .optimize-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
+/* ── Discogs Sync Row ── */
+.discogs-sync-row {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: var(--bg);
+}
+.discogs-sync-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-sec);
+}
+.discogs-sync-header span { flex: 1; }
+.discogs-sync-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+.discogs-sync-btn:hover { border-color: #C9A227; color: #C9A227; }
+.discogs-sync-btn:disabled { opacity: 0.4; cursor: default; }
+.discogs-sync-progress { margin-top: 8px; }
+.discogs-sync-track {
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.discogs-sync-fill {
+  height: 100%;
+  background: #C9A227;
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.4s ease;
+}
+.discogs-sync-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  display: block;
+}
+.discogs-sync-done {
+  font-size: 11px;
+  color: var(--green);
+  margin-top: 6px;
+}
+
 .opt-rerun-btn {
   background: var(--bg);
   border: 1px solid var(--border);
