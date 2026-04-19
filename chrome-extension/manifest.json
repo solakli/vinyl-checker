@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Gold Digger",
+  "version": "1.0.0",
+  "description": "Sync Discogs marketplace prices into the Gold Digger cart optimizer",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://stream.ronautradio.la/*",
+    "http://localhost:*/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Gold Digger"
+  }
+}

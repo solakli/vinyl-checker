@@ -1014,6 +1014,61 @@ app.post('/api/optimize/:username', function (req, res) {
     }
 });
 
+// ─── Discogs Marketplace Sync ─────────────────────────────────────────────────
+
+// In-memory sync state per username
+var marketplaceSyncState = {};
+
+app.post('/api/marketplace-sync/:username', async function (req, res) {
+    var username = req.params.username;
+    var user = db.getOrCreateUser(username);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Already running?
+    if (marketplaceSyncState[username] && marketplaceSyncState[username].running) {
+        return res.json({ started: false, message: 'Sync already in progress' });
+    }
+
+    // Get OAuth token
+    var oauthToken = db.getOAuthToken(user.id, 'discogs');
+    if (!oauthToken || !oauthToken.access_token) {
+        return res.status(403).json({ error: 'No Discogs OAuth token — please reconnect Discogs' });
+    }
+
+    var wantlistItems = db.getActiveWantlist(user.id);
+    var total = wantlistItems.filter(function (w) { return w.discogs_id; }).length;
+
+    marketplaceSyncState[username] = { running: true, done: 0, total: total, errors: 0, startedAt: Date.now() };
+    res.json({ started: true, total: total });
+
+    // Run sync in background
+    var discogsMarketplace = require('./lib/discogs-marketplace');
+    var oauthLib = require('./lib/oauth');
+    var authHeaderFn = function (method, url) {
+        return oauthLib.discogsAuthHeader(method, url, oauthToken.access_token, oauthToken.access_secret);
+    };
+
+    try {
+        await discogsMarketplace.syncMarketplace(wantlistItems, authHeaderFn, db, function (done, total, item) {
+            marketplaceSyncState[username].done = done;
+            marketplaceSyncState[username].total = total;
+        });
+        marketplaceSyncState[username].running = false;
+        marketplaceSyncState[username].completedAt = Date.now();
+    } catch (e) {
+        console.error('[marketplace-sync] error for', username, ':', e.message);
+        marketplaceSyncState[username].running = false;
+        marketplaceSyncState[username].error = e.message;
+    }
+});
+
+app.get('/api/marketplace-sync/:username/status', function (req, res) {
+    var username = req.params.username;
+    var state = marketplaceSyncState[username];
+    if (!state) return res.json({ running: false, done: 0, total: 0 });
+    res.json(state);
+});
+
 app.get('/api/health', function (req, res) {
     try {
         var d = db.getDb();
