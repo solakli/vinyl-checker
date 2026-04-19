@@ -197,10 +197,50 @@ function initTables() {
         );
 
         CREATE INDEX IF NOT EXISTS idx_store_sync_log_store ON store_sync_log(store, started_at);
+
+        -- Cached Discogs marketplace listings per release.
+        -- Expires after TTL so we don't hammer the API on every optimize run.
+        CREATE TABLE IF NOT EXISTS market_listings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            discogs_release_id INTEGER NOT NULL,
+            listing_id INTEGER NOT NULL,
+            seller_username TEXT NOT NULL,
+            seller_country TEXT,
+            seller_rating REAL,
+            seller_num_ratings INTEGER DEFAULT 0,
+            price REAL NOT NULL,
+            currency TEXT DEFAULT 'USD',
+            price_usd REAL,
+            condition TEXT,
+            sleeve_condition TEXT,
+            comments TEXT,
+            listing_url TEXT,
+            fetched_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            UNIQUE(listing_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_market_listings_release ON market_listings(discogs_release_id, expires_at);
+        CREATE INDEX IF NOT EXISTS idx_market_listings_seller ON market_listings(seller_username);
+
+        -- User preferences for the optimizer (per Discogs user).
+        CREATE TABLE IF NOT EXISTS user_preferences (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL UNIQUE,
+            country_code TEXT,
+            postcode TEXT,
+            min_condition TEXT DEFAULT 'VG+',
+            min_seller_rating REAL DEFAULT 98.0,
+            max_price_usd REAL,
+            currency TEXT DEFAULT 'USD',
+            updated_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
     `);
 
     // Migrations — add columns if missing
     try { db.exec('ALTER TABLE users ADD COLUMN last_daily_rescan TEXT'); } catch(e) {}
+    try { db.exec('ALTER TABLE market_listings ADD COLUMN price_usd REAL'); } catch(e) {}
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -815,6 +855,95 @@ function close() {
     if (db) { db.close(); db = null; }
 }
 
+// ═══════════════════════════════════════════════════════════
+// MARKET LISTINGS (Discogs marketplace cache)
+// ═══════════════════════════════════════════════════════════
+
+function upsertMarketListings(listings) {
+    var d = getDb();
+    var stmt = d.prepare(`
+        INSERT INTO market_listings
+            (discogs_release_id, listing_id, seller_username, seller_country,
+             seller_rating, seller_num_ratings, price, currency, price_usd,
+             condition, sleeve_condition, comments, listing_url, fetched_at, expires_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(listing_id) DO UPDATE SET
+            seller_rating = excluded.seller_rating,
+            price = excluded.price, price_usd = excluded.price_usd,
+            condition = excluded.condition,
+            fetched_at = excluded.fetched_at, expires_at = excluded.expires_at
+    `);
+    var run = d.transaction(function (rows) {
+        rows.forEach(function (l) {
+            stmt.run(
+                l.releaseId, l.listingId, l.sellerUsername, l.sellerCountry || null,
+                l.sellerRating || null, l.sellerNumRatings || 0,
+                l.price, l.currency || 'USD', l.priceUsd || null,
+                l.condition || null, l.sleeveCondition || null,
+                l.comments || null, l.listingUrl || null,
+                l.fetchedAt, l.expiresAt
+            );
+        });
+    });
+    run(listings);
+}
+
+function getMarketListings(releaseId) {
+    var now = new Date().toISOString();
+    return getDb().prepare(
+        'SELECT * FROM market_listings WHERE discogs_release_id = ? AND expires_at > ? ORDER BY price_usd ASC'
+    ).all(releaseId, now);
+}
+
+function clearExpiredListings() {
+    var now = new Date().toISOString();
+    var info = getDb().prepare('DELETE FROM market_listings WHERE expires_at <= ?').run(now);
+    return info.changes;
+}
+
+function getListingCacheAge(releaseId) {
+    var row = getDb().prepare(
+        'SELECT fetched_at, expires_at FROM market_listings WHERE discogs_release_id = ? ORDER BY fetched_at DESC LIMIT 1'
+    ).get(releaseId);
+    return row || null;
+}
+
+// ═══════════════════════════════════════════════════════════
+// USER PREFERENCES
+// ═══════════════════════════════════════════════════════════
+
+function getUserPreferences(userId) {
+    return getDb().prepare('SELECT * FROM user_preferences WHERE user_id = ?').get(userId) || null;
+}
+
+function saveUserPreferences(userId, prefs) {
+    var d = getDb();
+    var now = new Date().toISOString();
+    d.prepare(`
+        INSERT INTO user_preferences
+            (user_id, country_code, postcode, min_condition, min_seller_rating, max_price_usd, currency, updated_at)
+        VALUES (?,?,?,?,?,?,?,?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            country_code = excluded.country_code,
+            postcode = excluded.postcode,
+            min_condition = excluded.min_condition,
+            min_seller_rating = excluded.min_seller_rating,
+            max_price_usd = excluded.max_price_usd,
+            currency = excluded.currency,
+            updated_at = excluded.updated_at
+    `).run(
+        userId,
+        prefs.countryCode || null,
+        prefs.postcode || null,
+        prefs.minCondition || 'VG+',
+        prefs.minSellerRating != null ? prefs.minSellerRating : 98.0,
+        prefs.maxPriceUsd || null,
+        prefs.currency || 'USD',
+        now
+    );
+    return getUserPreferences(userId);
+}
+
 module.exports = {
     getDb: getDb,
     getOrCreateUser: getOrCreateUser,
@@ -858,5 +987,11 @@ module.exports = {
     markStaleInventoryUnavailable: markStaleInventoryUnavailable,
     getInStockInventory: getInStockInventory,
     getInventoryStats: getInventoryStats,
+    upsertMarketListings: upsertMarketListings,
+    getMarketListings: getMarketListings,
+    clearExpiredListings: clearExpiredListings,
+    getListingCacheAge: getListingCacheAge,
+    getUserPreferences: getUserPreferences,
+    saveUserPreferences: saveUserPreferences,
     close: close
 };

@@ -696,6 +696,182 @@ app.get('/api/history/:discogs_id', function (req, res) {
     res.json(history);
 });
 
+// ═══════════════════════════════════════════════════════════
+// OPTIMIZER API
+// ═══════════════════════════════════════════════════════════
+
+// GET /api/preferences/:username — fetch saved preferences
+app.get('/api/preferences/:username', function (req, res) {
+    var user = db.getOrCreateUser(req.params.username);
+    var prefs = db.getUserPreferences(user.id);
+    res.json(prefs || {});
+});
+
+// POST /api/preferences/:username — save preferences
+app.post('/api/preferences/:username', function (req, res) {
+    var user = db.getOrCreateUser(req.params.username);
+    var saved = db.saveUserPreferences(user.id, {
+        countryCode: req.body.countryCode,
+        postcode: req.body.postcode,
+        minCondition: req.body.minCondition || 'VG+',
+        minSellerRating: req.body.minSellerRating != null ? parseFloat(req.body.minSellerRating) : 98.0,
+        maxPriceUsd: req.body.maxPriceUsd ? parseFloat(req.body.maxPriceUsd) : null,
+        currency: req.body.currency || 'USD'
+    });
+    res.json(saved);
+});
+
+// POST /api/optimize/:username — run the cart optimizer
+// Body: { countryCode, minCondition, minSellerRating, maxPriceUsd, forceRefresh }
+// This can take 1–5 minutes for a large wantlist (Discogs API rate limit).
+// It streams progress via SSE; for non-SSE clients it returns a final JSON.
+app.get('/api/optimize/:username', async function (req, res) {
+    var username = req.params.username;
+    var user = db.getOrCreateUser(username);
+
+    // Merge query params with saved preferences (query params override)
+    var savedPrefs = db.getUserPreferences(user.id) || {};
+    var shippingLib = require('./lib/shipping-rates');
+
+    var postcode = req.query.postcode || savedPrefs.postcode || '';
+    var countryFromPostcode = postcode ? shippingLib.postcodeToCountry(postcode).countryCode : null;
+    var buyerCountry = req.query.countryCode || savedPrefs.country_code || countryFromPostcode || 'US';
+    var minCondition = req.query.minCondition || savedPrefs.min_condition || 'VG+';
+    var minSellerRating = parseFloat(req.query.minSellerRating || savedPrefs.min_seller_rating || 98);
+    var maxPriceUsd = req.query.maxPriceUsd ? parseFloat(req.query.maxPriceUsd) : (savedPrefs.max_price_usd || null);
+    var forceRefresh = req.query.forceRefresh === 'true';
+
+    // SSE setup
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    function send(event, data) {
+        res.write('event: ' + event + '\ndata: ' + JSON.stringify(data) + '\n\n');
+    }
+
+    try {
+        // Step 1: Load wantlist
+        send('progress', { phase: 'wantlist', message: 'Loading wantlist...' });
+        var wantlist = db.getActiveWantlist(user.id);
+        if (wantlist.length === 0) {
+            send('error', { message: 'No wantlist items found. Run a scan first.' });
+            res.end();
+            return;
+        }
+        send('progress', { phase: 'wantlist', message: wantlist.length + ' items in wantlist', count: wantlist.length });
+
+        // Step 2: Load catalog-mirror store inventory
+        send('progress', { phase: 'stores', message: 'Loading store inventories...' });
+        var storeInventory = {
+            gramaphone: db.getInStockInventory('gramaphone'),
+            further: db.getInStockInventory('further'),
+            octopus: db.getInStockInventory('octopus')
+        };
+        var storeTotal = Object.values(storeInventory).reduce(function (s, a) { return s + a.length; }, 0);
+        send('progress', { phase: 'stores', message: storeTotal + ' store listings loaded' });
+
+        // Step 3: Fetch Discogs marketplace listings (cached)
+        var discogsMarket = require('./lib/discogs-market');
+        var releaseIds = wantlist
+            .map(function (w) { return w.discogs_id; })
+            .filter(Boolean);
+
+        send('progress', { phase: 'discogs', message: 'Fetching Discogs marketplace listings...', total: releaseIds.length });
+
+        // Get user OAuth token for authenticated requests
+        var oauthToken = db.getOAuthToken(user.id, 'discogs');
+        var userToken = oauthToken ? oauthToken.access_token : null;
+        var userSecret = oauthToken ? oauthToken.access_secret : null;
+
+        var marketListings = await discogsMarket.fetchListingsForReleases(releaseIds, {
+            minCondition: minCondition,
+            userToken: userToken,
+            userSecret: userSecret,
+            forceRefresh: forceRefresh,
+            onProgress: function (p) {
+                send('progress', {
+                    phase: 'discogs',
+                    done: p.done,
+                    total: p.total,
+                    message: 'Fetched ' + p.done + ' / ' + p.total + ' releases'
+                });
+            }
+        });
+
+        var totalListings = Object.values(marketListings).reduce(function (s, a) { return s + a.length; }, 0);
+        send('progress', { phase: 'optimize', message: 'Running optimizer on ' + totalListings + ' marketplace listings...' });
+
+        // Step 4: Run the optimizer
+        var optimizer = require('./lib/optimizer');
+        var result = optimizer.runOptimizer(wantlist, storeInventory, marketListings, {
+            buyerCountry: buyerCountry,
+            minCondition: minCondition,
+            minSellerRating: minSellerRating,
+            maxPriceUsd: maxPriceUsd
+        });
+
+        // Save preferences if postcode was provided
+        if (postcode) {
+            db.saveUserPreferences(user.id, {
+                postcode: postcode,
+                countryCode: buyerCountry,
+                minCondition: minCondition,
+                minSellerRating: minSellerRating,
+                maxPriceUsd: maxPriceUsd
+            });
+        }
+
+        send('result', {
+            cart: result.cart.map(function (c) {
+                return {
+                    sourceId: c.source.sourceId,
+                    sourceName: c.source.sourceName,
+                    sourceType: c.source.sourceType,
+                    country: c.source.country,
+                    sellerRating: c.source.sellerRating,
+                    sellerNumRatings: c.source.sellerNumRatings,
+                    shippingCostUsd: c.shippingCostUsd,
+                    subtotalUsd: c.subtotalUsd,
+                    totalUsd: c.totalUsd,
+                    items: c.assignedListings.map(function (l) {
+                        return {
+                            itemId: l.itemId,
+                            artist: l.artist || '',
+                            title: l.title || '',
+                            catno: l.catno || '',
+                            priceUsd: l.priceUsd,
+                            condition: l.condition,
+                            sleeveCondition: l.sleeveCondition,
+                            url: l.url
+                        };
+                    })
+                };
+            }),
+            covered: result.covered,
+            total: result.total,
+            uncoveredItems: result.uncoveredItems.map(function (w) {
+                return { artist: w.artist, title: w.title, catno: w.catno, discogsId: w.discogs_id };
+            }),
+            grandTotalUsd: result.grandTotalUsd,
+            grandShippingUsd: result.grandShippingUsd,
+            grandRecordsUsd: result.grandRecordsUsd,
+            numSellers: result.numSellers,
+            buyerCountry: buyerCountry,
+            minCondition: minCondition
+        });
+
+        send('done', { message: 'Optimization complete' });
+        res.end();
+    } catch (e) {
+        console.error('[optimize] Error:', e.message);
+        send('error', { message: e.message });
+        res.end();
+    }
+});
+
+// ═══════════════════════════════════════════════════════════
 // Verify a single store result (user-triggered validation)
 app.post('/api/verify', async function (req, res) {
     var store = req.body.store;

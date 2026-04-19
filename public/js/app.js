@@ -1816,3 +1816,256 @@ document.addEventListener('visibilitychange', function() {
     })
     .catch(function() {});
 });
+
+// ═══════════════════════════════════════════════════════════
+// CART OPTIMIZER
+// ═══════════════════════════════════════════════════════════
+
+function openOptimizer() {
+  document.getElementById('optimizerOverlay').style.display = 'flex';
+  document.getElementById('optimizerPrefs').style.display = 'block';
+  document.getElementById('optimizerProgress').style.display = 'none';
+  document.getElementById('optimizerResults').style.display = 'none';
+  // Pre-fill postcode from saved preferences
+  var username = getCurrentUsername();
+  if (username) {
+    fetch('api/preferences/' + encodeURIComponent(username))
+      .then(function(r) { return r.json(); })
+      .then(function(prefs) {
+        if (prefs.postcode) document.getElementById('optPostcode').value = prefs.postcode;
+        if (prefs.min_condition) document.getElementById('optCondition').value = prefs.min_condition;
+        if (prefs.min_seller_rating != null) document.getElementById('optRating').value = String(prefs.min_seller_rating);
+        if (prefs.max_price_usd) document.getElementById('optMaxPrice').value = prefs.max_price_usd;
+      })
+      .catch(function() {});
+  }
+}
+
+document.getElementById('optimizerClose').addEventListener('click', function() {
+  document.getElementById('optimizerOverlay').style.display = 'none';
+});
+
+document.getElementById('optimizerOverlay').addEventListener('click', function(e) {
+  if (e.target === this) this.style.display = 'none';
+});
+
+document.getElementById('optPostcode').addEventListener('input', function() {
+  var hint = document.getElementById('postcodeHint');
+  var pc = this.value.trim();
+  if (!pc) { hint.textContent = ''; return; }
+  // Simple postcode-to-country detection for hint display only
+  if (/^\d{5}(-\d{4})?$/.test(pc)) hint.textContent = 'US';
+  else if (/^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i.test(pc)) hint.textContent = 'UK';
+  else if (/^[A-Z]\d[A-Z]\d[A-Z]\d$/i.test(pc)) hint.textContent = 'Canada';
+  else if (/^[2-9]\d{3}$/.test(pc)) hint.textContent = 'Australia';
+  else if (/^\d{4}[A-Z]{2}$/i.test(pc)) hint.textContent = 'Netherlands';
+  else if (/^\d{3}-?\d{4}$/.test(pc)) hint.textContent = 'Japan';
+  else if (/^\d{5}$/.test(pc)) hint.textContent = 'DE / FR / IT / ES';
+  else hint.textContent = '';
+});
+
+function showOptimizerPrefs() {
+  document.getElementById('optimizerPrefs').style.display = 'block';
+  document.getElementById('optimizerProgress').style.display = 'none';
+  document.getElementById('optimizerResults').style.display = 'none';
+}
+
+function getCurrentUsername() {
+  var el = document.getElementById('usernameInput');
+  if (el && el.value.trim()) return el.value.trim();
+  var barName = document.getElementById('userBarName');
+  if (barName && barName.textContent.trim()) return barName.textContent.trim();
+  return null;
+}
+
+function runOptimizer() {
+  var username = getCurrentUsername();
+  if (!username) { alert('No username found. Please scan your wantlist first.'); return; }
+  var postcode = document.getElementById('optPostcode').value.trim();
+  var condition = document.getElementById('optCondition').value;
+  var rating = document.getElementById('optRating').value;
+  var maxPrice = document.getElementById('optMaxPrice').value.trim();
+
+  // Show progress
+  document.getElementById('optimizerPrefs').style.display = 'none';
+  document.getElementById('optimizerProgress').style.display = 'block';
+  document.getElementById('optimizerResults').style.display = 'none';
+  document.getElementById('optProgressFill').style.width = '0%';
+  document.getElementById('optProgressText').textContent = 'Starting…';
+  document.getElementById('optimizeRunBtn').disabled = true;
+
+  var params = new URLSearchParams({
+    postcode: postcode,
+    minCondition: condition,
+    minSellerRating: rating
+  });
+  if (maxPrice) params.set('maxPriceUsd', maxPrice);
+
+  var url = 'api/optimize/' + encodeURIComponent(username) + '?' + params.toString();
+  var source = new EventSource(url);
+  var totalReleases = 0;
+  var doneReleases = 0;
+
+  source.addEventListener('progress', function(e) {
+    var d = JSON.parse(e.data);
+    var text = d.message || '';
+    document.getElementById('optProgressText').textContent = text;
+
+    if (d.phase === 'discogs') {
+      if (d.total && !totalReleases) totalReleases = d.total;
+      if (d.done) doneReleases = d.done;
+      if (totalReleases > 0) {
+        var pct = Math.min(95, 10 + Math.round((doneReleases / totalReleases) * 80));
+        document.getElementById('optProgressFill').style.width = pct + '%';
+      }
+    } else if (d.phase === 'optimize') {
+      document.getElementById('optProgressFill').style.width = '97%';
+    } else if (d.phase === 'stores') {
+      document.getElementById('optProgressFill').style.width = '8%';
+    }
+  });
+
+  source.addEventListener('result', function(e) {
+    var result = JSON.parse(e.data);
+    document.getElementById('optProgressFill').style.width = '100%';
+    setTimeout(function() { showOptimizerResults(result); }, 300);
+  });
+
+  source.addEventListener('done', function() {
+    source.close();
+    document.getElementById('optimizeRunBtn').disabled = false;
+  });
+
+  source.addEventListener('error', function(e) {
+    source.close();
+    document.getElementById('optimizeRunBtn').disabled = false;
+    var msg = 'Something went wrong.';
+    try { msg = JSON.parse(e.data).message; } catch(_) {}
+    document.getElementById('optProgressText').textContent = '⚠ Error: ' + msg;
+  });
+}
+
+function showOptimizerResults(result) {
+  document.getElementById('optimizerProgress').style.display = 'none';
+  document.getElementById('optimizerResults').style.display = 'block';
+
+  // Summary stats
+  var summaryEl = document.getElementById('optSummary');
+  summaryEl.innerHTML = [
+    statBlock('$' + result.grandTotalUsd.toFixed(2), 'Total Cost'),
+    statBlock('$' + result.grandRecordsUsd.toFixed(2), 'Records'),
+    statBlock('$' + result.grandShippingUsd.toFixed(2), 'Shipping'),
+    statBlock(result.covered + ' / ' + result.total, 'Wantlist'),
+    statBlock(result.numSellers, result.numSellers === 1 ? 'Seller' : 'Sellers'),
+  ].join('');
+
+  // Cart entries
+  var cartEl = document.getElementById('optCart');
+  cartEl.innerHTML = result.cart.map(function(entry) {
+    var isStore = entry.sourceType === 'store';
+    var typeLabel = isStore ? 'Store' : 'Discogs';
+    var ratingStr = entry.sellerRating
+      ? ' · ★ ' + entry.sellerRating.toFixed(1) + (entry.sellerNumRatings ? ' (' + entry.sellerNumRatings.toLocaleString() + ')' : '')
+      : '';
+    var countryFlag = entry.country ? ' · ' + entry.country : '';
+
+    var itemsHtml = entry.items.map(function(item) {
+      return '<div class="opt-item-row">' +
+        '<div class="opt-item-title">' +
+          '<div>' + escapeHtml(item.title) + '</div>' +
+          '<div class="opt-item-artist">' + escapeHtml(item.artist) + '</div>' +
+        '</div>' +
+        (item.catno ? '<div class="opt-item-catno">' + escapeHtml(item.catno) + '</div>' : '') +
+        '<div class="opt-item-condition">' + (item.condition || '') + '</div>' +
+        '<div class="opt-item-price">' +
+          (item.url ? '<a href="' + item.url + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;">' : '') +
+          '$' + item.priceUsd.toFixed(2) +
+          (item.url ? '</a>' : '') +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    var shippingNote = entry.shippingCostUsd === 0
+      ? '<span class="shipping-cost" style="color:var(--green)">Free shipping</span>'
+      : '<span class="shipping-cost">+$' + entry.shippingCostUsd.toFixed(2) + ' shipping</span>';
+
+    return '<div class="opt-seller" onclick="this.classList.toggle(\'expanded\')">' +
+      '<div class="opt-seller-header">' +
+        '<div class="opt-seller-type ' + (isStore ? 'store' : 'discogs') + '">' + typeLabel + '</div>' +
+        '<div class="opt-seller-name">' + escapeHtml(entry.sourceName) + '</div>' +
+        '<div class="opt-seller-country" style="font-size:11px;color:var(--text-muted)">' + countryFlag + ratingStr + '</div>' +
+        '<div class="opt-seller-total">$' + entry.totalUsd.toFixed(2) + '</div>' +
+        '<div class="opt-seller-expand">▾</div>' +
+      '</div>' +
+      '<div class="opt-seller-items">' +
+        itemsHtml +
+        '<div class="opt-shipping-row">' +
+          shippingNote +
+          '<span class="order-total">Order total: $' + entry.totalUsd.toFixed(2) + '</span>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  // Expand the first/biggest seller by default
+  var firstSeller = cartEl.querySelector('.opt-seller');
+  if (firstSeller) firstSeller.classList.add('expanded');
+
+  // Uncovered items
+  var uncoveredEl = document.getElementById('optUncovered');
+  if (result.uncoveredItems && result.uncoveredItems.length > 0) {
+    uncoveredEl.innerHTML = '<h3>' + result.uncoveredItems.length + ' not found anywhere</h3>' +
+      '<div class="opt-uncovered-list">' +
+      result.uncoveredItems.map(function(w) {
+        var discogsUrl = w.discogsId
+          ? 'https://www.discogs.com/release/' + w.discogsId
+          : 'https://www.discogs.com/search/?q=' + encodeURIComponent((w.artist || '') + ' ' + (w.title || ''));
+        return '<div class="opt-uncovered-item">' +
+          '<span>' + escapeHtml((w.artist ? w.artist + ' — ' : '') + w.title) + '</span>' +
+          (w.catno ? '<span class="opt-item-catno">' + escapeHtml(w.catno) + '</span>' : '') +
+          '<a href="' + discogsUrl + '" target="_blank" rel="noopener">Search Discogs ↗</a>' +
+        '</div>';
+      }).join('') +
+      '</div>';
+  } else {
+    uncoveredEl.innerHTML = '<p style="color:var(--green);font-size:13px;margin-top:16px">✓ Every item in your wantlist was found!</p>';
+  }
+}
+
+function statBlock(value, label) {
+  return '<div class="opt-stat">' +
+    '<div class="opt-stat-value">' + value + '</div>' +
+    '<div class="opt-stat-label">' + label + '</div>' +
+  '</div>';
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// Show "Best Cart" button once results are loaded
+var _origLoadResults = loadResultsForUser;
+async function loadResultsForUser(username) {
+  await _origLoadResults(username);
+  var trigger = document.getElementById('optimizeTrigger');
+  if (trigger) trigger.style.display = 'inline-block';
+}
+  if (document.visibilityState !== 'visible') return;
+  if (isScanning) return; // Already connected to SSE
+  var username = document.getElementById('usernameInput').value.trim();
+  if (!username) return;
+  // Quick check — is a scan still running on the server?
+  fetch('api/scan-status/' + encodeURIComponent(username))
+    .then(function(r) { return r.json(); })
+    .then(function(status) {
+      if (status.active && !status.done && status.total > 0) {
+        showResumeBanner(username, status);
+      }
+    })
+    .catch(function() {});
+});

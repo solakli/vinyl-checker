@@ -94,6 +94,7 @@
     <label class="filter-btn" id="inStockOnly">
       <input type="checkbox" style="display:none"> In Stock Only
     </label>
+    <button class="filter-btn optimize-trigger-btn" id="optimizeTrigger" style="display:none" onclick="openOptimizer()">&#9733; Best Cart</button>
   </div>
 </div>
 
@@ -125,6 +126,62 @@
   <div class="modal-content">
     <button class="modal-close" id="modalClose">&times;</button>
     <div id="modalBody"></div>
+  </div>
+</div>
+
+<!-- Cart Optimizer Panel -->
+<div class="optimizer-overlay" id="optimizerOverlay" style="display:none">
+  <div class="optimizer-panel">
+    <div class="optimizer-header">
+      <h2>Cart <span>Optimizer</span></h2>
+      <button class="modal-close" id="optimizerClose">&times;</button>
+    </div>
+
+    <!-- Preferences form -->
+    <div class="optimizer-prefs" id="optimizerPrefs">
+      <p class="optimizer-desc">Find the cheapest combination of sellers &amp; stores to buy your entire wantlist — shipping included.</p>
+      <div class="pref-row">
+        <label>Your postcode / ZIP</label>
+        <input type="text" id="optPostcode" placeholder="e.g. 10001 or SW1A 1AA" maxlength="12">
+        <span class="pref-hint" id="postcodeHint"></span>
+      </div>
+      <div class="pref-row">
+        <label>Minimum condition</label>
+        <select id="optCondition">
+          <option value="VG">VG (Very Good)</option>
+          <option value="VG+" selected>VG+ (Very Good Plus)</option>
+          <option value="NM or M-">NM / M- (Near Mint)</option>
+        </select>
+      </div>
+      <div class="pref-row">
+        <label>Min seller rating</label>
+        <select id="optRating">
+          <option value="95">95%+</option>
+          <option value="98" selected>98%+</option>
+          <option value="99">99%+</option>
+          <option value="0">Any</option>
+        </select>
+      </div>
+      <div class="pref-row">
+        <label>Max price per record</label>
+        <input type="number" id="optMaxPrice" placeholder="No limit" min="1" max="9999" step="1">
+      </div>
+      <button class="optimize-btn" id="optimizeRunBtn" onclick="runOptimizer()">Find Best Cart</button>
+    </div>
+
+    <!-- Progress -->
+    <div class="optimizer-progress" id="optimizerProgress" style="display:none">
+      <div class="opt-progress-bar-track"><div class="opt-progress-bar-fill" id="optProgressFill"></div></div>
+      <div class="opt-progress-text" id="optProgressText">Starting...</div>
+    </div>
+
+    <!-- Results -->
+    <div class="optimizer-results" id="optimizerResults" style="display:none">
+      <div class="opt-summary" id="optSummary"></div>
+      <div class="opt-cart" id="optCart"></div>
+      <div class="opt-uncovered" id="optUncovered"></div>
+      <button class="optimize-btn opt-rerun-btn" onclick="showOptimizerPrefs()">Change Preferences</button>
+    </div>
   </div>
 </div>
 
