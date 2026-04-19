@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Breakdown Mock</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f0f0; color: #1a1a1a; padding: 40px 24px; }
+  .wrap { max-width: 860px; margin: 0 auto; }
+
+  .opt-summary {
+    background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+    padding: 16px 20px; margin-bottom: 20px;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 12px;
+  }
+  .opt-stat { text-align: center; }
+  .opt-stat-value { font-size: 22px; font-weight: 700; color: #f5a623; }
+  .opt-stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #999; margin-top: 2px; }
+
+  .bk-coverage { margin-bottom: 20px; }
+  .bk-coverage-label { display: flex; justify-content: space-between; font-size: 12px; color: #999; margin-bottom: 6px; }
+  .bk-coverage-track { height: 6px; background: #e5e5e5; border-radius: 3px; overflow: hidden; }
+  .bk-coverage-fill { height: 100%; border-radius: 3px; background: #4ade80; }
+
+  /* ── Split cards ── */
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  .split-card { border-radius: 12px; border: 1px solid; overflow: hidden; }
+  .split-card.stores { background: #f0fdf4; border-color: #bbf7d0; }
+  .split-card.disco  { background: #fff7f0; border-color: #fed7aa; }
+
+  .split-card-header { padding: 18px 20px 14px; }
+  .split-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2px; }
+  .split-head-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; }
+  .split-head-label.stores { color: #16a34a; }
+  .split-head-label.disco  { color: #cc4e00; }
+  .split-head-total { font-size: 20px; font-weight: 800; line-height: 1; }
+  .split-head-desc { font-size: 11px; color: #999; }
+
+  /* ── Seller rows ── */
+  .seller { border-top: 1px solid rgba(0,0,0,0.07); }
+
+  .seller-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 20px; cursor: pointer; gap: 10px;
+    transition: background 0.12s;
+  }
+  .split-card.stores .seller-header:hover { background: rgba(0,0,0,0.04); }
+  .split-card.disco  .seller-header:hover { background: rgba(0,0,0,0.04); }
+
+  .seller-left { flex: 1; min-width: 0; }
+  .seller-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .seller-sub { font-size: 11px; color: #999; margin-top: 2px; }
+  .star { color: #f5a623; }
+  .free { color: #16a34a; }
+
+  .seller-right { text-align: right; flex-shrink: 0; }
+  .seller-price { font-size: 13px; font-weight: 700; }
+  .seller-rec { font-size: 11px; color: #999; margin-top: 1px; }
+
+  .seller-chevron { font-size: 11px; color: #bbb; flex-shrink: 0; transition: transform 0.2s; margin-left: 4px; }
+  .seller.open .seller-chevron { transform: rotate(180deg); }
+
+  /* ── Expanded items ── */
+  .seller-items { display: none; padding: 0 20px 12px; }
+  .seller.open .seller-items { display: block; }
+
+  .item-row {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding: 6px 0; border-top: 1px solid rgba(0,0,0,0.06); gap: 10px; font-size: 12px;
+  }
+  .item-title { flex: 1; font-weight: 500; }
+  .item-artist { color: #999; font-weight: 400; }
+  .item-catno { font-size: 10px; color: #bbb; flex-shrink: 0; }
+  .item-cond { font-size: 10px; color: #999; flex-shrink: 0; }
+  .item-price { font-weight: 700; flex-shrink: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="opt-summary">
+    <div class="opt-stat"><div class="opt-stat-value">$487.20</div><div class="opt-stat-label">Total Cost</div></div>
+    <div class="opt-stat"><div class="opt-stat-value">$431.50</div><div class="opt-stat-label">Records</div></div>
+    <div class="opt-stat"><div class="opt-stat-value">$55.70</div><div class="opt-stat-label">Shipping</div></div>
+    <div class="opt-stat"><div class="opt-stat-value">18 / 24</div><div class="opt-stat-label">Wantlist Covered</div></div>
+    <div class="opt-stat"><div class="opt-stat-value">6</div><div class="opt-stat-label">Orders</div></div>
+  </div>
+
+  <div class="bk-coverage">
+    <div class="bk-coverage-label">
+      <span>Wantlist coverage</span>
+      <span style="color:#16a34a;font-weight:700">75% — 18 of 24 records found</span>
+    </div>
+    <div class="bk-coverage-track"><div class="bk-coverage-fill" style="width:75%"></div></div>
+  </div>
+
+  <div class="split">
+
+    <!-- RETAIL STORES -->
+    <div class="split-card stores">
+      <div class="split-card-header">
+        <div class="split-head">
+          <div class="split-head-label stores">Retail Stores</div>
+          <div class="split-head-total">$176.50</div>
+        </div>
+        <div class="split-head-desc">8 records · 3 stores · fixed prices</div>
+      </div>
+
+      <div class="seller" onclick="toggle(this)">
+        <div class="seller-header">
+          <div class="seller-left">
+            <div class="seller-name">Juno Records</div>
+            <div class="seller-sub">🇬🇧 United Kingdom · <span class="free">Free shipping</span></div>
+          </div>
+          <div class="seller-right">
+            <div class="seller-price">$98.50</div>
+            <div class="seller-rec">5 records</div>
+          </div>
+          <div class="seller-chevron">▼</div>
+        </div>
+        <div class="seller-items">
+          <div class="item-row"><span class="item-title">Strings of Life <span class="item-artist">— Rhythim Is Rhythim</span></span><span class="item-catno">KMS 02</span><span class="item-cond">New</span><span class="item-price">$24.99</span></div>
+          <div class="item-row"><span class="item-title">Pacific State <span class="item-artist">— 808 State</span></span><span class="item-catno">ZTT 1</span><span class="item-cond">New</span><span class="item-price">$18.00</span></div>
+          <div class="item-row"><span class="item-title">Inner City Life <span class="item-artist">— Goldie</span></span><span class="item-catno">FFRR 8</span><span class="item-cond">New</span><span class="item-price">$21.50</span></div>
+          <div class="item-row"><span class="item-title">Windowlicker <span class="item-artist">— Aphex Twin</span></span><span class="item-catno">WARP 72</span><span class="item-cond">New</span><span class="item-price">$16.00</span></div>
+          <div class="item-row"><span class="item-title">Born Slippy <span class="item-artist">— Underworld</span></span><span class="item-catno">JBO 9</span><span class="item-cond">New</span><span class="item-price">$18.01</span></div>
+        </div>
+      </div>
+
+      <div class="seller" onclick="toggle(this)">
+        <div class="seller-header">
+          <div class="seller-left">
+            <div class="seller-name">HHV</div>
+            <div class="seller-sub">🇩🇪 Germany · +$9.00 shipping</div>
+          </div>
+          <div class="seller-right">
+            <div class="seller-price">$53.00</div>
+            <div class="seller-rec">2 records</div>
+          </div>
+          <div class="seller-chevron">▼</div>
+        </div>
+        <div class="seller-items">
+          <div class="item-row"><span class="item-title">Sour Times <span class="item-artist">— Portishead</span></span><span class="item-catno">GO! 2</span><span class="item-cond">New</span><span class="item-price">$22.00</span></div>
+          <div class="item-row"><span class="item-title">Glory Box <span class="item-artist">— Portishead</span></span><span class="item-catno">GO! 4</span><span class="item-cond">New</span><span class="item-price">$22.00</span></div>
+        </div>
+      </div>
+
+      <div class="seller" onclick="toggle(this)">
+        <div class="seller-header">
+          <div class="seller-left">
+            <div class="seller-name">Phonica Records</div>
+            <div class="seller-sub">🇬🇧 United Kingdom · <span class="free">Free shipping</span></div>
+          </div>
+          <div class="seller-right">
+            <div class="seller-price">$25.00</div>
+            <div class="seller-rec">1 record</div>
+          </div>
+          <div class="seller-chevron">▼</div>
+        </div>
+        <div class="seller-items">
+          <div class="item-row"><span class="item-title">Can You Feel It <span class="item-artist">— The Jacksons</span></span><span class="item-catno">EPIC 12</span><span class="item-cond">New</span><span class="item-price">$25.00</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DISCOGS MARKETPLACE -->
+    <div class="split-card disco">
+      <div class="split-card-header">
+        <div class="split-head">
+          <div class="split-head-label disco">Discogs Marketplace</div>
+          <div class="split-head-total">$304.00</div>
+        </div>
+        <div class="split-head-desc">10 records · 3 sellers · reseller prices</div>
+      </div>
+
+      <div class="seller open" onclick="toggle(this)">
+        <div class="seller-header">
+          <div class="seller-left">
+            <div class="seller-name">vinyl_junkie_berlin</div>
+            <div class="seller-sub">🇩🇪 Germany · <span class="star">★ 99.8</span> (4,201) · +$14 shipping</div>
+          </div>
+          <div class="seller-right">
+            <div class="seller-price">$176.00</div>
+            <div class="seller-rec">7 records</div>
+          </div>
+          <div class="seller-chevron">▼</div>
+        </div>
+        <div class="seller-items">
+          <div class="item-row"><span class="item-title">The Bells <span class="item-artist">— Jeff Mills</span></span><span class="item-catno">AX 014</span><span class="item-cond">VG+</span><span class="item-price">$28.00</span></div>
+          <div class="item-row"><span class="item-title">Spastik <span class="item-artist">— Plastikman</span></span><span class="item-catno">NOVAMUTE 12</span><span class="item-cond">VG+</span><span class="item-price">$22.00</span></div>
+          <div class="item-row"><span class="item-title">We Are IE <span class="item-artist">— Underground Resistance</span></span><span class="item-catno">UR 038</span><span class="item-cond">VG+</span><span class="item-price">$31.00</span></div>
+          <div class="item-row"><span class="item-title">Floorplan <span class="item-artist">— Model 500</span></span><span class="item-catno">METROPLEX 11</span><span class="item-cond">VG</span><span class="item-price">$18.00</span></div>
+          <div class="item-row"><span class="item-title">Red Planet <span class="item-artist">— Red Planet</span></span><span class="item-catno">RP 01</span><span class="item-cond">VG+</span><span class="item-price">$35.00</span></div>
+          <div class="item-row"><span class="item-title">Nude Photo <span class="item-artist">— Derrick May</span></span><span class="item-catno">TN 001</span><span class="item-cond">VG+</span><span class="item-price">$24.00</span></div>
+          <div class="item-row"><span class="item-title">No UFO's <span class="item-artist">— Model 500</span></span><span class="item-catno">METROPLEX 1</span><span class="item-cond">VG</span><span class="item-price">$24.00</span></div>
+        </div>
+      </div>
+
+      <div class="seller" onclick="toggle(this)">
+        <div class="seller-header">
+          <div class="seller-left">
+            <div class="seller-name">deepgroove_chicago</div>
+            <div class="seller-sub">🇺🇸 United States · <span class="star">★ 98.5</span> (812) · +$18 shipping</div>
+          </div>
+          <div class="seller-right">
+            <div class="seller-price">$72.00</div>
+            <div class="seller-rec">3 records</div>
+          </div>
+          <div class="seller-chevron">▼</div>
+        </div>
+        <div class="seller-items">
+          <div class="item-row"><span class="item-title">Move Your Body <span class="item-artist">— Marshall Jefferson</span></span><span class="item-catno">TEN 103</span><span class="item-cond">VG+</span><span class="item-price">$19.00</span></div>
+          <div class="item-row"><span class="item-title">Your Love <span class="item-artist">— Frankie Knuckles</span></span><span class="item-catno">TRAX 12</span><span class="item-cond">VG</span><span class="item-price">$17.00</span></div>
+          <div class="item-row"><span class="item-title">Baby Wants to Ride <span class="item-artist">— Jamie Principle</span></span><span class="item-catno">TRAX 14</span><span class="item-cond">VG+</span><span class="item-price">$18.00</span></div>
+        </div>
+      </div>
+
+      <div class="seller" onclick="toggle(this)">
+        <div class="seller-header">
+          <div class="seller-left">
+            <div class="seller-name">soulbay_records_uk</div>
+            <div class="seller-sub">🇬🇧 United Kingdom · <span class="star">★ 97.2</span> (320) · +$8 shipping</div>
+          </div>
+          <div class="seller-right">
+            <div class="seller-price">$56.00</div>
+            <div class="seller-rec">1 record</div>
+          </div>
+          <div class="seller-chevron">▼</div>
+        </div>
+        <div class="seller-items">
+          <div class="item-row"><span class="item-title">Promised Land <span class="item-artist">— Joe Smooth</span></span><span class="item-catno">DJ INT 1251</span><span class="item-cond">VG+</span><span class="item-price">$48.00</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  function toggle(el) {
+    el.classList.toggle('open');
+  }
+</script>
+</body>
+</html>

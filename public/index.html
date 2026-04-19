@@ -94,8 +94,11 @@
     <label class="filter-btn" id="inStockOnly">
       <input type="checkbox" style="display:none"> In Stock Only
     </label>
-    <button class="filter-btn optimize-trigger-btn" id="optimizeTrigger" style="display:none" onclick="openOptimizer()">HIT ME WITH THE BEST CART GOLDY</button>
   </div>
+</div>
+
+<div class="optimizer-banner" id="optimizerBanner" style="display:none">
+  <button class="optimize-trigger-btn" id="optimizeTrigger" onclick="openOptimizer()">HIT ME WITH THE BEST CART GOLDY</button>
 </div>
 
 <div class="container">
@@ -105,10 +108,14 @@
       <p class="welcome-sub">Find your Discogs wantlist in stock across 9 vinyl stores worldwide</p>
     </div>
     <div class="welcome-actions">
-      <button class="welcome-cta" onclick="window.location.href='api/auth/discogs'">
+      <button class="welcome-cta" onclick="handleConnectDiscogs()">
         <img class="store-logo" src="img/discogs.png" alt="" style="width:20px;height:20px;margin-right:8px;vertical-align:middle;filter:none;opacity:1"> Connect Your Discogs
       </button>
-      <p class="welcome-hint">Authorize to scan your wantlist &mdash; works with private wantlists too</p>
+      <p class="welcome-hint" id="welcomeHint">Authorize to scan your wantlist &mdash; works with private wantlists too</p>
+      <div id="welcomeUsernameForm" style="display:none;margin-top:16px;display:none">
+        <input type="text" class="username-input" id="welcomeUsernameInput" placeholder="Enter your Discogs username..." style="margin-bottom:8px">
+        <button class="welcome-cta" onclick="handleWelcomeUsernameSubmit()" style="margin-top:8px">Check My Wantlist</button>
+      </div>
     </div>
     <div class="welcome-stores">
       <span class="welcome-store-label">Stores we check:</span>
@@ -178,6 +185,7 @@
     <!-- Results -->
     <div class="optimizer-results" id="optimizerResults" style="display:none">
       <div class="opt-summary" id="optSummary"></div>
+      <div class="opt-breakdown" id="optBreakdown"></div>
       <div class="opt-cart" id="optCart"></div>
       <div class="opt-uncovered" id="optUncovered"></div>
       <button class="optimize-btn opt-rerun-btn" onclick="showOptimizerPrefs()">Change Preferences</button>

@@ -409,7 +409,9 @@ async function loadResultsForUser(username) {
         render();
         // Show the optimizer trigger once we have results
         var trigger = document.getElementById('optimizeTrigger');
+        var banner = document.getElementById('optimizerBanner');
         if (trigger) trigger.style.display = 'inline-block';
+        if (banner) banner.style.display = 'flex';
         // Check for changes after loading results
         fetchChanges(username);
       }
@@ -1590,6 +1592,35 @@ function shareWantlist() {
   }
 }
 
+function handleConnectDiscogs() {
+  if (authState && authState.discogsOAuthEnabled) {
+    window.location.href = 'api/auth/discogs';
+  } else {
+    // OAuth not configured — show username input inline on welcome page
+    var form = document.getElementById('welcomeUsernameForm');
+    var hint = document.getElementById('welcomeHint');
+    if (form) { form.style.display = 'block'; }
+    if (hint) { hint.style.display = 'none'; }
+    var inp = document.getElementById('welcomeUsernameInput');
+    if (inp) { inp.focus(); }
+  }
+}
+
+function handleWelcomeUsernameSubmit() {
+  var inp = document.getElementById('welcomeUsernameInput');
+  var username = inp ? inp.value.trim() : '';
+  if (!username) return;
+  // Copy into main input and trigger scan
+  var mainInput = document.getElementById('usernameInput');
+  if (mainInput) mainInput.value = username;
+  // Show results section, hide welcome
+  var welcome = document.getElementById('welcome');
+  if (welcome) welcome.style.display = 'none';
+  var scanSection = document.getElementById('scanSection');
+  if (scanSection) scanSection.style.display = 'flex';
+  loadExisting(username);
+}
+
 async function disconnectDiscogs() {
   if (!confirm('Disconnect and return to the welcome page?')) return;
   try {
@@ -1996,13 +2027,75 @@ function showOptimizerResults(result) {
 
   // Summary stats
   var summaryEl = document.getElementById('optSummary');
+  var savingsHtml = '';
+  if (result.grandTotalUsd > 0 && result.worstCaseUsd && result.worstCaseUsd > result.grandTotalUsd) {
+    var saved = result.worstCaseUsd - result.grandTotalUsd;
+    savingsHtml = statBlock('$' + saved.toFixed(2), 'You Save');
+  }
   summaryEl.innerHTML = [
     statBlock('$' + result.grandTotalUsd.toFixed(2), 'Total Cost'),
     statBlock('$' + result.grandRecordsUsd.toFixed(2), 'Records'),
     statBlock('$' + result.grandShippingUsd.toFixed(2), 'Shipping'),
-    statBlock(result.covered + ' / ' + result.total, 'Wantlist'),
+    statBlock(result.covered + ' / ' + result.total, 'Wantlist Covered'),
     statBlock(result.numSellers, result.numSellers === 1 ? 'Seller' : 'Sellers'),
+    savingsHtml,
   ].join('');
+
+  // ── Vendor breakdown table ──────────────────────────────────────
+  var breakdownEl = document.getElementById('optBreakdown');
+  var sortedCart = result.cart.slice().sort(function(a, b) { return b.items.length - a.items.length; });
+  var maxRecords = sortedCart[0] ? sortedCart[0].items.length : 1;
+
+  var rows = sortedCart.map(function(entry) {
+    var isStore = entry.sourceType === 'store';
+    var barPct = Math.round((entry.items.length / maxRecords) * 100);
+    var ratingHtml = entry.sellerRating
+      ? '<span class="bk-rating">★ ' + entry.sellerRating.toFixed(1) + (entry.sellerNumRatings ? ' <span class="bk-rating-count">(' + entry.sellerNumRatings.toLocaleString() + ')</span>' : '') + '</span>'
+      : '';
+    var countryHtml = entry.country ? '<span class="bk-country">' + entry.country + '</span>' : '';
+    var shippingText = entry.shippingCostUsd === 0 ? '<span style="color:var(--green)">Free</span>' : '$' + entry.shippingCostUsd.toFixed(2);
+
+    return '<tr class="bk-row">' +
+      '<td class="bk-source">' +
+        '<span class="bk-badge ' + (isStore ? 'store' : 'discogs') + '">' + (isStore ? 'Store' : 'Discogs') + '</span>' +
+      '</td>' +
+      '<td class="bk-name">' +
+        '<div class="bk-name-main">' + escapeHtml(entry.sourceName) + '</div>' +
+        '<div class="bk-name-sub">' + countryHtml + ratingHtml + '</div>' +
+      '</td>' +
+      '<td class="bk-records-cell">' +
+        '<div class="bk-bar-wrap"><div class="bk-bar" style="width:' + barPct + '%"></div></div>' +
+        '<span class="bk-records-count">' + entry.items.length + ' record' + (entry.items.length !== 1 ? 's' : '') + '</span>' +
+      '</td>' +
+      '<td class="bk-cost">$' + entry.subtotalUsd.toFixed(2) + '</td>' +
+      '<td class="bk-ship">' + shippingText + '</td>' +
+      '<td class="bk-total">$' + entry.totalUsd.toFixed(2) + '</td>' +
+    '</tr>';
+  }).join('');
+
+  // Coverage bar
+  var covPct = result.total > 0 ? Math.round((result.covered / result.total) * 100) : 0;
+  var covColor = covPct >= 80 ? 'var(--green)' : covPct >= 50 ? '#ff9900' : 'var(--orange)';
+
+  breakdownEl.innerHTML =
+    '<div class="bk-coverage">' +
+      '<div class="bk-coverage-label">' +
+        '<span>Wantlist coverage</span>' +
+        '<span style="color:' + covColor + ';font-weight:700">' + covPct + '% (' + result.covered + ' of ' + result.total + ' records found)</span>' +
+      '</div>' +
+      '<div class="bk-coverage-track"><div class="bk-coverage-fill" style="width:' + covPct + '%;background:' + covColor + '"></div></div>' +
+    '</div>' +
+    '<table class="bk-table">' +
+      '<thead><tr>' +
+        '<th></th>' +
+        '<th>Seller / Store</th>' +
+        '<th>Records</th>' +
+        '<th>Items</th>' +
+        '<th>Shipping</th>' +
+        '<th>Order Total</th>' +
+      '</tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+    '</table>';
 
   // Cart entries
   var cartEl = document.getElementById('optCart');

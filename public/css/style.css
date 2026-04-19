@@ -1826,26 +1826,36 @@ body.light .changes-details { border-top-color: rgba(0,0,0,0.06); }
    CART OPTIMIZER
    ═══════════════════════════════════════════════════════════════ */
 
+.optimizer-banner {
+  display: flex;
+  justify-content: center;
+  padding: 20px 16px;
+  background: linear-gradient(180deg, rgba(255,102,0,0.06) 0%, transparent 100%);
+  border-bottom: 1px solid rgba(255,102,0,0.15);
+}
+
 .optimize-trigger-btn {
   background: linear-gradient(135deg, #ff6600, #ff4400);
   color: #fff;
   border: none;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 2px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 2.5px;
   text-transform: uppercase;
   cursor: pointer;
   white-space: nowrap;
-  padding: 10px 20px;
+  padding: 16px 40px;
   border-radius: var(--radius);
-  box-shadow: 0 0 18px rgba(255, 102, 0, 0.45);
+  box-shadow: 0 4px 24px rgba(255, 102, 0, 0.5);
   transition: filter 0.15s, transform 0.15s, box-shadow 0.15s;
+  width: 100%;
+  max-width: 600px;
 }
 
 .optimize-trigger-btn:hover {
-  filter: brightness(1.15);
+  filter: brightness(1.12);
   transform: translateY(-2px);
-  box-shadow: 0 0 28px rgba(255, 102, 0, 0.65);
+  box-shadow: 0 8px 36px rgba(255, 102, 0, 0.7);
 }
 
 .optimizer-overlay {
@@ -2016,6 +2026,128 @@ body.light .changes-details { border-top-color: rgba(0,0,0,0.06); }
   letter-spacing: 1px;
   color: var(--text-muted);
   margin-top: 2px;
+}
+
+/* ── Vendor breakdown ─────────────────────────────────── */
+.opt-breakdown {
+  margin-bottom: 24px;
+}
+
+.bk-coverage {
+  margin-bottom: 14px;
+}
+
+.bk-coverage-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.bk-coverage-track {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.bk-coverage-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.6s ease;
+}
+
+.bk-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.bk-table thead th {
+  text-align: left;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  padding: 0 10px 8px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.bk-row td {
+  padding: 10px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.bk-row:last-child td { border-bottom: none; }
+
+.bk-row:hover td { background: var(--card-hover); }
+
+.bk-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 3px 7px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.bk-badge.store { background: rgba(74, 222, 128, 0.15); color: var(--green); }
+.bk-badge.discogs { background: rgba(255, 98, 0, 0.15); color: var(--discogs, #ff6200); }
+
+.bk-name-main {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.bk-name-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.bk-country { }
+.bk-rating { color: #f5a623; }
+.bk-rating-count { color: var(--text-muted); font-weight: 400; }
+
+.bk-records-cell {
+  min-width: 140px;
+}
+
+.bk-bar-wrap {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin-bottom: 4px;
+  overflow: hidden;
+}
+
+.bk-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #ff6600, #ff9900);
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+
+.bk-records-count {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.bk-cost, .bk-ship, .bk-total {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.bk-total {
+  font-weight: 700;
+  color: var(--gold, #f5a623);
 }
 
 .opt-seller {
