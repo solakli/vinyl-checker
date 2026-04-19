@@ -96,15 +96,37 @@ async function runSyncLoop() {
                total: items.length, found: found, completedAt: Date.now() });
 }
 
+// ── Get Discogs cookies (service workers can't use credentials: 'include') ────
+async function getDiscogsCookieHeader() {
+    return new Promise(function (resolve) {
+        chrome.cookies.getAll({ domain: 'discogs.com' }, function (cookies) {
+            console.log('[GoldDigger] Discogs cookies found:', cookies ? cookies.length : 0);
+            if (!cookies || !cookies.length) { resolve(''); return; }
+            var header = cookies.map(function (c) { return c.name + '=' + c.value; }).join('; ');
+            resolve(header);
+        });
+    });
+}
+
 // ── Fetch + parse Discogs marketplace page ────────────────────────────────────
 async function fetchMarketplacePage(discogsId, wantlistId) {
     try {
-        var res = await fetch('https://www.discogs.com/sell/release/' + discogsId, {
-            credentials: 'include'
-        });
+        var cookieHeader = await getDiscogsCookieHeader();
+        var headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9'
+        };
+        if (cookieHeader) headers['Cookie'] = cookieHeader;
+
+        var url = 'https://www.discogs.com/sell/release/' + discogsId;
+        var res = await fetch(url, { headers: headers });
+        console.log('[GoldDigger] fetch', url, '→', res.status);
         if (!res.ok) return [];
         var html = await res.text();
-        return parseHtml(html, wantlistId);
+        var parsed = parseHtml(html, wantlistId);
+        console.log('[GoldDigger] parsed', parsed.length, 'listings for release', discogsId);
+        return parsed;
     } catch (e) {
         return [];
     }
