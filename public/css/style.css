@@ -8,12 +8,12 @@
   --text: #fff;
   --text-sec: #ccc;
   --text-muted: #999;
-  --gold: #ff6600;
-  --gold-soft: rgba(255, 102, 0, 0.1);
+  --gold: #C9A227;
+  --gold-soft: rgba(201, 162, 39, 0.1);
   --red: #ff0000;
   --red-soft: #ff6b6b;
   --green: #4ade80;
-  --hhv: #ff6600;
+  --hhv: #C9A227;
   --deejay: #e0e0e0;
   --phonica: #ff6b6b;
   --hardwax: #e07020;
@@ -25,7 +25,7 @@
   --gramaphone: #c8102e;
   --further: #d97706;
   --octopus: #3a9bd5;
-  --discogs: #ff6200;
+  --discogs: #C9A227;
   --radius: 6px;
   --radius-lg: 10px;
 }
@@ -76,7 +76,7 @@ body {
 
 .header h1 span {
   color: var(--gold);
-  text-shadow: 0 0 20px rgba(255, 102, 0, 0.3);
+  text-shadow: 0 0 20px rgba(201, 162, 39, 0.3);
 }
 
 .live-badge {
@@ -160,8 +160,8 @@ body {
 
 .username-input:focus {
   border-color: var(--gold);
-  background: rgba(255, 102, 0, 0.04);
-  box-shadow: 0 0 0 3px rgba(255, 102, 0, 0.06);
+  background: rgba(201, 162, 39, 0.04);
+  box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.06);
 }
 
 .scan-btn {
@@ -181,7 +181,7 @@ body {
 
 .scan-btn:hover {
   background: #ff7722;
-  box-shadow: 0 4px 16px rgba(255, 102, 0, 0.3);
+  box-shadow: 0 4px 16px rgba(201, 162, 39, 0.3);
   transform: translateY(-1px);
 }
 
@@ -335,7 +335,7 @@ body {
 
 .search-box:focus {
   border-color: var(--gold);
-  background: rgba(255, 102, 0, 0.04);
+  background: rgba(201, 162, 39, 0.04);
 }
 
 .sort-select {
@@ -429,7 +429,7 @@ body {
   white-space: nowrap;
   flex-shrink: 0;
   /* Availability-based intensity: subtle orange glow scales with --tag-intensity */
-  border-color: rgba(255, 102, 0, calc(var(--tag-intensity, 0) * 0.003 + 0.08));
+  border-color: rgba(201, 162, 39, calc(var(--tag-intensity, 0) * 0.003 + 0.08));
   color: color-mix(in srgb, var(--text-muted) calc(100% - var(--tag-intensity, 0) * 0.4%), var(--gold) calc(var(--tag-intensity, 0) * 0.4%));
 }
 
@@ -503,8 +503,8 @@ body {
 .store-badge.gramaphone { color: var(--text); font-weight: 600; letter-spacing: 2px; }
 .store-badge.further { color: var(--text); font-weight: 500; letter-spacing: 1.5px; }
 .store-badge.octopus { color: var(--text); font-weight: 600; letter-spacing: 1px; }
-.store-badge { border-color: rgba(255, 102, 0, 0.25); }
-.store-badge.active { border-color: rgba(255, 102, 0, 0.5); background: rgba(255,102,0,0.04); }
+.store-badge { border-color: rgba(201, 162, 39, 0.25); }
+.store-badge.active { border-color: rgba(201, 162, 39, 0.5); background: rgba(201,162,39,0.04); }
 .store-badge .count { opacity: 0.5; font-weight: 300; }
 
 /* DISCOGS STORE ROW */
@@ -877,7 +877,7 @@ body.light .store-row.link-only-row:hover { border-color: rgba(0,0,0,0.15); }
 .welcome-cta:hover {
   background: #e05500;
   transform: translateY(-1px);
-  box-shadow: 0 8px 24px rgba(255,102,0,0.3);
+  box-shadow: 0 8px 24px rgba(201,162,39,0.3);
 }
 
 .welcome-hint {
@@ -944,7 +944,7 @@ body.light .store-row.link-only-row:hover { border-color: rgba(0,0,0,0.15); }
   letter-spacing: 2px;
   color: var(--text);
   background: transparent;
-  border: 1px solid rgba(255,102,0,0.4);
+  border: 1px solid rgba(201,162,39,0.4);
   border-radius: var(--radius);
   cursor: pointer;
   transition: all 0.2s;
@@ -1027,7 +1027,7 @@ body.light .store-row.link-only-row:hover { border-color: rgba(0,0,0,0.15); }
 
 /* Light mode welcome */
 body.light .welcome-input { background: rgba(0,0,0,0.03); }
-body.light .welcome-go { border-color: rgba(255,102,0,0.3); }
+body.light .welcome-go { border-color: rgba(201,162,39,0.3); }
 
 /* THEME TOGGLE */
 .theme-toggle {
@@ -1056,8 +1056,8 @@ body.light {
   --text: #000;
   --text-sec: #333;
   --text-muted: #666;
-  --gold: #ff6600;
-  --gold-soft: rgba(255, 102, 0, 0.06);
+  --gold: #C9A227;
+  --gold-soft: rgba(201, 162, 39, 0.06);
   --hhv: #e05500;
   --deejay: #222;
   --phonica: #cc4444;
@@ -1598,8 +1598,8 @@ body.light .tag-badge .tag-stock { color: var(--gold); }
 
 /* RESUME BANNER — Welcome Back */
 .resume-banner {
-  background: linear-gradient(135deg, rgba(255,102,0,0.12) 0%, rgba(255,102,0,0.04) 100%);
-  border: 1px solid rgba(255,102,0,0.3);
+  background: linear-gradient(135deg, rgba(201,162,39,0.12) 0%, rgba(201,162,39,0.04) 100%);
+  border: 1px solid rgba(201,162,39,0.3);
   border-radius: var(--radius-lg);
   margin: 16px 28px 0;
   padding: 18px 22px;
@@ -1637,13 +1637,13 @@ body.light .tag-badge .tag-stock { color: var(--gold); }
 }
 .resume-btn:hover { opacity: 0.85; }
 body.light .resume-banner {
-  background: linear-gradient(135deg, rgba(255,102,0,0.06) 0%, rgba(255,102,0,0.02) 100%);
-  border-color: rgba(255,102,0,0.2);
+  background: linear-gradient(135deg, rgba(201,162,39,0.06) 0%, rgba(201,162,39,0.02) 100%);
+  border-color: rgba(201,162,39,0.2);
 }
 
 .changes-banner {
-  background: linear-gradient(135deg, rgba(255,102,0,0.08) 0%, rgba(74,222,128,0.06) 100%);
-  border: 1px solid rgba(255,102,0,0.25);
+  background: linear-gradient(135deg, rgba(201,162,39,0.08) 0%, rgba(74,222,128,0.06) 100%);
+  border: 1px solid rgba(201,162,39,0.25);
   border-radius: var(--radius-lg);
   margin: 16px 28px 0;
   padding: 14px 18px;
@@ -1760,8 +1760,8 @@ body.light .resume-banner {
 
 /* Light mode changes */
 body.light .changes-banner {
-  background: linear-gradient(135deg, rgba(255,102,0,0.04) 0%, rgba(74,222,128,0.03) 100%);
-  border-color: rgba(255,102,0,0.2);
+  background: linear-gradient(135deg, rgba(201,162,39,0.04) 0%, rgba(74,222,128,0.03) 100%);
+  border-color: rgba(201,162,39,0.2);
 }
 body.light .changes-details { border-top-color: rgba(0,0,0,0.06); }
 
@@ -2090,7 +2090,7 @@ body.light .changes-details { border-top-color: rgba(0,0,0,0.06); }
 .sc-card.disco  { background: var(--sc-disco-bg, #fff7f0); border-color: var(--sc-disco-border, #fed7aa); }
 
 .dark .sc-card.stores { --sc-store-bg: rgba(74,222,128,0.07); --sc-store-border: rgba(74,222,128,0.25); }
-.dark .sc-card.disco  { --sc-disco-bg: rgba(255,102,0,0.07); --sc-disco-border: rgba(255,102,0,0.25); }
+.dark .sc-card.disco  { --sc-disco-bg: rgba(201,162,39,0.07); --sc-disco-border: rgba(201,162,39,0.25); }
 
 .sc-card-header {
   display: flex;
@@ -2111,7 +2111,7 @@ body.light .changes-details { border-top-color: rgba(0,0,0,0.06); }
 .sc-card-label.disco  { color: #cc4e00; }
 
 .dark .sc-card-label.stores { color: #4ade80; }
-.dark .sc-card-label.disco  { color: #ff9900; }
+.dark .sc-card-label.disco  { color: #D4AF37; }
 
 .sc-card-desc {
   font-size: 11px;
@@ -2282,7 +2282,7 @@ a.sc-item-price:hover { text-decoration: underline; }
 }
 
 .bk-badge.store { background: rgba(74, 222, 128, 0.15); color: var(--green); }
-.bk-badge.discogs { background: rgba(255, 98, 0, 0.15); color: var(--discogs, #ff6200); }
+.bk-badge.discogs { background: rgba(201, 162, 39, 0.15); color: var(--discogs, #C9A227); }
 
 .bk-name-main {
   font-weight: 600;
@@ -2316,7 +2316,7 @@ a.sc-item-price:hover { text-decoration: underline; }
 
 .bk-bar {
   height: 100%;
-  background: linear-gradient(90deg, #ff6600, #ff9900);
+  background: linear-gradient(90deg, #C9A227, #D4AF37);
   border-radius: 2px;
   transition: width 0.5s ease;
 }
@@ -2371,7 +2371,7 @@ a.sc-item-price:hover { text-decoration: underline; }
 }
 
 .opt-seller-type.store { background: rgba(74, 222, 128, 0.15); color: var(--green); }
-.opt-seller-type.discogs { background: rgba(255, 98, 0, 0.15); color: var(--discogs); }
+.opt-seller-type.discogs { background: rgba(201, 162, 39, 0.15); color: var(--discogs); }
 
 .opt-seller-country {
   font-size: 12px;
