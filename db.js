@@ -236,7 +236,26 @@ function initTables() {
             updated_at TEXT,
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
+
+        -- Optimizer job queue. One row per submitted optimization request.
+        CREATE TABLE IF NOT EXISTS optimizer_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            user_id INTEGER,
+            status TEXT NOT NULL DEFAULT 'pending',
+            params TEXT,
+            progress TEXT,
+            result TEXT,
+            error TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            started_at TEXT,
+            completed_at TEXT
+        );
     `);
+
+    // Indexes
+    try { db.exec('CREATE INDEX IF NOT EXISTS idx_optimizer_jobs_username ON optimizer_jobs(username)'); } catch(e) {}
+    try { db.exec('CREATE INDEX IF NOT EXISTS idx_optimizer_jobs_status ON optimizer_jobs(status, created_at)'); } catch(e) {}
 
     // Migrations — add columns if missing
     try { db.exec('ALTER TABLE users ADD COLUMN last_daily_rescan TEXT'); } catch(e) {}
@@ -944,6 +963,92 @@ function saveUserPreferences(userId, prefs) {
     return getUserPreferences(userId);
 }
 
+// ═══════════════════════════════════════════════════════════
+// OPTIMIZER JOB QUEUE
+// ═══════════════════════════════════════════════════════════
+
+function createOptimizerJob(username, userId, params) {
+    var d = getDb();
+    // If there's already a pending or processing job for this user, return it
+    var existing = d.prepare(
+        "SELECT * FROM optimizer_jobs WHERE username = ? AND status IN ('pending','processing') ORDER BY created_at DESC LIMIT 1"
+    ).get(username);
+    if (existing) {
+        var pos = getQueuePosition(existing.id);
+        return { job: existing, queuePosition: pos, reused: true };
+    }
+    var info = d.prepare(
+        'INSERT INTO optimizer_jobs (username, user_id, params, status) VALUES (?, ?, ?, ?)'
+    ).run(username, userId || null, JSON.stringify(params || {}), 'pending');
+    var job = d.prepare('SELECT * FROM optimizer_jobs WHERE id = ?').get(info.lastInsertRowid);
+    var pos = getQueuePosition(job.id);
+    return { job: job, queuePosition: pos, reused: false };
+}
+
+function getOptimizerJob(jobId) {
+    return getDb().prepare('SELECT * FROM optimizer_jobs WHERE id = ?').get(jobId) || null;
+}
+
+function getActiveJobForUser(username) {
+    return getDb().prepare(
+        "SELECT * FROM optimizer_jobs WHERE username = ? AND status IN ('pending','processing') ORDER BY created_at DESC LIMIT 1"
+    ).get(username) || null;
+}
+
+function getQueuePosition(jobId) {
+    // How many pending jobs were created before this one?
+    var row = getDb().prepare(
+        "SELECT COUNT(*) as cnt FROM optimizer_jobs WHERE status = 'pending' AND id < ?"
+    ).get(jobId);
+    return row ? row.cnt : 0;
+}
+
+// Atomically claim the next pending job — sets status to 'processing'.
+// Returns the claimed job or null if queue is empty.
+function claimNextJob() {
+    var d = getDb();
+    var job = d.prepare(
+        "SELECT * FROM optimizer_jobs WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1"
+    ).get();
+    if (!job) return null;
+    var now = new Date().toISOString();
+    d.prepare(
+        "UPDATE optimizer_jobs SET status = 'processing', started_at = ? WHERE id = ? AND status = 'pending'"
+    ).run(now, job.id);
+    // Re-fetch to confirm we got it (in case of concurrent workers)
+    var claimed = d.prepare("SELECT * FROM optimizer_jobs WHERE id = ? AND status = 'processing'").get(job.id);
+    return claimed || null;
+}
+
+function updateJobProgress(jobId, progress) {
+    getDb().prepare(
+        'UPDATE optimizer_jobs SET progress = ? WHERE id = ?'
+    ).run(JSON.stringify(progress), jobId);
+}
+
+function completeOptimizerJob(jobId, result) {
+    var now = new Date().toISOString();
+    getDb().prepare(
+        "UPDATE optimizer_jobs SET status = 'done', result = ?, completed_at = ?, progress = NULL WHERE id = ?"
+    ).run(JSON.stringify(result), now, jobId);
+}
+
+function failOptimizerJob(jobId, errorMsg) {
+    var now = new Date().toISOString();
+    getDb().prepare(
+        "UPDATE optimizer_jobs SET status = 'failed', error = ?, completed_at = ?, progress = NULL WHERE id = ?"
+    ).run(errorMsg, now, jobId);
+}
+
+// Clean up completed/failed jobs older than 24 hours
+function cleanupOldOptimizerJobs() {
+    var cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    var info = getDb().prepare(
+        "DELETE FROM optimizer_jobs WHERE status IN ('done','failed') AND completed_at < ?"
+    ).run(cutoff);
+    return info.changes;
+}
+
 module.exports = {
     getDb: getDb,
     getOrCreateUser: getOrCreateUser,
@@ -993,5 +1098,14 @@ module.exports = {
     getListingCacheAge: getListingCacheAge,
     getUserPreferences: getUserPreferences,
     saveUserPreferences: saveUserPreferences,
+    createOptimizerJob: createOptimizerJob,
+    getOptimizerJob: getOptimizerJob,
+    getActiveJobForUser: getActiveJobForUser,
+    getQueuePosition: getQueuePosition,
+    claimNextJob: claimNextJob,
+    updateJobProgress: updateJobProgress,
+    completeOptimizerJob: completeOptimizerJob,
+    failOptimizerJob: failOptimizerJob,
+    cleanupOldOptimizerJobs: cleanupOldOptimizerJobs,
     close: close
 };

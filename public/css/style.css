@@ -1827,18 +1827,25 @@ body.light .changes-details { border-top-color: rgba(0,0,0,0.06); }
    ═══════════════════════════════════════════════════════════════ */
 
 .optimize-trigger-btn {
-  background: linear-gradient(135deg, var(--gold), #ff4400);
+  background: linear-gradient(135deg, #ff6600, #ff4400);
   color: #fff;
   border: none;
-  font-weight: 600;
-  letter-spacing: 1px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
   cursor: pointer;
   white-space: nowrap;
+  padding: 10px 20px;
+  border-radius: var(--radius);
+  box-shadow: 0 0 18px rgba(255, 102, 0, 0.45);
+  transition: filter 0.15s, transform 0.15s, box-shadow 0.15s;
 }
 
 .optimize-trigger-btn:hover {
   filter: brightness(1.15);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  box-shadow: 0 0 28px rgba(255, 102, 0, 0.65);
 }
 
 .optimizer-overlay {

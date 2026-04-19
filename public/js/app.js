@@ -407,6 +407,9 @@ async function loadResultsForUser(username) {
         document.getElementById('timestamp').textContent = 'Cached \u00b7 Last full scan: ' + lastScan;
         updateStats();
         render();
+        // Show the optimizer trigger once we have results
+        var trigger = document.getElementById('optimizeTrigger');
+        if (trigger) trigger.style.display = 'inline-block';
         // Check for changes after loading results
         fetchChanges(username);
       }
@@ -1878,71 +1881,113 @@ function getCurrentUsername() {
   return null;
 }
 
+var _optimizerPollTimer = null;
+
 function runOptimizer() {
   var username = getCurrentUsername();
   if (!username) { alert('No username found. Please scan your wantlist first.'); return; }
-  var postcode = document.getElementById('optPostcode').value.trim();
-  var condition = document.getElementById('optCondition').value;
-  var rating = document.getElementById('optRating').value;
-  var maxPrice = document.getElementById('optMaxPrice').value.trim();
 
-  // Show progress
+  var postcode  = document.getElementById('optPostcode').value.trim();
+  var condition = document.getElementById('optCondition').value;
+  var rating    = document.getElementById('optRating').value;
+  var maxPrice  = document.getElementById('optMaxPrice').value.trim();
+
+  // Switch to progress view
   document.getElementById('optimizerPrefs').style.display = 'none';
   document.getElementById('optimizerProgress').style.display = 'block';
   document.getElementById('optimizerResults').style.display = 'none';
-  document.getElementById('optProgressFill').style.width = '0%';
-  document.getElementById('optProgressText').textContent = 'Starting…';
+  document.getElementById('optProgressFill').style.width = '2%';
+  document.getElementById('optProgressText').textContent = 'Submitting…';
   document.getElementById('optimizeRunBtn').disabled = true;
 
-  var params = new URLSearchParams({
-    postcode: postcode,
-    minCondition: condition,
-    minSellerRating: rating
+  var body = { postcode: postcode, minCondition: condition, minSellerRating: parseFloat(rating) };
+  if (maxPrice) body.maxPriceUsd = parseFloat(maxPrice);
+
+  // Submit job
+  fetch('api/optimize/' + encodeURIComponent(username), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.error) throw new Error(data.error);
+    pollOptimizerJob(data.jobId);
+  })
+  .catch(function(e) {
+    document.getElementById('optimizeRunBtn').disabled = false;
+    document.getElementById('optProgressText').textContent = '⚠ ' + e.message;
   });
-  if (maxPrice) params.set('maxPriceUsd', maxPrice);
+}
 
-  var url = 'api/optimize/' + encodeURIComponent(username) + '?' + params.toString();
-  var source = new EventSource(url);
-  var totalReleases = 0;
-  var doneReleases = 0;
+function pollOptimizerJob(jobId) {
+  if (_optimizerPollTimer) clearInterval(_optimizerPollTimer);
 
-  source.addEventListener('progress', function(e) {
-    var d = JSON.parse(e.data);
-    var text = d.message || '';
-    document.getElementById('optProgressText').textContent = text;
+  _optimizerPollTimer = setInterval(function() {
+    fetch('api/optimize/job/' + jobId)
+    .then(function(r) { return r.json(); })
+    .then(function(job) {
+      _updateOptimizerProgress(job);
 
-    if (d.phase === 'discogs') {
-      if (d.total && !totalReleases) totalReleases = d.total;
-      if (d.done) doneReleases = d.done;
-      if (totalReleases > 0) {
-        var pct = Math.min(95, 10 + Math.round((doneReleases / totalReleases) * 80));
-        document.getElementById('optProgressFill').style.width = pct + '%';
+      if (job.status === 'done') {
+        clearInterval(_optimizerPollTimer);
+        _optimizerPollTimer = null;
+        document.getElementById('optimizeRunBtn').disabled = false;
+        document.getElementById('optProgressFill').style.width = '100%';
+        setTimeout(function() { showOptimizerResults(job.result); }, 300);
+        _notifyOptimizerDone();
+      } else if (job.status === 'failed') {
+        clearInterval(_optimizerPollTimer);
+        _optimizerPollTimer = null;
+        document.getElementById('optimizeRunBtn').disabled = false;
+        document.getElementById('optProgressText').textContent = '⚠ ' + (job.error || 'Optimization failed');
       }
-    } else if (d.phase === 'optimize') {
-      document.getElementById('optProgressFill').style.width = '97%';
-    } else if (d.phase === 'stores') {
-      document.getElementById('optProgressFill').style.width = '8%';
+    })
+    .catch(function() {});
+  }, 2500);
+}
+
+function _updateOptimizerProgress(job) {
+  var fill = document.getElementById('optProgressFill');
+  var text = document.getElementById('optProgressText');
+
+  if (job.status === 'pending') {
+    var pos = job.queuePosition || 0;
+    text.textContent = pos === 0
+      ? 'Starting soon…'
+      : 'In queue — position ' + (pos + 1);
+    fill.style.width = '2%';
+
+  } else if (job.status === 'processing') {
+    var p = job.progress || {};
+    text.textContent = p.message || 'Processing…';
+
+    if (p.phase === 'discogs' && p.total > 0) {
+      var pct = Math.min(95, 10 + Math.round(((p.done || 0) / p.total) * 80));
+      fill.style.width = pct + '%';
+    } else if (p.phase === 'optimize') {
+      fill.style.width = '97%';
+    } else if (p.phase === 'stores') {
+      fill.style.width = '8%';
+    } else if (p.phase === 'wantlist') {
+      fill.style.width = '4%';
     }
-  });
+  }
+}
 
-  source.addEventListener('result', function(e) {
-    var result = JSON.parse(e.data);
-    document.getElementById('optProgressFill').style.width = '100%';
-    setTimeout(function() { showOptimizerResults(result); }, 300);
-  });
-
-  source.addEventListener('done', function() {
-    source.close();
-    document.getElementById('optimizeRunBtn').disabled = false;
-  });
-
-  source.addEventListener('error', function(e) {
-    source.close();
-    document.getElementById('optimizeRunBtn').disabled = false;
-    var msg = 'Something went wrong.';
-    try { msg = JSON.parse(e.data).message; } catch(_) {}
-    document.getElementById('optProgressText').textContent = '⚠ Error: ' + msg;
-  });
+function _notifyOptimizerDone() {
+  // Browser notification if user is on a different tab / window
+  if (document.visibilityState !== 'visible') {
+    if (window.Notification) {
+      if (Notification.permission === 'granted') {
+        new Notification('GOLDY 🎵', { body: 'Your best cart is ready!' });
+      } else if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then(function(p) {
+          if (p === 'granted') new Notification('GOLDY 🎵', { body: 'Your best cart is ready!' });
+        });
+      }
+    }
+  }
 }
 
 function showOptimizerResults(result) {
@@ -2048,24 +2093,4 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
-// Show "Best Cart" button once results are loaded
-var _origLoadResults = loadResultsForUser;
-async function loadResultsForUser(username) {
-  await _origLoadResults(username);
-  var trigger = document.getElementById('optimizeTrigger');
-  if (trigger) trigger.style.display = 'inline-block';
-}
-  if (document.visibilityState !== 'visible') return;
-  if (isScanning) return; // Already connected to SSE
-  var username = document.getElementById('usernameInput').value.trim();
-  if (!username) return;
-  // Quick check — is a scan still running on the server?
-  fetch('api/scan-status/' + encodeURIComponent(username))
-    .then(function(r) { return r.json(); })
-    .then(function(status) {
-      if (status.active && !status.done && status.total > 0) {
-        showResumeBanner(username, status);
-      }
-    })
-    .catch(function() {});
-});
+

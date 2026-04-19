@@ -30,6 +30,9 @@ try {
     }
 } catch(e) {}
 
+// Load .env if present (local dev)
+try { require('dotenv').config(); } catch(e) {}
+
 const express = require('express');
 const db = require('./db');
 const discogs = require('./lib/discogs');
@@ -721,154 +724,76 @@ app.post('/api/preferences/:username', function (req, res) {
     res.json(saved);
 });
 
-// POST /api/optimize/:username — run the cart optimizer
-// Body: { countryCode, minCondition, minSellerRating, maxPriceUsd, forceRefresh }
-// This can take 1–5 minutes for a large wantlist (Discogs API rate limit).
-// It streams progress via SSE; for non-SSE clients it returns a final JSON.
-app.get('/api/optimize/:username', async function (req, res) {
-    var username = req.params.username;
+// ─── Cart Optimizer — queue-based ────────────────────────────────────────────
+// POST /api/optimize/:username  — submit a job (or return existing pending job)
+// GET  /api/optimize/job/:jobId — poll status, progress, result
+//
+// The worker (lib/optimizer-worker.js) processes jobs sequentially in the
+// background.  Clients poll every 2–3 s and receive real-time progress updates
+// written to the DB by the worker.
+
+app.post('/api/optimize/:username', function (req, res) {
+    var username = req.params.username.trim();
+    if (!username) return res.status(400).json({ error: 'Username required' });
+
     var user = db.getOrCreateUser(username);
-
-    // Merge query params with saved preferences (query params override)
     var savedPrefs = db.getUserPreferences(user.id) || {};
-    var shippingLib = require('./lib/shipping-rates');
+    var body = req.body || {};
 
-    var postcode = req.query.postcode || savedPrefs.postcode || '';
-    var countryFromPostcode = postcode ? shippingLib.postcodeToCountry(postcode).countryCode : null;
-    var buyerCountry = req.query.countryCode || savedPrefs.country_code || countryFromPostcode || 'US';
-    var minCondition = req.query.minCondition || savedPrefs.min_condition || 'VG+';
-    var minSellerRating = parseFloat(req.query.minSellerRating || savedPrefs.min_seller_rating || 98);
-    var maxPriceUsd = req.query.maxPriceUsd ? parseFloat(req.query.maxPriceUsd) : (savedPrefs.max_price_usd || null);
-    var forceRefresh = req.query.forceRefresh === 'true';
+    var params = {
+        postcode:        body.postcode        || savedPrefs.postcode        || '',
+        countryCode:     body.countryCode     || savedPrefs.country_code    || '',
+        minCondition:    body.minCondition    || savedPrefs.min_condition   || 'VG',
+        minSellerRating: body.minSellerRating != null ? body.minSellerRating : (savedPrefs.min_seller_rating || 98),
+        maxPriceUsd:     body.maxPriceUsd     != null ? body.maxPriceUsd    : (savedPrefs.max_price_usd     || null),
+        forceRefresh:    body.forceRefresh    === true
+    };
 
-    // SSE setup
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders();
+    var r = db.createOptimizerJob(username, user.id, params);
+    res.json({
+        jobId:         r.job.id,
+        status:        r.job.status,
+        queuePosition: r.queuePosition,
+        reused:        r.reused
+    });
+});
 
-    function send(event, data) {
-        res.write('event: ' + event + '\ndata: ' + JSON.stringify(data) + '\n\n');
+app.get('/api/optimize/job/:jobId', function (req, res) {
+    var jobId = parseInt(req.params.jobId, 10);
+    if (!jobId || isNaN(jobId)) return res.status(400).json({ error: 'Invalid jobId' });
+
+    var job = db.getOptimizerJob(jobId);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+
+    var response = {
+        jobId:    job.id,
+        username: job.username,
+        status:   job.status,  // pending | processing | done | failed
+        createdAt:   job.created_at,
+        startedAt:   job.started_at,
+        completedAt: job.completed_at
+    };
+
+    if (job.status === 'pending') {
+        response.queuePosition = db.getQueuePosition(job.id);
     }
 
-    try {
-        // Step 1: Load wantlist
-        send('progress', { phase: 'wantlist', message: 'Loading wantlist...' });
-        var wantlist = db.getActiveWantlist(user.id);
-        if (wantlist.length === 0) {
-            send('error', { message: 'No wantlist items found. Run a scan first.' });
-            res.end();
-            return;
-        }
-        send('progress', { phase: 'wantlist', message: wantlist.length + ' items in wantlist', count: wantlist.length });
-
-        // Step 2: Load catalog-mirror store inventory
-        send('progress', { phase: 'stores', message: 'Loading store inventories...' });
-        var storeInventory = {
-            gramaphone: db.getInStockInventory('gramaphone'),
-            further: db.getInStockInventory('further'),
-            octopus: db.getInStockInventory('octopus')
-        };
-        var storeTotal = Object.values(storeInventory).reduce(function (s, a) { return s + a.length; }, 0);
-        send('progress', { phase: 'stores', message: storeTotal + ' store listings loaded' });
-
-        // Step 3: Fetch Discogs marketplace listings (cached)
-        var discogsMarket = require('./lib/discogs-market');
-        var releaseIds = wantlist
-            .map(function (w) { return w.discogs_id; })
-            .filter(Boolean);
-
-        send('progress', { phase: 'discogs', message: 'Fetching Discogs marketplace listings...', total: releaseIds.length });
-
-        // Get user OAuth token for authenticated requests
-        var oauthToken = db.getOAuthToken(user.id, 'discogs');
-        var userToken = oauthToken ? oauthToken.access_token : null;
-        var userSecret = oauthToken ? oauthToken.access_secret : null;
-
-        var marketListings = await discogsMarket.fetchListingsForReleases(releaseIds, {
-            minCondition: minCondition,
-            userToken: userToken,
-            userSecret: userSecret,
-            forceRefresh: forceRefresh,
-            onProgress: function (p) {
-                send('progress', {
-                    phase: 'discogs',
-                    done: p.done,
-                    total: p.total,
-                    message: 'Fetched ' + p.done + ' / ' + p.total + ' releases'
-                });
-            }
-        });
-
-        var totalListings = Object.values(marketListings).reduce(function (s, a) { return s + a.length; }, 0);
-        send('progress', { phase: 'optimize', message: 'Running optimizer on ' + totalListings + ' marketplace listings...' });
-
-        // Step 4: Run the optimizer
-        var optimizer = require('./lib/optimizer');
-        var result = optimizer.runOptimizer(wantlist, storeInventory, marketListings, {
-            buyerCountry: buyerCountry,
-            minCondition: minCondition,
-            minSellerRating: minSellerRating,
-            maxPriceUsd: maxPriceUsd
-        });
-
-        // Save preferences if postcode was provided
-        if (postcode) {
-            db.saveUserPreferences(user.id, {
-                postcode: postcode,
-                countryCode: buyerCountry,
-                minCondition: minCondition,
-                minSellerRating: minSellerRating,
-                maxPriceUsd: maxPriceUsd
-            });
-        }
-
-        send('result', {
-            cart: result.cart.map(function (c) {
-                return {
-                    sourceId: c.source.sourceId,
-                    sourceName: c.source.sourceName,
-                    sourceType: c.source.sourceType,
-                    country: c.source.country,
-                    sellerRating: c.source.sellerRating,
-                    sellerNumRatings: c.source.sellerNumRatings,
-                    shippingCostUsd: c.shippingCostUsd,
-                    subtotalUsd: c.subtotalUsd,
-                    totalUsd: c.totalUsd,
-                    items: c.assignedListings.map(function (l) {
-                        return {
-                            itemId: l.itemId,
-                            artist: l.artist || '',
-                            title: l.title || '',
-                            catno: l.catno || '',
-                            priceUsd: l.priceUsd,
-                            condition: l.condition,
-                            sleeveCondition: l.sleeveCondition,
-                            url: l.url
-                        };
-                    })
-                };
-            }),
-            covered: result.covered,
-            total: result.total,
-            uncoveredItems: result.uncoveredItems.map(function (w) {
-                return { artist: w.artist, title: w.title, catno: w.catno, discogsId: w.discogs_id };
-            }),
-            grandTotalUsd: result.grandTotalUsd,
-            grandShippingUsd: result.grandShippingUsd,
-            grandRecordsUsd: result.grandRecordsUsd,
-            numSellers: result.numSellers,
-            buyerCountry: buyerCountry,
-            minCondition: minCondition
-        });
-
-        send('done', { message: 'Optimization complete' });
-        res.end();
-    } catch (e) {
-        console.error('[optimize] Error:', e.message);
-        send('error', { message: e.message });
-        res.end();
+    if (job.status === 'processing' && job.progress) {
+        try { response.progress = JSON.parse(job.progress); } catch(e) {}
     }
+
+    if (job.status === 'done' && job.result) {
+        try { response.result = JSON.parse(job.result); } catch(e) {
+            response.status = 'failed';
+            response.error  = 'Result parse error';
+        }
+    }
+
+    if (job.status === 'failed') {
+        response.error = job.error;
+    }
+
+    res.json(response);
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -1250,6 +1175,10 @@ var NOTIFICATION_WEBHOOK = process.env.NOTIFICATION_WEBHOOK || '';
 
 app.listen(PORT, function () {
     console.log('\n\u2728 Vinyl Checker running at http://localhost:' + PORT + '\n');
+
+    // Cart optimizer job queue worker
+    var optimizerWorker = require('./lib/optimizer-worker');
+    optimizerWorker.start();
 
     // Background sync (incremental — new items only)
     console.log('[sync] Background sync every ' + (SYNC_INTERVAL / 60000).toFixed(0) + ' minutes');
