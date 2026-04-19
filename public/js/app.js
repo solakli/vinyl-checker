@@ -415,6 +415,9 @@ async function loadResultsForUser(username) {
         document.getElementById('timestamp').textContent = 'Cached \u00b7 Last full scan: ' + lastScan;
         updateStats();
         render();
+        // Show optimizer banner if any in-stock items exist
+        var inStockCount = resultsData.filter(function(i) { return i.stores && i.stores.some(function(s) { return s.inStock; }); }).length;
+        if (inStockCount > 0) document.getElementById('optimizerBanner').style.display = 'flex';
         // Check for changes after loading results
         fetchChanges(username);
       }
