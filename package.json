@@ -7,9 +7,11 @@
     "check": "node vinyl-checker-puppeteer.js",
     "install-deps": "npm install",
     "sync-store": "node sync-store.js",
-    "test": "node test/gramaphone.test.js && node test/further.test.js",
+    "test": "node test/gramaphone.test.js && node test/further.test.js && node test/octopus.test.js && node test/matcher.test.js",
     "test:gramaphone": "node test/gramaphone.test.js",
-    "test:further": "node test/further.test.js"
+    "test:further": "node test/further.test.js",
+    "test:octopus": "node test/octopus.test.js",
+    "test:matcher": "node test/matcher.test.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.8.0",

@@ -5,6 +5,7 @@
  * Usage:
  *     node sync-store.js gramaphone
  *     node sync-store.js further
+ *     node sync-store.js octopus
  *
  * Designed to be safe to run from cron / pm2 / systemd:
  *   - Exits 0 on success, 1 on failure
@@ -14,7 +15,8 @@
 
 const STORES = {
     gramaphone: function () { return require('./lib/stores/gramaphone'); },
-    further: function () { return require('./lib/stores/further'); }
+    further: function () { return require('./lib/stores/further'); },
+    octopus: function () { return require('./lib/stores/octopus'); }
 };
 
 async function main() {
@@ -49,7 +51,8 @@ async function main() {
                     if (p.offsetCap) {
                         console.log('[sync-store]   ⚠ Shopify 25,000-product offset cap reached — stopping cleanly');
                     } else {
-                        console.log('[sync-store]   fetched page ' + p.page + ' (' + p.count + ' products, ' + p.total + ' total)');
+                        var suffix = p.totalPages ? ' / ~' + p.totalPages + ' pages' : '';
+                        console.log('[sync-store]   fetched page ' + p.page + suffix + ' (' + p.count + ' products, ' + p.total + ' total)');
                     }
                 } else if (p.phase === 'upsert') {
                     console.log('[sync-store]   upserting ' + p.count + ' rows...');
