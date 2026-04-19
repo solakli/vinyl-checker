@@ -1879,6 +1879,9 @@ function openOptimizer() {
       })
       .catch(function() {});
   }
+  checkDiscogsSyncStatus();
+}
+
 function checkDiscogsSyncStatus() {
   var username = getCurrentUsername();
   if (!username) return;
