@@ -808,27 +808,38 @@ app.post('/api/admin/sync-store', function (req, res) {
 });
 
 // Run any catalog syncs that are stale. Called from the daily-rescan interval.
-function syncStaleStores() {
-    Object.keys(STORE_SYNCERS).forEach(function (storeKey) {
+// Runs catalog store syncs one at a time (sequential, not parallel) to avoid
+// triggering Shopify's IP-level rate limiter when multiple stores are fetched
+// simultaneously. A 5-second gap between stores gives the CDN time to breathe.
+async function syncStaleStores() {
+    var keys = Object.keys(STORE_SYNCERS);
+    var syncedAny = false;
+    for (var i = 0; i < keys.length; i++) {
+        var storeKey = keys[i];
         var last = db.getLastStoreSync(storeKey);
         var stale = !last || !last.finished_at ||
             (Date.now() - new Date(last.finished_at).getTime()) > SYNC_STALE_AFTER_MS;
-        if (!stale) return;
+        if (!stale) continue;
+
+        // Gap between stores so we don't hammer Shopify's CDN back-to-back.
+        if (syncedAny) await new Promise(function (r) { setTimeout(r, 5000); });
+        syncedAny = true;
 
         var loader = STORE_SYNCERS[storeKey];
         var store = loader();
         console.log('[sync-store:' + storeKey + '] auto-sync starting (last=' + (last ? last.finished_at : 'never') + ')');
-        store.sync({
-            onProgress: function (p) {
-                if (p.phase === 'done') console.log('[sync-store:' + storeKey + '] auto-sync done', p.stats);
-            }
-        })
-        .then(function () { scanner.trackJobRun && scanner.trackJobRun('sync-store-' + storeKey, true); })
-        .catch(function (e) {
+        try {
+            await store.sync({
+                onProgress: function (p) {
+                    if (p.phase === 'done') console.log('[sync-store:' + storeKey + '] auto-sync done', p.stats);
+                }
+            });
+            scanner.trackJobRun && scanner.trackJobRun('sync-store-' + storeKey, true);
+        } catch (e) {
             console.error('[sync-store:' + storeKey + '] auto-sync failed:', e.message);
             scanner.trackJobRun && scanner.trackJobRun('sync-store-' + storeKey, false, e.message);
-        });
-    });
+        }
+    }
 }
 
 // GitHub webhook — auto-deploy on push to master
