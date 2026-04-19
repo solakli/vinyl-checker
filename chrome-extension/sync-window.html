@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Gold Digger — Syncing</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 360px; min-height: 200px;
+    background: #1a1a1a; color: #fff;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    padding: 24px 20px;
+  }
+  h2 { font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
+  h2 span { color: #C9A227; }
+  .sub { font-size: 11px; color: #888; margin-bottom: 20px; }
+  .track { height: 4px; background: #333; border-radius: 2px; overflow: hidden; margin-bottom: 8px; }
+  .fill  { height: 100%; background: #C9A227; border-radius: 2px; width: 0%; transition: width 0.3s; }
+  .label { font-size: 11px; color: #aaa; margin-bottom: 16px; }
+  .status { font-size: 12px; padding: 8px 10px; border-radius: 5px; display: none; margin-top: 8px; }
+  .status.ok  { background: rgba(74,222,128,0.12); color: #4ade80; }
+  .status.err { background: rgba(255,80,80,0.12); color: #ff6b6b; }
+  .close-btn {
+    margin-top: 16px; width: 100%; background: #333; border: none; color: #aaa;
+    border-radius: 5px; padding: 8px; font-size: 11px; cursor: pointer; display: none;
+  }
+  .close-btn:hover { background: #444; }
+</style>
+</head>
+<body>
+  <h2><span>Gold</span> Digger</h2>
+  <p class="sub">Syncing Discogs marketplace — keep this window open</p>
+  <div class="track"><div class="fill" id="fill"></div></div>
+  <div class="label" id="label">Starting...</div>
+  <div class="status" id="status"></div>
+  <button class="close-btn" id="closeBtn" onclick="window.close()">Close</button>
+<script src="sync-window.js"></script>
+</body>
+</html>

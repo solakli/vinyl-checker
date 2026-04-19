@@ -2033,6 +2033,13 @@ body.light .changes-details { border-top-color: rgba(0,0,0,0.06); }
   color: var(--green);
   margin-top: 6px;
 }
+.discogs-ext-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+.discogs-ext-hint strong { color: var(--text-sec); }
 
 .opt-rerun-btn {
   background: var(--bg);

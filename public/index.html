@@ -176,14 +176,12 @@
       <div class="discogs-sync-row" id="discogsSyncRow">
         <div class="discogs-sync-header">
           <img src="img/discogs.png" style="width:13px;height:13px;opacity:0.7;vertical-align:middle;margin-right:5px">
-          <span>Include Discogs marketplace sellers</span>
-          <button class="discogs-sync-btn" id="discogsSyncBtn" onclick="syncDiscogs()">Sync Now</button>
-        </div>
-        <div class="discogs-sync-progress" id="discogsSyncProgress" style="display:none">
-          <div class="discogs-sync-track"><div class="discogs-sync-fill" id="discogsSyncFill"></div></div>
-          <span class="discogs-sync-label" id="discogsSyncLabel">Starting...</span>
+          <span>Discogs marketplace sellers</span>
         </div>
         <div class="discogs-sync-done" id="discogsSyncDone" style="display:none"></div>
+        <div class="discogs-ext-hint" id="discogsExtHint">
+          Use the <strong>Gold Digger Chrome Extension</strong> to sync seller listings from your Discogs session — Discogs blocks direct server access.
+        </div>
       </div>
 
       <button class="optimize-btn" id="optimizeRunBtn" onclick="runOptimizer()">Find Best Cart</button>

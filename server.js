@@ -1014,6 +1014,18 @@ app.post('/api/optimize/:username', function (req, res) {
     }
 });
 
+// ─── Discogs Listings count (for optimizer panel status) ─────────────────────
+app.get('/api/discogs-listings-count/:username', function (req, res) {
+    try {
+        var user = db.getOrCreateUser(req.params.username);
+        if (!user) return res.json({ count: 0 });
+        var listings = db.getDiscogsListings(user.id);
+        res.json({ count: listings.length });
+    } catch (e) {
+        res.json({ count: 0 });
+    }
+});
+
 // ─── Discogs Listings (from Chrome extension) ────────────────────────────────
 app.post('/api/discogs-listings/:username', function (req, res) {
     try {

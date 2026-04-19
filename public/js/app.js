@@ -1838,75 +1838,22 @@ function openOptimizer() {
   checkDiscogsSyncStatus();
 }
 
-var _discogsSyncPoll = null;
-
 function checkDiscogsSyncStatus() {
   var username = getCurrentUsername();
   if (!username) return;
-  fetch('api/marketplace-sync/' + encodeURIComponent(username) + '/status')
+  // Check if we have any synced Discogs listings in the DB already
+  fetch('api/discogs-listings-count/' + encodeURIComponent(username))
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      if (data.running) {
-        startDiscogsSyncPolling(username);
-      } else if (data.completedAt) {
-        showDiscogsSyncDone(data.done + ' Discogs sellers synced');
+      var hint = document.getElementById('discogsExtHint');
+      var done = document.getElementById('discogsSyncDone');
+      if (data.count > 0) {
+        if (hint) hint.style.display = 'none';
+        done.textContent = '✓ ' + data.count + ' Discogs seller listings ready — included in optimizer';
+        done.style.color = 'var(--green)';
+        done.style.display = 'block';
       }
     }).catch(function() {});
-}
-
-function syncDiscogs() {
-  var username = getCurrentUsername();
-  if (!username) { alert('No username — scan your wantlist first.'); return; }
-
-  var btn = document.getElementById('discogsSyncBtn');
-  btn.disabled = true;
-  btn.textContent = 'Syncing...';
-  document.getElementById('discogsSyncDone').style.display = 'none';
-  document.getElementById('discogsSyncProgress').style.display = 'block';
-  document.getElementById('discogsSyncFill').style.width = '0%';
-  document.getElementById('discogsSyncLabel').textContent = 'Connecting to Discogs API...';
-
-  fetch('api/marketplace-sync/' + encodeURIComponent(username), { method: 'POST' })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.error) throw new Error(data.error);
-      startDiscogsSyncPolling(username);
-    })
-    .catch(function(e) {
-      document.getElementById('discogsSyncProgress').style.display = 'none';
-      document.getElementById('discogsSyncDone').style.display = 'block';
-      document.getElementById('discogsSyncDone').style.color = 'var(--red-soft)';
-      document.getElementById('discogsSyncDone').textContent = 'Error: ' + e.message;
-      btn.disabled = false;
-      btn.textContent = 'Retry';
-    });
-}
-
-function startDiscogsSyncPolling(username) {
-  if (_discogsSyncPoll) clearInterval(_discogsSyncPoll);
-  _discogsSyncPoll = setInterval(function() {
-    fetch('api/marketplace-sync/' + encodeURIComponent(username) + '/status')
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        var pct = data.total > 0 ? Math.round((data.done / data.total) * 100) : 0;
-        document.getElementById('discogsSyncFill').style.width = pct + '%';
-        document.getElementById('discogsSyncLabel').textContent = data.done + ' / ' + data.total + ' releases';
-
-        if (!data.running) {
-          clearInterval(_discogsSyncPoll);
-          _discogsSyncPoll = null;
-          document.getElementById('discogsSyncProgress').style.display = 'none';
-          var btn = document.getElementById('discogsSyncBtn');
-          btn.disabled = false;
-          btn.textContent = 'Re-sync';
-          if (data.error) {
-            showDiscogsSyncDone('Sync failed: ' + data.error, true);
-          } else {
-            showDiscogsSyncDone('✓ ' + data.done + ' Discogs sellers ready — included in optimizer');
-          }
-        }
-      }).catch(function() {});
-  }, 2000);
 }
 
 function showDiscogsSyncDone(msg, isError) {
