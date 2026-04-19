@@ -866,9 +866,12 @@ function render() {
 }
 
 function escapeHtml(str) {
-  var div = document.createElement('div');
-  div.textContent = str || '';
-  return div.innerHTML;
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2197,15 +2200,6 @@ function statBlock(value, label) {
     '<div class="opt-stat-value">' + value + '</div>' +
     '<div class="opt-stat-label">' + label + '</div>' +
   '</div>';
-}
-
-function escapeHtml(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 
