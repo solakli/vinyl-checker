@@ -46,6 +46,14 @@ const STORE_SYNCERS = {
     uvs: function () {
         var m = require('./lib/stores/uvs');
         return { name: m.STORE_NAME, sync: m.syncUVS };
+    },
+    further: function () {
+        var m = require('./lib/stores/further');
+        return { name: m.STORE_NAME, sync: m.syncFurther };
+    },
+    octopus: function () {
+        var m = require('./lib/stores/octopus');
+        return { name: m.STORE_NAME, sync: m.syncOctopus };
     }
 };
 const SYNC_STALE_AFTER_MS = 20 * 60 * 60 * 1000; // re-sync if last run was 20+ hours ago
@@ -767,6 +775,8 @@ app.post('/api/trigger', function (req, res) {
 
 // Trigger a one-off catalog sync for a single store. Same auth as /api/trigger.
 //   POST /api/admin/sync-store?secret=...&store=gramaphone
+//   POST /api/admin/sync-store?secret=...&store=further
+//   POST /api/admin/sync-store?secret=...&store=octopus
 app.post('/api/admin/sync-store', function (req, res) {
     var secret = process.env.CRON_SECRET || '';
     var token = req.headers['x-cron-secret'] || req.query.secret || '';

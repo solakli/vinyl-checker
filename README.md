@@ -17,6 +17,8 @@ Automatically check if your Discogs wantlist items are in stock at:
 
 **US stores (catalog mirror — fast local match):**
 - **Gramaphone Records** (Chicago) — full ~6k catalog synced daily, matched in-process
+- **Further Records** (Seattle) — ~25k catalog (caps at Shopify's 25k offset limit) synced daily, matched in-process
+- **Octopus Records NYC** (Brooklyn) — full ~6k catalog synced daily via WooCommerce API, matched in-process
 
 ## ✨ Features
 
@@ -198,54 +200,104 @@ async function checkPhonica(page, item) {
 
 ## 🇺🇸 Catalog-Mirror Stores (Sync + Local Match)
 
-Some US stores (starting with **Gramaphone Records** in Chicago) ship their full
-catalog through a public Shopify `/products.json` endpoint. For these we mirror
+Several US stores expose their full catalog through a public API. We mirror
 the catalog into a local SQLite table once a day and match wantlist items
-against it in-process. Benefits:
+against it in-process. Currently:
 
-- **Fast** — checking 200 wantlist items against Gramaphone's ~6,000 records
-  takes well under a second (no per-item HTTP, no Puppeteer page).
+| Store | Platform | Catalog size | Notes |
+|---|---|---|---|
+| **Gramaphone Records** (Chicago) | Shopify | ~6k | `/products.json` |
+| **Further Records** (Seattle) | Shopify | ~25k | Hits Shopify's 25k offset cap |
+| **Octopus Records NYC** (Brooklyn) | WooCommerce | ~6k | `/wp-json/wc/store/v1/products` |
+
+Benefits over per-item Puppeteer scraping:
+
+- **Fast** — checking 200 wantlist items against 35k+ local rows takes
+  well under a second (no per-item HTTP, no browser page).
 - **Reliable** — no flaky DOM scraping, no Cloudflare/Sucuri challenges.
 - **Discovery-ready** — the synced `store_inventory` table is the foundation
-  for "what new records did Gramaphone add this week from labels I love?".
+  for "what new records did these stores add this week from labels I love?".
+
+### Catno-first matching
+
+Catalog numbers are globally unique identifiers printed on every release
+sleeve. They're by far the strongest matching signal — stronger than fuzzy
+artist+title similarity (which can fail on punctuation variants, "and" vs
+"&", missing EP suffixes, etc).
+
+`lib/scrapers.js` now ships a shared `matchInventoryRow(wanted, row)` helper
+used by all three catalog-mirror stores:
+
+1. **Catno match** — normalise both sides to `[a-z0-9]+` and compare. If
+   both sides have ≥3 chars and they match, accept immediately.
+2. **Artist+title fuzzy** — existing bigram similarity for rows with both
+   fields structured.
+3. **Combined-title fallback** — for rows where artist isn't available
+   (Octopus shape).
+
+This means matching a wantlist entry with catno `MSNLP005` against
+Octopus's row for "The Place Where We Live" (sku `MSNLP005`) is a
+definitive hit even though Octopus doesn't store the artist name.
 
 ### Architecture
 
 ```
-┌─────────────────────┐    once per day    ┌──────────────────────┐
-│  Shopify storefront │ ─────────────────▶ │  store_inventory     │
-│  /products.json     │   (paginated)      │  (SQLite, ~6k rows)  │
-└─────────────────────┘                    └──────────┬───────────┘
-                                                      │ per scan
-                                                      ▼
+┌──────────────────────┐    once per day    ┌──────────────────────┐
+│  Shopify storefront  │ ─────────────────▶ │  store_inventory     │
+│  /products.json      │   (paginated)      │  (SQLite, ~35k rows) │
+└──────────────────────┘                    └──────────┬───────────┘
+                                                       │
+┌──────────────────────┐    once per day               │
+│  WooCommerce Store   │ ─────────────────▶            │
+│  /wc/store/v1/prods  │   (paginated)                 │
+└──────────────────────┘                               │ per scan
+                                                       ▼
                                            ┌──────────────────────┐
                                            │  checkGramaphone()   │
-                                           │  (fuzzy match local) │
+                                           │  checkFurther()      │
+                                           │  checkOctopus()      │
+                                           │  matchInventoryRow() │
                                            └──────────────────────┘
 ```
 
 ### Sync triggers
 
-| Trigger             | When                                                          |
-|---------------------|---------------------------------------------------------------|
-| Auto (server)       | Piggybacks on the 15-min daily-rescan loop. Re-syncs if last sync was 20+ hours ago. |
-| Cron / one-off CLI  | `node sync-store.js gramaphone`                               |
-| Admin HTTP endpoint | `POST /api/admin/sync-store?secret=$CRON_SECRET&store=gramaphone` |
+| Trigger             | When                                                              |
+|---------------------|-------------------------------------------------------------------|
+| Auto (server)       | Piggybacks on the 15-min daily-rescan loop. Re-syncs each store if its last sync was 20+ hours ago. |
+| Cron / one-off CLI  | `node sync-store.js gramaphone` · `node sync-store.js further` · `node sync-store.js octopus` |
+| Admin HTTP endpoint | `POST /api/admin/sync-store?secret=$CRON_SECRET&store=<name>`     |
+
+### Per-store description parsing
+
+Each store formats its product description differently:
+
+- **Gramaphone** — prose like `Label: Rush Hour – RH-StoreJams031 Format: ...`
+  Regex anchored on the next field keyword.
+- **Further** — mostly structured `Field: value` pairs (`Artist:`, `Title:`,
+  `Label:`, `Catalog:`), handled via `shopify.parseStructuredFields()`. ~30%
+  of the catalog uses a free-form layout; both shapes are parsed.
+- **Octopus** — WooCommerce. No artist field (title only). First `<p>` of
+  every description is `"YEAR[qualifier], FORMAT, LABEL."` — label extracted
+  by regex. Artist matching relies entirely on catno-first logic.
 
 ### Adding another US Shopify store
 
-1. Verify the store exposes `/products.json` (most do — try
-   `curl -s https://STORE.com/products.json?limit=1`).
-2. Add a thin module under `lib/stores/<store>.js` that exports
-   `sync<Store>()` and `check<Store>()`. Use `lib/stores/shopify.js` for the
-   pagination + parsing primitives. Provide a store-specific `parseLabel`
-   function that knows the conventions in that store's `body_html`.
-3. Register the sync in `server.js` `STORE_SYNCERS` and the check in
-   `lib/scrapers.js` `checkItem()`.
-4. Add the CLI entry in `sync-store.js`.
+1. Verify `/products.json` is public (`curl -s https://STORE.com/products.json?limit=1`).
+2. Inspect a few `body_html` samples to learn the label/catno convention.
+   Reuse `shopify.parseStructuredFields()` for `Field: value` layouts;
+   otherwise write a regex anchored on a stable terminator (year, next field).
+3. Add `lib/stores/<store>.js` exporting `sync<Store>()` and `check<Store>()`.
+4. Register in `server.js` `STORE_SYNCERS`, `lib/scrapers.js` `checkItem()`,
+   and `sync-store.js`.
+5. Add parser tests under `test/<store>.test.js` and wire into `npm test`.
 
-That pattern will cover **Underground Vinyl Source**, **Further Records**,
-**Octopus Records**, and most other US independent stores on Shopify.
+### Adding another US WooCommerce store
+
+Same pattern as Octopus, but use `lib/stores/woocommerce.js` instead of
+`lib/stores/shopify.js` for pagination and `parseWcProduct()`. WooCommerce
+stores typically don't expose artist as a structured field — lean on
+catno-first matching and title-only fuzzy for the remainder.
 
 ## 📄 License
 
