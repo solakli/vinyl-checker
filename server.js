@@ -1014,6 +1014,52 @@ app.post('/api/optimize/:username', function (req, res) {
     }
 });
 
+// ─── Discogs Listings (from Chrome extension) ────────────────────────────────
+app.post('/api/discogs-listings/:username', function (req, res) {
+    try {
+        var username = req.params.username;
+        var user = db.getOrCreateUser(username);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        var listings = req.body.listings || [];
+        if (!listings.length) return res.status(400).json({ error: 'No listings provided' });
+
+        // Group by wantlistId and save
+        var byWantlist = {};
+        listings.forEach(function (l) {
+            if (!l.wantlistId) return;
+            if (!byWantlist[l.wantlistId]) byWantlist[l.wantlistId] = [];
+            byWantlist[l.wantlistId].push(l);
+        });
+
+        var saved = 0;
+        var marketplace = require('./lib/discogs-marketplace');
+        Object.keys(byWantlist).forEach(function (wid) {
+            var rows = byWantlist[wid].map(function (l) {
+                return {
+                    listingId:        l.listingId || null,
+                    sellerUsername:   l.sellerUsername || '',
+                    sellerRating:     l.sellerRating || null,
+                    sellerNumRatings: l.sellerNumRatings || null,
+                    priceOriginal:    l.priceOriginal || null,
+                    currency:         l.currency || 'USD',
+                    priceUsd:         marketplace.toUSD(l.priceOriginal || 0, l.currency || 'USD'),
+                    condition:        l.condition || '',
+                    shipsFrom:        marketplace.countryToISO(l.shipsFrom || ''),
+                    listingUrl:       l.listingUrl || ''
+                };
+            });
+            db.saveDiscogsListings(parseInt(wid), rows);
+            saved += rows.length;
+        });
+
+        res.json({ saved: saved, wantlistItems: Object.keys(byWantlist).length });
+    } catch (e) {
+        console.error('[discogs-listings] error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ─── Discogs Marketplace Sync ─────────────────────────────────────────────────
 
 // In-memory sync state per username
