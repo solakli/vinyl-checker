@@ -6,22 +6,32 @@
   "permissions": ["storage", "cookies", "tabs", "windows"],
   "host_permissions": [
     "https://stream.ronautradio.la/*",
-    "https://www.discogs.com/*",
-    "http://localhost:*/*"
+    "https://www.discogs.com/*"
   ],
   "content_scripts": [
     {
       "matches": [
-        "https://stream.ronautradio.la/*",
-        "http://localhost:*/*"
+        "https://stream.ronautradio.la/*"
       ],
       "js": ["content-script.js"],
       "run_at": "document_idle"
     }
   ],
+  "icons": {
+    "16":  "icons/icon16.png",
+    "32":  "icons/icon32.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Gold Digger"
+    "default_title": "Gold Digger",
+    "default_icon": {
+      "16":  "icons/icon16.png",
+      "32":  "icons/icon32.png",
+      "48":  "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
   "background": {
     "service_worker": "background.js"
