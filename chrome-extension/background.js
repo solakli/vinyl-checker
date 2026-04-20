@@ -4,8 +4,12 @@
 var _items   = [];
 var _running = false;
 
-// ── Keep-alive alarm ──────────────────────────────────────────────────────────
-chrome.alarms.create('keepAlive', { periodInMinutes: 0.4 });
+// ── Keep-alive alarm (only create if not already registered) ─────────────────
+chrome.alarms.getAll(function (existing) {
+    if (!existing.find(function (a) { return a.name === 'keepAlive'; })) {
+        chrome.alarms.create('keepAlive', { periodInMinutes: 0.4 });
+    }
+});
 chrome.alarms.onAlarm.addListener(function () { /* just wakes the worker */ });
 
 // ── Message handler ───────────────────────────────────────────────────────────
