@@ -8,12 +8,22 @@ var _running = false;
 chrome.alarms.create('keepAlive', { periodInMinutes: 0.4 });
 chrome.alarms.onAlarm.addListener(function () { /* just wakes the worker */ });
 
-// ── Message handler from popup ────────────────────────────────────────────────
+// ── Message handler ───────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     if (msg.action === 'startSync') {
         if (_running) { sendResponse({ ok: true, alreadyRunning: true }); return; }
         sendResponse({ ok: true });
         startSync(msg.server, msg.username);
+    }
+    // Triggered by content-script when app page clicks "Dig For Gold"
+    if (msg.action === 'openSyncWindow') {
+        chrome.windows.create({
+            url: chrome.runtime.getURL('sync-window.html'),
+            type: 'popup',
+            width: 380,
+            height: 220,
+            focused: false   // runs in background — app shows progress inline
+        });
     }
     return false;
 });

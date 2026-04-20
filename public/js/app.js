@@ -1864,12 +1864,56 @@ document.addEventListener('visibilitychange', function() {
 // CART OPTIMIZER
 // ═══════════════════════════════════════════════════════════
 
+// Track whether the Gold Digger extension is installed (content script sets this)
+var _extInstalled = false;
+
+window.addEventListener('golddigger:ready', function () {
+  _extInstalled = true;
+});
+
+// When extension reports sync progress, update the Discogs sync row
+window.addEventListener('golddigger:syncstate', function (e) {
+  var state = e.detail;
+  if (!state) return;
+  var hint     = document.getElementById('discogsExtHint');
+  var doneEl   = document.getElementById('discogsSyncDone');
+  var runBtn   = document.getElementById('optimizeRunBtn');
+
+  if (state.running) {
+    var pct = state.total > 0 ? Math.round((state.done / state.total) * 100) : 0;
+    if (hint)   hint.style.display   = 'none';
+    if (doneEl) {
+      doneEl.style.display = 'block';
+      doneEl.style.color   = 'var(--text-sec)';
+      doneEl.textContent   = '⛏ Syncing Discogs… ' + state.done + ' / ' + state.total +
+                             ' releases · ' + (state.found || 0) + ' listings found (' + pct + '%)';
+    }
+    if (runBtn) runBtn.disabled = true;
+  } else if (state.completedAt) {
+    if (hint)   hint.style.display   = 'none';
+    if (doneEl) {
+      doneEl.style.display = 'block';
+      doneEl.style.color   = 'var(--green)';
+      doneEl.textContent   = '✓ ' + (state.found || 0) + ' Discogs listings synced — included in optimizer';
+    }
+    if (runBtn) runBtn.disabled = false;
+  } else if (state.error) {
+    if (doneEl) {
+      doneEl.style.display = 'block';
+      doneEl.style.color   = 'var(--red-soft, #f87171)';
+      doneEl.textContent   = '⚠ Sync error: ' + state.error;
+    }
+    if (runBtn) runBtn.disabled = false;
+  }
+});
+
 function openOptimizer() {
   document.getElementById('optimizerOverlay').style.display = 'flex';
   document.getElementById('optimizerPrefs').style.display = 'block';
   document.getElementById('optimizerProgress').style.display = 'none';
   document.getElementById('optimizerResults').style.display = 'none';
-  // Pre-fill postcode from saved preferences
+
+  // Pre-fill preferences
   var username = getCurrentUsername();
   if (username) {
     fetch('api/preferences/' + encodeURIComponent(username))
@@ -1882,32 +1926,35 @@ function openOptimizer() {
       })
       .catch(function() {});
   }
-  checkDiscogsSyncStatus();
+
+  // If extension is installed, kick off Discogs sync automatically
+  if (_extInstalled && username) {
+    var serverUrl = (window.location.origin + window.location.pathname).replace(/\/$/, '');
+    window.dispatchEvent(new CustomEvent('golddigger:startsync', {
+      detail: { username: username, serverUrl: serverUrl }
+    }));
+  } else {
+    checkDiscogsSyncStatus();
+  }
 }
 
 function checkDiscogsSyncStatus() {
   var username = getCurrentUsername();
   if (!username) return;
-  // Check if we have any synced Discogs listings in the DB already
   fetch('api/discogs-listings-count/' + encodeURIComponent(username))
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      var hint = document.getElementById('discogsExtHint');
-      var done = document.getElementById('discogsSyncDone');
+      var hint   = document.getElementById('discogsExtHint');
+      var doneEl = document.getElementById('discogsSyncDone');
       if (data.count > 0) {
-        if (hint) hint.style.display = 'none';
-        done.textContent = '✓ ' + data.count + ' Discogs seller listings ready — included in optimizer';
-        done.style.color = 'var(--green)';
-        done.style.display = 'block';
+        if (hint)   hint.style.display = 'none';
+        if (doneEl) {
+          doneEl.textContent   = '✓ ' + data.count + ' Discogs seller listings ready — included in optimizer';
+          doneEl.style.color   = 'var(--green)';
+          doneEl.style.display = 'block';
+        }
       }
     }).catch(function() {});
-}
-
-function showDiscogsSyncDone(msg, isError) {
-  var el = document.getElementById('discogsSyncDone');
-  el.textContent = msg;
-  el.style.color = isError ? 'var(--red-soft)' : 'var(--green)';
-  el.style.display = 'block';
 }
 
 document.getElementById('optimizerClose').addEventListener('click', function() {
