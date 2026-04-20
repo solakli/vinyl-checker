@@ -827,7 +827,7 @@ function render() {
         '<div class="card-price-v2 no-price">—</div>';
     }
 
-    // Meta: year + format hint
+    // Meta: year + format hint + label/catno
     var metaParts = [];
     if (item.item.year) metaParts.push(item.item.year);
     if (item.item.formats && item.item.formats.length > 0) {
@@ -839,12 +839,48 @@ function render() {
       metaParts.push('12" LP');
     }
 
+    // Label / catno for meta
+    if (item.item.label) metaParts.push(escapeHtml(item.item.label));
+    if (item.item.catno && item.item.catno !== 'none') metaParts.push(escapeHtml(item.item.catno));
+
     // Stock badge shown in condition slot when in stock
     var condBadge = inStockCount > 0
       ? '<div class="card-condition">' + inStockCount + (inStockCount === 1 ? ' store' : ' stores') + '</div>'
       : '';
 
     var cardExtraClass = inStockCount > 0 ? ' card-v2-instock' : ' card-v2-nostock';
+
+    // Store availability rows (compact) — only in-stock + link-only stores
+    var storeRowsHtml = '';
+    var inStockStores = visibleStores.filter(function(s) { return s.inStock || s.linkOnly; });
+    if (inStockStores.length > 0) {
+      storeRowsHtml = '<div class="card-store-rows">';
+      inStockStores.forEach(function(s) {
+        var logoFile = storeLogoMap[s.store] || '';
+        var logoHtml = logoFile
+          ? '<img class="card-store-logo" src="img/' + logoFile + '" alt="' + escapeHtml(s.store) + '">'
+          : '<span class="card-store-initials">' + escapeHtml((storeDisplayName[s.store] || s.store).charAt(0)) + '</span>';
+        var storeName = storeDisplayName[s.store] || s.store;
+
+        if (s.linkOnly) {
+          storeRowsHtml += '<a class="card-store-row link-only" href="' + escapeHtml(s.searchUrl || '#') + '" target="_blank" onclick="event.stopPropagation()">' +
+            logoHtml +
+            '<span class="card-store-name">' + escapeHtml(storeName) + '</span>' +
+            '<span class="card-store-price link-only-label">Check store</span>' +
+            '</a>';
+        } else if (s.inStock && s.matches && s.matches.length > 0) {
+          var cheapestM = s.matches.reduce(function(min, m) { return parsePrice(m.price) < parsePrice(min.price) ? m : min; }, s.matches[0]);
+          var condHtml = cheapestM.condition ? '<span class="card-store-cond">' + escapeHtml(cheapestM.condition.substring(0, 2)) + '</span>' : '';
+          storeRowsHtml += '<a class="card-store-row in-stock" href="' + escapeHtml(s.searchUrl || '#') + '" target="_blank" onclick="event.stopPropagation()">' +
+            logoHtml +
+            '<span class="card-store-name">' + escapeHtml(storeName) + '</span>' +
+            condHtml +
+            '<span class="card-store-price">' + escapeHtml(cheapestM.price || '') + '</span>' +
+            '</a>';
+        }
+      });
+      storeRowsHtml += '</div>';
+    }
 
     return '<div class="card-v2' + cardExtraClass + '" data-discogs-id="' + item.item.id + '" onclick="openReleaseDetail(' + item.item.id + ')">' +
       '<div class="card-art">' +
@@ -854,8 +890,9 @@ function render() {
       '<div class="card-body">' +
         '<div class="card-artist">' + escapeHtml(item.item.artist) + '</div>' +
         '<div class="card-title-v2">' + escapeHtml(item.item.title) + '</div>' +
-        '<div class="card-meta">' + escapeHtml(metaParts.join(' | ')) + '</div>' +
+        '<div class="card-meta">' + metaParts.join(' · ') + '</div>' +
         priceHtml +
+        storeRowsHtml +
         '<div class="card-actions">' +
           '<button class="btn-add-cart" onclick="event.stopPropagation();window.open(\'' + escapeHtml(cheapestUrl) + '\',\'_blank\')">Add to Cart</button>' +
           '<button class="btn-wishlist" onclick="event.stopPropagation();window.open(\'' + discogsReleaseUrl + '\',\'_blank\')">Wishlist</button>' +
