@@ -261,7 +261,11 @@ function connectSSE(username, force) {
     render();
     // Show optimizer banner when there are in-stock results
     var inStockCount = allItems.filter(function(i) { return i.stores && i.stores.some(function(s) { return s.inStock; }); }).length;
-    if (inStockCount > 0) document.getElementById('optimizerBanner').style.display = 'flex';
+    if (inStockCount > 0) {
+      document.getElementById('optimizerBanner').style.display = 'flex';
+      var nb = document.getElementById('navbarCartBtn');
+      if (nb) { nb.style.display = 'inline-block'; nb.textContent = 'Dig For Gold (' + inStockCount + ')'; }
+    }
     // Check for changes detected by background rescans
     fetchChanges(username);
   });
@@ -417,7 +421,11 @@ async function loadResultsForUser(username) {
         render();
         // Show optimizer banner if any in-stock items exist
         var inStockCount = resultsData.filter(function(i) { return i.stores && i.stores.some(function(s) { return s.inStock; }); }).length;
-        if (inStockCount > 0) document.getElementById('optimizerBanner').style.display = 'flex';
+        if (inStockCount > 0) {
+          document.getElementById('optimizerBanner').style.display = 'flex';
+          var nb = document.getElementById('navbarCartBtn');
+          if (nb) { nb.style.display = 'inline-block'; nb.textContent = 'Dig For Gold (' + inStockCount + ')'; }
+        }
         // Check for changes after loading results
         fetchChanges(username);
       }
@@ -753,114 +761,91 @@ function render() {
   grid.innerHTML = filtered.map(function(item) {
     var visibleStores = item.stores.filter(function(s) { return activeStores.indexOf(s.store) !== -1; });
     var inStockCount = visibleStores.filter(function(s) { return s.inStock && !s.linkOnly; }).length;
-    var linkOnlyCount = visibleStores.filter(function(s) { return s.linkOnly; }).length;
 
-    // Stock summary line
-    var stockSummaryHtml = '';
-    if (inStockCount > 0) {
-      stockSummaryHtml = '<div class="stock-summary">' +
-        '<span class="stock-count">' + inStockCount + ' store' + (inStockCount > 1 ? 's' : '') + '</span>' +
-        '<span class="stock-label">in stock</span>' +
-        (linkOnlyCount > 0 ? '<span class="link-count">' + linkOnlyCount + ' links</span>' : '') +
+    // Find cheapest in-stock store + URL for "Add to Cart" button
+    var cheapestStore = null;
+    var cheapestPrice = Infinity;
+    var cheapestUrl = '#';
+    visibleStores.forEach(function(s) {
+      if (s.inStock && !s.linkOnly && s.matches && s.matches.length > 0) {
+        s.matches.forEach(function(m) {
+          var p = parsePrice(m.price);
+          if (p < cheapestPrice) {
+            cheapestPrice = p;
+            cheapestStore = s;
+            cheapestUrl = s.searchUrl || '#';
+          }
+        });
+      }
+    });
+
+    // Discogs release URL for Wishlist button
+    var discogsReleaseUrl = 'https://www.discogs.com/release/' + item.item.id;
+
+    // Album art
+    var artHtml = '';
+    if (item.item.thumb) {
+      artHtml = '<img src="' + escapeHtml(item.item.thumb) + '" alt="" loading="lazy">';
+    } else {
+      artHtml = '<div class="card-art-placeholder">' +
+        '<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+          '<circle cx="50" cy="50" r="48" stroke="#C9A227" stroke-width="2"/>' +
+          '<circle cx="50" cy="50" r="32" stroke="#C9A227" stroke-width="1.5"/>' +
+          '<circle cx="50" cy="50" r="18" stroke="#C9A227" stroke-width="1"/>' +
+          '<circle cx="50" cy="50" r="5" fill="#C9A227" opacity="0.6"/>' +
+        '</svg>' +
       '</div>';
     }
 
-    // In-stock rows first, then not-found, then link-only
-    var sortedStores = visibleStores.slice().sort(function(a, b) {
-      var scoreA = a.inStock && !a.linkOnly ? 0 : (!a.linkOnly ? 1 : 2);
-      var scoreB = b.inStock && !b.linkOnly ? 0 : (!b.linkOnly ? 1 : 2);
-      return scoreA - scoreB;
-    });
-
-    var storeRows = stockSummaryHtml + sortedStores.map(function(s) {
-        var cls = storeClassMap[s.store] || '';
-        var name = storeDisplayName[s.store] || s.store;
-
-        var shippingHtml = s.usShipping ? '<span class="shipping">+' + s.usShipping + ' US ship</span>' : '';
-        var logoFile = storeLogoMap[s.store] || '';
-        var logoHtml = logoFile ? '<img class="store-logo" src="img/' + logoFile + '" alt="">' : '';
-
-        if (s.linkOnly) {
-          return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' link-only-row" onclick="event.stopPropagation()">' +
-            '<span class="store-status link-only-dot"></span>' +
-            '<span class="store-name">' + logoHtml + name + '</span>' +
-            '<span class="match-info"><span class="link-only">Go to Store</span></span>' +
-            shippingHtml +
-            '</a>';
-        }
-
-        if (!s.inStock || !s.matches || s.matches.length === 0) {
-          return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' out-of-stock" onclick="event.stopPropagation()">' +
-            '<span class="store-status not-found"></span>' +
-            '<span class="store-name">' + logoHtml + name + '</span>' +
-            '<span class="match-info"><span class="not-found">Not found</span></span>' +
-            '<span class="arrow">&rarr;</span></a>';
-        }
-
-        var cheapest = s.matches.reduce(function(min, m) { return parsePrice(m.price) < parsePrice(min.price) ? m : min; }, s.matches[0]);
-        var extras = s.matches.length > 1 ? ' +' + (s.matches.length - 1) + ' more' : '';
-
-        return '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' in-stock-row" onclick="event.stopPropagation()">' +
-          '<span class="store-status in-stock"></span>' +
-          '<span class="store-name">' + logoHtml + name + '</span>' +
-          '<span class="match-info">' + escapeHtml(cheapest.title || '') + extras + '</span>' +
-          '<span class="price">' + escapeHtml(cheapest.price || '') + '</span>' +
-          shippingHtml +
-          '<span class="arrow">&rarr;</span></a>';
-      }).join('');
-
+    // Price display
     var lowest = getLowestPrice(item);
-    var bestPriceHtml = lowest < Infinity
-      ? '<div class="price-compare">' +
-          '<span class="best-price-label">Best Store Price</span>' +
-          '<span class="best-price-value">' + lowest.toFixed(2) + '</span>' +
-        '</div>'
+    var priceHtml = '';
+    if (lowest < Infinity) {
+      priceHtml = '<div class="card-price-label">Current Lowest Price</div>' +
+        '<div class="card-price-v2">$' + lowest.toFixed(2) + '</div>';
+    } else if (item.discogsPrice && item.discogsPrice.lowestPrice) {
+      var currSymbol = item.discogsPrice.currency === 'USD' ? '$' : item.discogsPrice.currency === 'GBP' ? '\u00a3' : item.discogsPrice.currency === 'JPY' ? '\u00a5' : '\u20ac';
+      priceHtml = '<div class="card-price-label">Discogs Marketplace</div>' +
+        '<div class="card-price-v2">' + currSymbol + item.discogsPrice.lowestPrice.toFixed(2) + '</div>';
+    } else {
+      priceHtml = '<div class="card-price-label">Not found in stores</div>' +
+        '<div class="card-price-v2 no-price">—</div>';
+    }
+
+    // Meta: year + format hint
+    var metaParts = [];
+    if (item.item.year) metaParts.push(item.item.year);
+    if (item.item.formats && item.item.formats.length > 0) {
+      var fmt = item.item.formats[0];
+      var fmtStr = fmt.name || '12"';
+      if (fmt.descriptions && fmt.descriptions.length > 0) fmtStr += ' ' + fmt.descriptions[0];
+      metaParts.push(fmtStr);
+    } else {
+      metaParts.push('12" LP');
+    }
+
+    // Stock badge shown in condition slot when in stock
+    var condBadge = inStockCount > 0
+      ? '<div class="card-condition">' + inStockCount + (inStockCount === 1 ? ' store' : ' stores') + '</div>'
       : '';
 
-    // Discogs marketplace price
-    var discogsPriceHtml = '';
-    if (item.discogsPrice && item.discogsPrice.lowestPrice) {
-      var dShipping = item.discogsPrice.shipping ? '<span class="shipping">+' + item.discogsPrice.shipping + ' ship</span>' : '';
-      var currSymbol = item.discogsPrice.currency === 'USD' ? '$' : item.discogsPrice.currency === 'GBP' ? '\u00a3' : item.discogsPrice.currency === 'JPY' ? '\u00a5' : '\u20ac';
-      discogsPriceHtml = '<a href="' + (item.discogsPrice.marketplaceUrl || '#') + '" target="_blank" class="store-row discogs" onclick="event.stopPropagation()">' +
-        '<span class="store-name"><img class="store-logo" src="img/discogs.png" alt="">Discogs</span>' +
-        '<span class="match-info">' + item.discogsPrice.numForSale + ' for sale (ships to US)</span>' +
-        '<span class="price">' + currSymbol + item.discogsPrice.lowestPrice.toFixed(2) + '</span>' +
-        dShipping +
-        '<span class="arrow">&rarr;</span></a>';
-    } else if (item.discogsPrice) {
-      discogsPriceHtml = '<a href="' + (item.discogsPrice.marketplaceUrl || '#') + '" target="_blank" class="store-row discogs out-of-stock" onclick="event.stopPropagation()">' +
-        '<span class="store-name"><img class="store-logo" src="img/discogs.png" alt="">Discogs</span>' +
-        '<span class="match-info"><span class="not-found">None for sale</span></span>' +
-        '<span class="arrow">&rarr;</span></a>';
-    }
+    var cardExtraClass = inStockCount > 0 ? ' card-v2-instock' : ' card-v2-nostock';
 
-    // Thumbnail
-    var thumbHtml = '';
-    if (item.item.thumb) {
-      thumbHtml = '<img class="card-thumb" src="' + escapeHtml(item.item.thumb) + '" alt="" loading="lazy">';
-    } else {
-      thumbHtml = '<div class="card-thumb" style="display:flex;align-items:center;justify-content:center;font-size:20px;color:#555;">&#9835;</div>';
-    }
-
-    var hasStock = inStockCount > 0;
-    var cardClass = hasStock ? 'card has-stock' : 'card no-stock';
-
-    return '<div class="' + cardClass + '" data-discogs-id="' + item.item.id + '" onclick="openReleaseDetail(' + item.item.id + ')">' +
-      '<div class="card-header">' +
-        thumbHtml +
-        '<div class="card-info">' +
-          '<div class="card-artist">' + escapeHtml(item.item.artist) + '</div>' +
-          '<div class="card-title">' + escapeHtml(item.item.title) + '</div>' +
-          '<div class="card-meta">' +
-            (item.item.year ? '<span>' + item.item.year + '</span>' : '') +
-            (item.item.label ? '<span>' + escapeHtml(item.item.label) + '</span>' : '') +
-            (item.item.catno ? '<span>' + escapeHtml(item.item.catno) + '</span>' : '') +
-          '</div>' +
+    return '<div class="card-v2' + cardExtraClass + '" data-discogs-id="' + item.item.id + '" onclick="openReleaseDetail(' + item.item.id + ')">' +
+      '<div class="card-art">' +
+        artHtml +
+        condBadge +
+      '</div>' +
+      '<div class="card-body">' +
+        '<div class="card-artist">' + escapeHtml(item.item.artist) + '</div>' +
+        '<div class="card-title-v2">' + escapeHtml(item.item.title) + '</div>' +
+        '<div class="card-meta">' + escapeHtml(metaParts.join(' | ')) + '</div>' +
+        priceHtml +
+        '<div class="card-actions">' +
+          '<button class="btn-add-cart" onclick="event.stopPropagation();window.open(\'' + escapeHtml(cheapestUrl) + '\',\'_blank\')">Add to Cart</button>' +
+          '<button class="btn-wishlist" onclick="event.stopPropagation();window.open(\'' + discogsReleaseUrl + '\',\'_blank\')">Wishlist</button>' +
         '</div>' +
       '</div>' +
-      '<div class="store-results">' + storeRows + discogsPriceHtml + '</div>' +
-      bestPriceHtml +
     '</div>';
   }).join('');
 }
@@ -2103,9 +2088,54 @@ function _notifyOptimizerDone() {
   }
 }
 
+function updateSidebarOptimizer(result) {
+  var empty = document.getElementById('sidebarEmpty');
+  var sidebarRes = document.getElementById('sidebarResults');
+  if (!sidebarRes) return;
+
+  if (empty) empty.style.display = 'none';
+  sidebarRes.style.display = 'block';
+
+  // Build top sellers list (up to 4)
+  var allEntries = (result.cart || []).slice()
+    .sort(function(a, b) { return b.items.length - a.items.length || b.totalUsd - a.totalUsd; });
+  var topEntries = allEntries.slice(0, 4);
+
+  var totalItems = (result.cart || []).reduce(function(s, e) { return s + e.items.length; }, 0);
+
+  var sellerRowsHtml = topEntries.map(function(entry) {
+    var logoFile = storeLogoMap[entry.sourceName] || '';
+    var logoInner = logoFile
+      ? '<img src="img/' + logoFile + '" alt="">'
+      : entry.sourceName.charAt(0).toUpperCase();
+    return '<div class="sidebar-seller">' +
+      '<div class="sidebar-seller-logo">' + logoInner + '</div>' +
+      '<div class="sidebar-seller-info">' +
+        '<div class="sidebar-seller-name">' + escapeHtml(entry.sourceName) + '</div>' +
+        '<div class="sidebar-seller-items">' + entry.items.length + ' record' + (entry.items.length !== 1 ? 's' : '') + '</div>' +
+      '</div>' +
+      '<div class="sidebar-seller-price">$' + entry.totalUsd.toFixed(2) + '</div>' +
+    '</div>';
+  }).join('');
+
+  sidebarRes.innerHTML =
+    '<div class="sidebar-opt-sub">Optimizing for ' + totalItems + ' item' + (totalItems !== 1 ? 's' : '') + '</div>' +
+    '<div class="sidebar-opt-stats">' +
+      '<div class="sidebar-stat-row"><span>Best Combined Price</span><span>$' + result.grandRecordsUsd.toFixed(2) + '</span></div>' +
+      '<div class="sidebar-stat-row"><span>Est. Shipping</span><span>$' + result.grandShippingUsd.toFixed(2) + '</span></div>' +
+      '<div class="sidebar-stat-row total"><span>Total Cost</span><span>$' + result.grandTotalUsd.toFixed(2) + '</span></div>' +
+    '</div>' +
+    '<div class="sidebar-sellers">' + sellerRowsHtml + '</div>' +
+    '<button class="btn-checkout" onclick="openOptimizer()">CHECKOUT WITH OPTIMIZED CART</button>' +
+    '<button class="sidebar-alt-link" onclick="openOptimizer()">View Alternative Carts</button>';
+}
+
 function showOptimizerResults(result) {
   document.getElementById('optimizerProgress').style.display = 'none';
   document.getElementById('optimizerResults').style.display = 'block';
+
+  // Also populate sidebar
+  updateSidebarOptimizer(result);
 
   // ── Summary stats ─────────────────────────────────────────────
   var summaryEl = document.getElementById('optSummary');

@@ -10,43 +10,55 @@
 </head>
 <body class="light">
 
-<button class="theme-toggle" id="themeToggle">Dark</button>
-
-<div class="header">
-  <div class="header-top">
-    <div class="header-left">
-      <h1><span>Gold</span> Digger</h1>
-      <div class="live-badge" id="liveBadge" style="display:none"><div class="live-dot"></div> Scanning</div>
-      <div class="stats" id="stats"></div>
-    </div>
-    <div class="timestamp" id="timestamp"></div>
+<!-- ═══ NAVBAR ═══ -->
+<nav class="navbar">
+  <div class="navbar-logo">
+    <img src="img/brand/logo-pickaxe.jpg" alt="" style="width:32px;height:32px;border-radius:4px;vertical-align:middle;margin-right:10px;object-fit:cover">
+    <span>GOLD</span><span style="color:#fff"> DIGGER</span>
   </div>
+  <div class="navbar-nav">
+    <a href="#" class="active">Dashboard</a>
+    <a href="#">Market</a>
+    <a href="#">My Collection</a>
+    <a href="#">Wishlist</a>
+    <a href="#">Settings</a>
+  </div>
+  <div class="navbar-right">
+    <div class="live-badge" id="liveBadge" style="display:none"><div class="live-dot"></div> Scanning</div>
+    <div class="stats" id="stats"></div>
+    <div class="timestamp" id="timestamp"></div>
+    <!-- Auth section -->
+    <div class="auth-section" id="authSection">
+      <div class="user-bar" id="userBar" style="display:none">
+        <img class="store-logo" src="img/discogs.png" alt="" style="width:14px;height:14px;filter:none;opacity:0.8">
+        <span class="user-bar-name" id="userBarName"></span>
+        <button class="scan-btn rescan-btn" id="userBarRescan" style="display:none" onclick="startScan(true)">Rescan All</button>
+        <button class="user-bar-btn" id="disconnectBtn" onclick="disconnectDiscogs()">Disconnect</button>
+        <span class="user-bar-sep">|</span>
+        <button class="auth-btn youtube-auth" id="connectYoutube" style="display:none" onclick="window.location.href='api/auth/google'">
+          <span class="auth-icon">&#9654;</span> YouTube
+        </button>
+        <button class="auth-btn playlist-btn" id="createPlaylistBtn" style="display:none" onclick="createYoutubePlaylist()">
+          <span class="auth-icon">&#9835;</span> Create Playlist
+        </button>
+        <button class="user-bar-btn share-btn" id="shareBtn" style="display:none" onclick="shareWantlist()">Share</button>
+      </div>
+      <button class="auth-btn discogs-connect-header" id="connectDiscogsHeader" style="display:none" onclick="window.location.href='api/auth/discogs'">
+        <img class="store-logo" src="img/discogs.png" alt="" style="width:12px;height:12px;filter:none;opacity:0.8;margin-right:4px;vertical-align:middle"> Connect Discogs
+      </button>
+      <span class="auth-status" id="authStatus"></span>
+    </div>
+    <button class="theme-toggle" id="themeToggle">Dark</button>
+    <button class="navbar-cart" id="navbarCartBtn" style="display:none" onclick="openOptimizer()">Dig For Gold</button>
+  </div>
+</nav>
 
+<!-- ═══ SCAN + FILTER HEADER ═══ -->
+<div class="header" id="headerControls">
   <div class="scan-section" id="scanSection" style="display:none">
     <input type="text" class="username-input" id="usernameInput" placeholder="Discogs username..." value="">
     <button class="scan-btn" id="scanBtn">Check Wantlist</button>
     <button class="scan-btn rescan-btn" id="rescanBtn" style="display:none">Rescan All</button>
-  </div>
-
-  <div class="auth-section" id="authSection">
-    <div class="user-bar" id="userBar" style="display:none">
-      <img class="store-logo" src="img/discogs.png" alt="" style="width:14px;height:14px;filter:none;opacity:0.8">
-      <span class="user-bar-name" id="userBarName"></span>
-      <button class="scan-btn rescan-btn" id="userBarRescan" style="display:none" onclick="startScan(true)">Rescan All</button>
-      <button class="user-bar-btn" id="disconnectBtn" onclick="disconnectDiscogs()">Disconnect</button>
-      <span class="user-bar-sep">|</span>
-      <button class="auth-btn youtube-auth" id="connectYoutube" style="display:none" onclick="window.location.href='api/auth/google'">
-        <span class="auth-icon">&#9654;</span> YouTube
-      </button>
-      <button class="auth-btn playlist-btn" id="createPlaylistBtn" style="display:none" onclick="createYoutubePlaylist()">
-        <span class="auth-icon">&#9835;</span> Create Playlist
-      </button>
-      <button class="user-bar-btn share-btn" id="shareBtn" style="display:none" onclick="shareWantlist()">Share</button>
-    </div>
-    <button class="auth-btn discogs-connect-header" id="connectDiscogsHeader" style="display:none" onclick="window.location.href='api/auth/discogs'">
-      <img class="store-logo" src="img/discogs.png" alt="" style="width:12px;height:12px;filter:none;opacity:0.8;margin-right:4px;vertical-align:middle"> Connect Discogs
-    </button>
-    <span class="auth-status" id="authStatus"></span>
   </div>
 
   <div class="progress-section" id="progressSection">
@@ -100,35 +112,57 @@
   </div>
 </div>
 
-<div class="optimizer-banner" id="optimizerBanner" style="display:none">
-  <button class="optimize-trigger-btn" id="optimizeTrigger" onclick="openOptimizer()">Dig For Gold</button>
-</div>
+<!-- ═══ MAIN APP LAYOUT ═══ -->
+<div class="app-layout">
 
-<div class="container">
-  <div id="welcome" class="welcome" style="display:none">
-    <div class="welcome-hero">
-      <h2><span>Gold</span> Digger</h2>
-      <p class="welcome-sub">Find your Discogs wantlist in stock across 12 vinyl stores worldwide</p>
-    </div>
-    <div class="welcome-actions">
-      <button class="welcome-cta" onclick="handleConnectDiscogs()">
-        <img class="store-logo" src="img/discogs.png" alt="" style="width:20px;height:20px;margin-right:8px;vertical-align:middle;filter:none;opacity:1"> Connect Your Discogs
-      </button>
-      <p class="welcome-hint" id="welcomeHint">Authorize to scan your wantlist &mdash; works with private wantlists too</p>
-      <div id="welcomeUsernameForm" style="display:none;margin-top:16px;display:none">
-        <input type="text" class="username-input" id="welcomeUsernameInput" placeholder="Enter your Discogs username..." style="margin-bottom:8px">
-        <button class="welcome-cta" onclick="handleWelcomeUsernameSubmit()" style="margin-top:8px">Check My Wantlist</button>
+  <!-- Left: grid -->
+  <div class="app-main">
+    <div class="container">
+    <div id="welcome" class="welcome" style="display:none">
+      <div class="welcome-hero">
+        <h2><span>Gold</span> Digger</h2>
+        <p class="welcome-sub">Find your Discogs wantlist in stock across 12 vinyl stores worldwide</p>
+      </div>
+      <div class="welcome-actions">
+        <button class="welcome-cta" onclick="handleConnectDiscogs()">
+          <img class="store-logo" src="img/discogs.png" alt="" style="width:20px;height:20px;margin-right:8px;vertical-align:middle;filter:none;opacity:1"> Connect Your Discogs
+        </button>
+        <p class="welcome-hint" id="welcomeHint">Authorize to scan your wantlist &mdash; works with private wantlists too</p>
+        <div id="welcomeUsernameForm" style="display:none;margin-top:16px;display:none">
+          <input type="text" class="username-input" id="welcomeUsernameInput" placeholder="Enter your Discogs username..." style="margin-bottom:8px">
+          <button class="welcome-cta" onclick="handleWelcomeUsernameSubmit()" style="margin-top:8px">Check My Wantlist</button>
+        </div>
+      </div>
+      <div class="welcome-stores">
+        <span class="welcome-store-label">Stores we check:</span>
+        <div class="welcome-store-logos">
+          <img src="img/hhv.png" alt="HHV" title="HHV"><img src="img/deejay.png" alt="Deejay.de" title="Deejay.de"><img src="img/hardwax.png" alt="Hardwax" title="Hardwax"><img src="img/juno.png" alt="Juno" title="Juno"><img src="img/ttlab.png" alt="Turntable Lab" title="Turntable Lab"><img src="img/phonica.png" alt="Phonica" title="Phonica"><img src="img/decks.png" alt="Decks.de" title="Decks.de"><img src="img/yoyaku.png" alt="Yoyaku" title="Yoyaku"><img src="img/uvs.png" alt="Underground Vinyl" title="Underground Vinyl"><img src="img/gramaphone.png" alt="Gramaphone" title="Gramaphone"><img src="img/further.png" alt="Further Records" title="Further Records"><img src="img/octopus.png" alt="Octopus Records NYC" title="Octopus Records NYC">
+        </div>
       </div>
     </div>
-    <div class="welcome-stores">
-      <span class="welcome-store-label">Stores we check:</span>
-      <div class="welcome-store-logos">
-        <img src="img/hhv.png" alt="HHV" title="HHV"><img src="img/deejay.png" alt="Deejay.de" title="Deejay.de"><img src="img/hardwax.png" alt="Hardwax" title="Hardwax"><img src="img/juno.png" alt="Juno" title="Juno"><img src="img/ttlab.png" alt="Turntable Lab" title="Turntable Lab"><img src="img/phonica.png" alt="Phonica" title="Phonica"><img src="img/decks.png" alt="Decks.de" title="Decks.de"><img src="img/yoyaku.png" alt="Yoyaku" title="Yoyaku"><img src="img/uvs.png" alt="Underground Vinyl" title="Underground Vinyl"><img src="img/gramaphone.png" alt="Gramaphone" title="Gramaphone"><img src="img/further.png" alt="Further Records" title="Further Records"><img src="img/octopus.png" alt="Octopus Records NYC" title="Octopus Records NYC">
+    <div class="grid" id="grid"></div>
+    <div class="no-results" id="noResults" style="display:none">No items match your filters</div>
+    </div><!-- /.container -->
+  </div>
+
+  <!-- Right: persistent sidebar -->
+  <div class="app-sidebar" id="appSidebar">
+    <div class="sidebar-optimizer" id="sidebarOptimizer">
+      <!-- Populated by JS: either empty state or optimizer results -->
+      <div class="sidebar-opt-title">BEST CART OPTIMIZER</div>
+      <div class="sidebar-empty" id="sidebarEmpty">
+        <p>Run the optimizer to find your best cart</p>
+        <button class="btn-checkout" style="margin-top:16px" onclick="openOptimizer()">OPEN OPTIMIZER</button>
       </div>
+      <div id="sidebarResults" style="display:none"></div>
     </div>
   </div>
-  <div class="grid" id="grid"></div>
-  <div class="no-results" id="noResults" style="display:none">No items match your filters</div>
+
+</div>
+
+<!-- ═══ OPTIMIZER BANNER (hidden — replaced by navbar button) ═══ -->
+<div class="optimizer-banner" id="optimizerBanner" style="display:none">
+  <button class="optimize-trigger-btn" id="optimizeTrigger" onclick="openOptimizer()">Dig For Gold</button>
 </div>
 
 <!-- Release Detail Modal -->
