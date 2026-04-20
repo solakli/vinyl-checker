@@ -3,7 +3,7 @@
   "name": "Gold Digger",
   "version": "1.2.0",
   "description": "Sync Discogs marketplace prices into the Gold Digger cart optimizer",
-  "permissions": ["storage", "cookies", "tabs", "windows"],
+  "permissions": ["storage", "cookies", "tabs", "windows", "alarms"],
   "host_permissions": [
     "https://stream.ronautradio.la/*",
     "https://www.discogs.com/*"
