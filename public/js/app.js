@@ -782,10 +782,25 @@ function render() {
     // Discogs release URL for Wishlist button
     var discogsReleaseUrl = 'https://www.discogs.com/release/' + item.item.id;
 
+    // Vinyl disc SVG — always shown peeking behind the cover
+    var vinylDisc = '<svg class="card-vinyl-disc" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">' +
+      '<circle cx="50" cy="50" r="50" fill="#111"/>' +
+      '<circle cx="50" cy="50" r="46" fill="none" stroke="#222" stroke-width="1.5"/>' +
+      '<circle cx="50" cy="50" r="42" fill="none" stroke="#1e1e1e" stroke-width="3"/>' +
+      '<circle cx="50" cy="50" r="37" fill="none" stroke="#222" stroke-width="2"/>' +
+      '<circle cx="50" cy="50" r="32" fill="none" stroke="#1e1e1e" stroke-width="2.5"/>' +
+      '<circle cx="50" cy="50" r="27" fill="none" stroke="#222" stroke-width="1.5"/>' +
+      '<circle cx="50" cy="50" r="22" fill="none" stroke="#1e1e1e" stroke-width="2"/>' +
+      '<circle cx="50" cy="50" r="17" fill="none" stroke="#222" stroke-width="1.5"/>' +
+      '<circle cx="50" cy="50" r="10" fill="#1a1a1a"/>' +
+      '<circle cx="50" cy="50" r="10" fill="none" stroke="#C9A227" stroke-width="0.8" opacity="0.5"/>' +
+      '<circle cx="50" cy="50" r="3" fill="#C9A227" opacity="0.7"/>' +
+    '</svg>';
+
     // Album art
     var artHtml = '';
     if (item.item.thumb) {
-      artHtml = '<img src="' + escapeHtml(item.item.thumb) + '" alt="" loading="lazy">';
+      artHtml = '<img class="card-cover" src="' + escapeHtml(item.item.thumb) + '" alt="" loading="lazy">' + vinylDisc;
     } else {
       artHtml = '<div class="card-art-placeholder">' +
         '<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">' +
@@ -794,7 +809,7 @@ function render() {
           '<circle cx="50" cy="50" r="18" stroke="#C9A227" stroke-width="1"/>' +
           '<circle cx="50" cy="50" r="5" fill="#C9A227" opacity="0.6"/>' +
         '</svg>' +
-      '</div>';
+      '</div>' + vinylDisc;
     }
 
     // Price display

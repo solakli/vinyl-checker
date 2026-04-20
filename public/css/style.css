@@ -2666,32 +2666,57 @@ a.sc-item-price:hover { text-decoration: underline; }
 
 .card-art {
   position: relative;
-  aspect-ratio: 1;
-  background: #111;
+  height: 160px;
+  background: #0e0e0e;
   overflow: hidden;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 16px 12px 16px 16px;
+  gap: 0;
 }
 
-.card-art img {
-  width: 100%;
-  height: 100%;
+/* Album cover — small, crisp, no stretching */
+.card-cover {
+  width: 120px;
+  height: 120px;
   object-fit: cover;
-  display: block;
+  border-radius: 3px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+  box-shadow: -4px 0 16px rgba(0,0,0,0.6);
+}
+
+/* Vinyl disc peeking out from behind the cover */
+.card-vinyl-disc {
+  position: absolute;
+  right: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 136px;
+  height: 136px;
+  z-index: 1;
+  opacity: 0.9;
 }
 
 .card-art-placeholder {
-  width: 100%;
-  height: 100%;
+  width: 120px;
+  height: 120px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 50% 50%, #2a2a2a 0%, #111 100%);
+  background: #1a1a1a;
+  border-radius: 3px;
+  position: relative;
+  z-index: 2;
 }
 
 .card-art-placeholder svg {
-  width: 60%;
-  height: 60%;
-  opacity: 0.3;
+  width: 70%;
+  height: 70%;
+  opacity: 0.25;
 }
 
 .card-condition {
