@@ -2876,6 +2876,32 @@ a.sc-item-price:hover { text-decoration: underline; }
   font-weight: 600;
 }
 
+.card-store-meta {
+  font-size: 10px;
+  color: #666;
+  font-weight: 500;
+  letter-spacing: 0;
+  flex-shrink: 0;
+}
+
+/* Inline tag chips on store rows */
+.card-store-tag {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+.card-store-tag.ship-cost  { background: #1e2a1e; color: #6aaf6a; }
+.card-store-tag.us-ship    { background: #1e2233; color: #6a9adf; }
+.card-store-tag.no-us      { background: #2a1e1e; color: #885555; }
+.card-store-tag.sync-hint  { background: #2a2510; color: #C9A227; opacity: 0.75; }
+
+/* Discogs row gets a subtle Discogs-branded left border */
+.card-store-row.discogs-row { border-left: 2px solid #333; }
+
 .card-actions {
   display: flex;
   gap: 8px;

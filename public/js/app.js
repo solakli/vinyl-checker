@@ -850,11 +850,46 @@ function render() {
 
     var cardExtraClass = inStockCount > 0 ? ' card-v2-instock' : ' card-v2-nostock';
 
-    // Store availability rows (compact) — only in-stock + link-only stores
+    // ── Store availability rows ──────────────────────────────────
     var storeRowsHtml = '';
     var inStockStores = visibleStores.filter(function(s) { return s.inStock || s.linkOnly; });
-    if (inStockStores.length > 0) {
+
+    // Build Discogs row — either from extension-synced listings or API price summary
+    var discogsRowHtml = '';
+    var dl = item.discogsListings;
+    var dp = item.discogsPrice;
+    if (dl && dl.numListings > 0) {
+      // Extension has synced individual listings — show rich data
+      var currSym = (dp && dp.currency === 'GBP') ? '£' : (dp && dp.currency === 'EUR') ? '€' : '$';
+      var cheapestDiscogsPrice = dl.cheapestUsd ? (currSym + dl.cheapestUsd.toFixed(2)) : (dp && dp.lowestPrice ? (currSym + dp.lowestPrice.toFixed(2)) : null);
+      var usHtml = dl.usCount > 0
+        ? '<span class="card-store-tag us-ship">🇺🇸 from $' + dl.cheapestUsUsd.toFixed(2) + '</span>'
+        : '<span class="card-store-tag no-us">No US sellers</span>';
+      var discogsUrl = (dp && dp.marketplaceUrl) ? dp.marketplaceUrl : ('https://www.discogs.com/sell/release/' + item.item.id);
+      discogsRowHtml = '<a class="card-store-row discogs-row" href="' + escapeHtml(discogsUrl) + '" target="_blank" onclick="event.stopPropagation()">' +
+        '<img class="card-store-logo" src="img/discogs.png" alt="Discogs">' +
+        '<span class="card-store-name">Discogs</span>' +
+        '<span class="card-store-meta">' + dl.numListings + ' listings</span>' +
+        usHtml +
+        (cheapestDiscogsPrice ? '<span class="card-store-price">' + cheapestDiscogsPrice + '</span>' : '') +
+        '</a>';
+    } else if (dp && dp.lowestPrice) {
+      // Only API price summary available
+      var currSym2 = dp.currency === 'GBP' ? '£' : dp.currency === 'EUR' ? '€' : '$';
+      var discogsUrl2 = dp.marketplaceUrl || ('https://www.discogs.com/sell/release/' + item.item.id);
+      discogsRowHtml = '<a class="card-store-row discogs-row" href="' + escapeHtml(discogsUrl2) + '" target="_blank" onclick="event.stopPropagation()">' +
+        '<img class="card-store-logo" src="img/discogs.png" alt="Discogs">' +
+        '<span class="card-store-name">Discogs</span>' +
+        '<span class="card-store-meta">' + (dp.numForSale || '?') + ' for sale</span>' +
+        '<span class="card-store-tag sync-hint">Sync for details</span>' +
+        '<span class="card-store-price">' + currSym2 + dp.lowestPrice.toFixed(2) + '</span>' +
+        '</a>';
+    }
+
+    if (inStockStores.length > 0 || discogsRowHtml) {
       storeRowsHtml = '<div class="card-store-rows">';
+
+      // In-stock and link-only store rows
       inStockStores.forEach(function(s) {
         var logoFile = storeLogoMap[s.store] || '';
         var logoHtml = logoFile
@@ -862,23 +897,35 @@ function render() {
           : '<span class="card-store-initials">' + escapeHtml((storeDisplayName[s.store] || s.store).charAt(0)) + '</span>';
         var storeName = storeDisplayName[s.store] || s.store;
 
+        // Shipping tag (every store has usShipping)
+        var shipHtml = s.usShipping
+          ? '<span class="card-store-tag ship-cost">+' + escapeHtml(s.usShipping) + ' ship</span>'
+          : '';
+
         if (s.linkOnly) {
           storeRowsHtml += '<a class="card-store-row link-only" href="' + escapeHtml(s.searchUrl || '#') + '" target="_blank" onclick="event.stopPropagation()">' +
             logoHtml +
             '<span class="card-store-name">' + escapeHtml(storeName) + '</span>' +
-            '<span class="card-store-price link-only-label">Check store</span>' +
+            shipHtml +
+            '<span class="card-store-price link-only-label">Check →</span>' +
             '</a>';
         } else if (s.inStock && s.matches && s.matches.length > 0) {
           var cheapestM = s.matches.reduce(function(min, m) { return parsePrice(m.price) < parsePrice(min.price) ? m : min; }, s.matches[0]);
-          var condHtml = cheapestM.condition ? '<span class="card-store-cond">' + escapeHtml(cheapestM.condition.substring(0, 2)) + '</span>' : '';
+          var copiesHtml = s.matches.length > 1
+            ? '<span class="card-store-meta">' + s.matches.length + ' copies</span>'
+            : '';
           storeRowsHtml += '<a class="card-store-row in-stock" href="' + escapeHtml(s.searchUrl || '#') + '" target="_blank" onclick="event.stopPropagation()">' +
             logoHtml +
             '<span class="card-store-name">' + escapeHtml(storeName) + '</span>' +
-            condHtml +
+            copiesHtml +
+            shipHtml +
             '<span class="card-store-price">' + escapeHtml(cheapestM.price || '') + '</span>' +
             '</a>';
         }
       });
+
+      // Discogs row at the bottom
+      storeRowsHtml += discogsRowHtml;
       storeRowsHtml += '</div>';
     }
 

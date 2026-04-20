@@ -593,9 +593,34 @@ function getFullResults(userId) {
     var d = getDb();
     var items = getActiveWantlist(userId);
 
+    // Build per-item Discogs listings summary in ONE query (not N queries)
+    var listingsSummary = {};
+    if (items.length > 0) {
+        var ids = items.map(function (w) { return w.id; });
+        var placeholders = ids.map(function () { return '?'; }).join(',');
+        try {
+            var stmt = d.prepare(
+                'SELECT wantlist_id,' +
+                '  COUNT(*) as num_listings,' +
+                '  MIN(price_usd) as cheapest_usd,' +
+                '  MIN(CASE WHEN ships_from IN (\'US\',\'United States\') THEN price_usd END) as cheapest_us_usd,' +
+                '  SUM(CASE WHEN ships_from IN (\'US\',\'United States\') THEN 1 ELSE 0 END) as us_count,' +
+                '  MIN(CASE WHEN ships_from IN (\'US\',\'United States\') THEN condition END) as cheapest_us_cond' +
+                ' FROM discogs_listings' +
+                ' WHERE wantlist_id IN (' + placeholders + ')' +
+                ' GROUP BY wantlist_id'
+            );
+            var rows = stmt.all(ids);   // better-sqlite3 accepts array as single arg
+            rows.forEach(function (r) { listingsSummary[r.wantlist_id] = r; });
+        } catch (e) {
+            // discogs_listings table may be empty — not fatal
+        }
+    }
+
     return items.map(function (w) {
         var stores = getStoreResults(w.id);
         var price = getDiscogsPrice(w.id);
+        var ls = listingsSummary[w.id] || null;
 
         return {
             item: {
@@ -618,6 +643,14 @@ function getFullResults(userId) {
                 numForSale: price.num_for_sale,
                 marketplaceUrl: price.marketplace_url,
                 checkedAt: price.checked_at
+            } : null,
+            // Summary of individually-synced Discogs listings (from Chrome extension)
+            discogsListings: ls ? {
+                numListings: ls.num_listings || 0,
+                cheapestUsd: ls.cheapest_usd || null,
+                cheapestUsUsd: ls.cheapest_us_usd || null,
+                usCount: ls.us_count || 0,
+                cheapestUsCond: ls.cheapest_us_cond || null
             } : null,
             wantlistId: w.id
         };
