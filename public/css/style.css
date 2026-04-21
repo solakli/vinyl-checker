@@ -2698,7 +2698,7 @@ a.sc-item-price:hover { text-decoration: underline; }
 .card-art {
   position: relative;
   height: 190px;
-  background: #0a0a0a;
+  background: #1e1e1e;
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -2712,11 +2712,13 @@ a.sc-item-price:hover { text-decoration: underline; }
   height: 100%;
   object-fit: cover;
   z-index: 2;
-  /* Gold border frames the sleeve like a physical jacket */
-  outline: 1px solid #C9A227;
-  outline-offset: -1px;
-  /* Right-edge shadow so disc looks physically behind sleeve */
-  box-shadow: 8px 0 24px rgba(0,0,0,0.9);
+  /* 3D sleeve effect — stacked cardboard edges on bottom-right */
+  box-shadow:
+    2px 0px 0 0 rgba(255,255,255,0.12),
+    4px 0px 0 0 rgba(255,255,255,0.07),
+    6px 0px 0 0 rgba(255,255,255,0.04),
+    /* depth shadow toward the disc */
+    10px 0 28px rgba(0,0,0,0.85);
 }
 
 /* Vinyl disc — 50% hidden behind sleeve, 50% peeking out right */
@@ -2742,11 +2744,13 @@ a.sc-item-price:hover { text-decoration: underline; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #1a1a1a;
+  background: #2a2a2a;
   z-index: 2;
-  outline: 1px solid #C9A227;
-  outline-offset: -1px;
-  box-shadow: 8px 0 24px rgba(0,0,0,0.9);
+  box-shadow:
+    2px 0px 0 0 rgba(255,255,255,0.12),
+    4px 0px 0 0 rgba(255,255,255,0.07),
+    6px 0px 0 0 rgba(255,255,255,0.04),
+    10px 0 28px rgba(0,0,0,0.85);
 }
 
 .card-art-placeholder svg {
