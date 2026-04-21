@@ -804,13 +804,12 @@ function render() {
       '<circle cx="50" cy="50" r="26" fill="none" stroke="#252525" stroke-width="0.8"/>' +
       '<circle cx="50" cy="50" r="23" fill="none" stroke="#1a1a1a" stroke-width="1"/>' +
       '<circle cx="50" cy="50" r="20" fill="none" stroke="#222" stroke-width="0.8"/>' +
-      // Label area
-      '<circle cx="50" cy="50" r="14" fill="#141414"/>' +
-      '<circle cx="50" cy="50" r="14" fill="none" stroke="#C9A227" stroke-width="0.6" opacity="0.4"/>' +
-      '<circle cx="50" cy="50" r="9"  fill="none" stroke="#C9A227" stroke-width="0.4" opacity="0.25"/>' +
+      // Gold label area
+      '<circle cx="50" cy="50" r="14" fill="#C9A227"/>' +
+      '<circle cx="50" cy="50" r="14" fill="none" stroke="#a07c10" stroke-width="0.5"/>' +
+      '<circle cx="50" cy="50" r="10" fill="none" stroke="#a07c10" stroke-width="0.4" opacity="0.6"/>' +
       // Centre spindle hole
       '<circle cx="50" cy="50" r="2.5" fill="#0a0a0a"/>' +
-      '<circle cx="50" cy="50" r="2.5" fill="none" stroke="#C9A227" stroke-width="0.5" opacity="0.6"/>' +
     '</svg>';
 
     // Album art

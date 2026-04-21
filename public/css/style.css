@@ -2686,6 +2686,8 @@ a.sc-item-price:hover { text-decoration: underline; }
   background: #0a0a0a;
   overflow: hidden;
   flex-shrink: 0;
+  border: 1px solid #C9A227;
+  border-radius: 6px 6px 0 0;
 }
 
 /* Album sleeve — left 60% of the card art, full height */
