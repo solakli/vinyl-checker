@@ -2187,7 +2187,22 @@ function _notifyOptimizerDone() {
   }
 }
 
+// Store last result so the sidebar "View Cart" button can reopen it
+var _lastOptimizerResult = null;
+
+function viewFullCart() {
+  if (!_lastOptimizerResult) { openOptimizer(); return; }
+  // Open modal, skip prefs, jump straight to results
+  document.getElementById('optimizerOverlay').style.display = 'flex';
+  document.getElementById('optimizerPrefs').style.display = 'none';
+  document.getElementById('optimizerProgress').style.display = 'none';
+  document.getElementById('optimizerResults').style.display = 'block';
+  showOptimizerResults(_lastOptimizerResult);
+}
+
 function updateSidebarOptimizer(result) {
+  _lastOptimizerResult = result;
+
   var empty = document.getElementById('sidebarEmpty');
   var sidebarRes = document.getElementById('sidebarResults');
   if (!sidebarRes) return;
@@ -2195,38 +2210,43 @@ function updateSidebarOptimizer(result) {
   if (empty) empty.style.display = 'none';
   sidebarRes.style.display = 'block';
 
-  // Build top sellers list (up to 4)
+  // ALL sellers sorted by record count
   var allEntries = (result.cart || []).slice()
     .sort(function(a, b) { return b.items.length - a.items.length || b.totalUsd - a.totalUsd; });
-  var topEntries = allEntries.slice(0, 4);
 
   var totalItems = (result.cart || []).reduce(function(s, e) { return s + e.items.length; }, 0);
+  var covPct = result.total > 0 ? Math.round((result.covered / result.total) * 100) : 0;
 
-  var sellerRowsHtml = topEntries.map(function(entry) {
+  var sellerRowsHtml = allEntries.map(function(entry) {
     var logoFile = storeLogoMap[entry.sourceName] || '';
     var logoInner = logoFile
       ? '<img src="img/' + logoFile + '" alt="">'
       : entry.sourceName.charAt(0).toUpperCase();
-    return '<div class="sidebar-seller">' +
+    var isDiscogs = entry.sourceType !== 'store';
+    var sellerLink = isDiscogs
+      ? 'https://www.discogs.com/seller/' + encodeURIComponent(entry.sourceName) + '/profile'
+      : (entry.items[0] && entry.items[0].url ? entry.items[0].url : '#');
+    return '<a class="sidebar-seller" href="' + sellerLink + '" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="' + (isDiscogs ? 'View on Discogs' : 'Visit store') + '">' +
       '<div class="sidebar-seller-logo">' + logoInner + '</div>' +
       '<div class="sidebar-seller-info">' +
-        '<div class="sidebar-seller-name">' + escapeHtml(entry.sourceName) + '</div>' +
-        '<div class="sidebar-seller-items">' + entry.items.length + ' record' + (entry.items.length !== 1 ? 's' : '') + '</div>' +
+        '<div class="sidebar-seller-name">' + escapeHtml(entry.sourceName) + (isDiscogs ? ' <span class="sidebar-seller-source">Discogs</span>' : '') + '</div>' +
+        '<div class="sidebar-seller-items">' + entry.items.length + ' record' + (entry.items.length !== 1 ? 's' : '') +
+          (entry.shippingCostUsd === 0 ? ' · <span class="sidebar-free-ship">free ship</span>' : ' · +$' + entry.shippingCostUsd.toFixed(0) + ' ship') +
+        '</div>' +
       '</div>' +
       '<div class="sidebar-seller-price">$' + entry.totalUsd.toFixed(2) + '</div>' +
-    '</div>';
+    '</a>';
   }).join('');
 
   sidebarRes.innerHTML =
-    '<div class="sidebar-opt-sub">Optimizing for ' + totalItems + ' item' + (totalItems !== 1 ? 's' : '') + '</div>' +
+    '<div class="sidebar-opt-sub">' + result.covered + '/' + result.total + ' records covered · ' + covPct + '%</div>' +
     '<div class="sidebar-opt-stats">' +
-      '<div class="sidebar-stat-row"><span>Best Combined Price</span><span>$' + result.grandRecordsUsd.toFixed(2) + '</span></div>' +
+      '<div class="sidebar-stat-row"><span>Records</span><span>$' + result.grandRecordsUsd.toFixed(2) + '</span></div>' +
       '<div class="sidebar-stat-row"><span>Est. Shipping</span><span>$' + result.grandShippingUsd.toFixed(2) + '</span></div>' +
       '<div class="sidebar-stat-row total"><span>Total Cost</span><span>$' + result.grandTotalUsd.toFixed(2) + '</span></div>' +
     '</div>' +
-    '<div class="sidebar-sellers">' + sellerRowsHtml + '</div>' +
-    '<button class="btn-checkout" onclick="openOptimizer()">CHECKOUT WITH OPTIMIZED CART</button>' +
-    '<button class="sidebar-alt-link" onclick="openOptimizer()">View Alternative Carts</button>';
+    '<div class="sidebar-sellers-scroll">' + sellerRowsHtml + '</div>' +
+    '<button class="btn-checkout" onclick="viewFullCart()">⛏ VIEW FULL CART</button>';
 }
 
 function showOptimizerResults(result) {
@@ -2282,10 +2302,18 @@ function showOptimizerResults(result) {
         '</div>';
       }).join('');
 
+      var isDiscogs = entry.sourceType !== 'store';
+      var sellerProfileUrl = isDiscogs
+        ? 'https://www.discogs.com/seller/' + encodeURIComponent(entry.sourceName) + '/profile'
+        : null;
+      var visitBtn = sellerProfileUrl
+        ? '<a class="sc-visit-seller" href="' + sellerProfileUrl + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">Visit Seller ↗</a>'
+        : '';
+
       return '<div class="sc-seller' + (i === 0 ? ' open' : '') + '">' +
         '<div class="sc-seller-header" onclick="this.parentElement.classList.toggle(\'open\')">' +
           '<div class="sc-seller-left">' +
-            '<div class="sc-seller-name">' + escapeHtml(entry.sourceName) + '</div>' +
+            '<div class="sc-seller-name">' + escapeHtml(entry.sourceName) + visitBtn + '</div>' +
             '<div class="sc-seller-sub">' + country + ratingHtml + ' · ' + shipping + '</div>' +
           '</div>' +
           '<div class="sc-seller-right">' +

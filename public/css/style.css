@@ -2217,6 +2217,22 @@ body.light .changes-details { border-top-color: rgba(0,0,0,0.06); }
   min-width: 0;
 }
 
+.sc-visit-seller {
+  display: inline-block;
+  margin-left: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #C9A227;
+  text-decoration: none;
+  padding: 2px 7px;
+  border: 1px solid #C9A227;
+  border-radius: 4px;
+  vertical-align: middle;
+  opacity: 0.8;
+  transition: opacity 0.15s, background 0.15s;
+}
+.sc-visit-seller:hover { opacity: 1; background: #C9A22722; }
+
 .sc-seller-name {
   font-size: 13px;
   font-weight: 600;
@@ -2995,11 +3011,24 @@ a.sc-item-price:hover { text-decoration: underline; }
 
 .sidebar-stat-row.total span:last-child { color: #C9A227; }
 
+/* Scrollable seller list — shows ALL sellers, not just 4 */
+.sidebar-sellers-scroll {
+  max-height: 280px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+  scrollbar-width: thin;
+  scrollbar-color: #333 transparent;
+}
+.sidebar-sellers-scroll::-webkit-scrollbar { width: 4px; }
+.sidebar-sellers-scroll::-webkit-scrollbar-track { background: transparent; }
+.sidebar-sellers-scroll::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
 .sidebar-sellers { margin-bottom: 16px; }
 
 .sidebar-seller {
   display: flex;
   align-items: center;
+  text-decoration: none;
   gap: 10px;
   padding: 10px 0;
   border-bottom: 1px solid #222;
@@ -3039,6 +3068,21 @@ a.sc-item-price:hover { text-decoration: underline; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.sidebar-seller:hover { background: #222; border-radius: 6px; }
+
+.sidebar-seller-source {
+  font-size: 9px;
+  background: #2a2510;
+  color: #C9A227;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-weight: 600;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.sidebar-free-ship { color: #4caf50; font-size: 9px; }
 
 .sidebar-seller-items {
   font-size: 10px;
