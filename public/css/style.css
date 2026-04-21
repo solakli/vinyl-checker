@@ -32,11 +32,22 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+/* Theme flash overlay — covers the screen during day/night transition */
+#themeFlash {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
 body {
   background: var(--bg);
   color: var(--text);
   font-family: 'Oswald', sans-serif;
   min-height: 100vh;
+  transition: background-color 0.4s ease, color 0.4s ease;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1034,14 +1045,17 @@ body.light .welcome-go { border-color: rgba(201,162,39,0.3); }
   background: transparent;
   border: none;
   color: #666;
-  font-size: 18px;
+  font-size: 16px;
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 4px;
-  transition: color 0.15s;
+  transition: color 0.15s, transform 0.2s ease;
   line-height: 1;
+  user-select: none;
 }
-.navbar-gear:hover { color: #C9A227; }
+.navbar-gear:hover { color: #C9A227; transform: scale(1.15); }
+/* Hold to reset hint */
+.navbar-gear:active { transform: scale(0.95); }
 
 /* THEME TOGGLE (legacy fixed-position, hidden now navbar has gear) */
 .theme-toggle {

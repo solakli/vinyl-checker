@@ -7,8 +7,19 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
+<!-- Prevent flash: apply saved theme before first paint -->
+<script>
+(function(){
+  var t=localStorage.getItem('gold-digger-theme');
+  if(t==='light') document.body ? document.body.classList.add('light') : document.addEventListener('DOMContentLoaded',function(){document.body.classList.add('light');});
+  // 'auto' and 'dark' start dark (default) — geolocation runs after load
+})();
+</script>
 </head>
-<body class="light">
+<body>
+
+<!-- Theme transition flash overlay -->
+<div id="themeFlash"></div>
 
 <!-- ═══ NAVBAR ═══ -->
 <nav class="navbar">

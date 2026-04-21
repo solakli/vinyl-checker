@@ -82,22 +82,184 @@ const storeDisplayName = {
   'Octopus Records NYC': 'Octopus'
 };
 
-// Theme toggle (persisted)
+// ─── Auto theme: sunrise/sunset switching ─────────────────────────────────────
+// Modes stored in localStorage:
+//   'auto'  – time-based, switches at sunrise/sunset  (default for new users)
+//   'light' – manual light
+//   'dark'  – manual dark
+
+var _autoThemeTimer = null;
+var _autoLatLng     = null;  // [lat, lng] resolved from geolocation/timezone
+
+/** Simplified USNO sunrise/sunset for a given Date + coords. Returns {sunrise, sunset} in ms. */
+function _sunTimes(date, lat, lng) {
+  var JD = Math.floor(date.getTime() / 86400000) + 2440587.5;
+  var n  = JD - 2451545.0;
+  var Js = n - lng / 360;
+  var M  = ((357.5291 + 0.98560028 * Js) % 360 + 360) % 360;
+  var Mr = M * Math.PI / 180;
+  var C  = 1.9148 * Math.sin(Mr) + 0.02 * Math.sin(2*Mr) + 0.0003 * Math.sin(3*Mr);
+  var L  = ((M + C + 180 + 102.9372) % 360 + 360) % 360;
+  var Lr = L * Math.PI / 180;
+  var Jt = 2451545.0 + Js + 0.0053 * Math.sin(Mr) - 0.0069 * Math.sin(2*Lr);
+  var sd = Math.sin(Lr) * Math.sin(23.45 * Math.PI / 180);
+  var d  = Math.asin(sd);
+  var la = lat * Math.PI / 180;
+  var cw = (Math.sin(-0.8333 * Math.PI / 180) - Math.sin(la) * sd) / (Math.cos(la) * Math.cos(d));
+  if (Math.abs(cw) > 1) return null;   // polar day/night
+  var w  = Math.acos(cw) * 180 / Math.PI;
+  var toMs = function(jd) { return (jd - 2440587.5) * 86400000; };
+  return { sunrise: toMs(Jt - w/360), sunset: toMs(Jt + w/360) };
+}
+
+/** Derive approximate lat/lng from browser timezone offset (fallback). */
+function _latLngFromTz() {
+  var off = -(new Date().getTimezoneOffset()); // minutes east of UTC
+  var lng = (off / 60) * 15;                  // 1 hr ≈ 15° longitude
+  var tz  = (Intl.DateTimeFormat().resolvedOptions().timeZone || '').toLowerCase();
+  // Rough latitude by timezone region prefix
+  var lat = tz.startsWith('australia') || tz.startsWith('pacific/auck') ? -33
+          : tz.startsWith('america/sao') || tz.startsWith('america/buenos') ? -23
+          : tz.startsWith('africa') ? 0
+          : 45;  // default: mid Northern Hemisphere
+  return [lat, Math.max(-170, Math.min(170, lng))];
+}
+
+/** Apply theme with a smooth flash-overlay transition. */
+function _applyTheme(isLight, animate) {
+  var flash = document.getElementById('themeFlash');
+  if (animate && flash) {
+    flash.style.background = isLight ? '#f4f4f4' : '#1a1a1a';
+    flash.style.opacity = '1';
+    setTimeout(function() {
+      document.body.classList.toggle('light', isLight);
+      flash.style.opacity = '0';
+      _updateThemeBtn();
+    }, 350);
+  } else {
+    document.body.classList.toggle('light', isLight);
+    _updateThemeBtn();
+  }
+}
+
+/** Update the gear button to reflect the current mode. */
+function _updateThemeBtn() {
+  var btn  = document.getElementById('themeToggle');
+  if (!btn) return;
+  var mode = localStorage.getItem('gold-digger-theme') || 'auto';
+  var day  = document.body.classList.contains('light');
+  if (mode === 'auto') {
+    btn.textContent = day ? '☀' : '🌙';
+    btn.title = 'Auto theme (' + (day ? 'day' : 'night') + ') — click to override';
+  } else {
+    btn.textContent = day ? '☀' : '🌙';
+    btn.title = (day ? 'Light' : 'Dark') + ' mode — click to cycle · hold to reset auto';
+  }
+}
+
+/** Schedule next auto-switch at the next sunrise or sunset. */
+function _scheduleAutoSwitch(lat, lng) {
+  if (_autoThemeTimer) { clearTimeout(_autoThemeTimer); _autoThemeTimer = null; }
+  var now = Date.now();
+  var t   = _sunTimes(new Date(), lat, lng);
+  if (!t) return;
+
+  var nextMs, toLight;
+  if (now < t.sunrise) {
+    nextMs = t.sunrise; toLight = true;
+  } else if (now < t.sunset) {
+    nextMs = t.sunset;  toLight = false;
+  } else {
+    // After sunset — use tomorrow's sunrise
+    var tomorrow = new Date(now + 86400000);
+    var t2 = _sunTimes(tomorrow, lat, lng);
+    nextMs = t2 ? t2.sunrise : (now + 8 * 3600000);
+    toLight = true;
+  }
+
+  var delay = nextMs - now;
+  _autoThemeTimer = setTimeout(function() {
+    if ((localStorage.getItem('gold-digger-theme') || 'auto') === 'auto') {
+      _applyTheme(toLight, true);
+      _scheduleAutoSwitch(lat, lng);
+    }
+  }, delay);
+}
+
+/** Init auto theme — tries geolocation, falls back to timezone. */
+function _initAutoTheme() {
+  function apply(lat, lng) {
+    _autoLatLng = [lat, lng];
+    var t = _sunTimes(new Date(), lat, lng);
+    var isDay = t ? (Date.now() >= t.sunrise && Date.now() < t.sunset) : true;
+    _applyTheme(isDay, false);
+    _scheduleAutoSwitch(lat, lng);
+  }
+  if (navigator.geolocation) {
+    var done = false;
+    var timer = setTimeout(function() {
+      if (!done) { done = true; var ll = _latLngFromTz(); apply(ll[0], ll[1]); }
+    }, 4000); // 4s timeout
+    navigator.geolocation.getCurrentPosition(
+      function(pos) {
+        if (done) return; done = true; clearTimeout(timer);
+        apply(pos.coords.latitude, pos.coords.longitude);
+      },
+      function() {
+        if (done) return; done = true; clearTimeout(timer);
+        var ll = _latLngFromTz(); apply(ll[0], ll[1]);
+      },
+      { timeout: 4000, maximumAge: 3600000 }
+    );
+  } else {
+    var ll = _latLngFromTz(); apply(ll[0], ll[1]);
+  }
+}
+
+// ─── Initialise on load ───────────────────────────────────────────────────────
 (function() {
-  var saved = localStorage.getItem('gold-digger-theme');
-  if (saved === 'dark') {
-    document.body.classList.remove('light');
-    document.getElementById('themeToggle').textContent = 'Light';
-  } else if (saved === 'light') {
+  var saved = localStorage.getItem('gold-digger-theme') || 'auto';
+  if (saved === 'light') {
     document.body.classList.add('light');
-    document.getElementById('themeToggle').textContent = 'Dark';
+    _updateThemeBtn();
+  } else if (saved === 'dark') {
+    document.body.classList.remove('light');
+    _updateThemeBtn();
+  } else {
+    // 'auto' — compute from sunrise/sunset
+    _initAutoTheme();
   }
 })();
+
+// ─── Gear button: cycle auto → manual-opposite → other-manual → auto ──────────
+var _themeHoldTimer = null;
+document.getElementById('themeToggle').addEventListener('mousedown', function() {
+  _themeHoldTimer = setTimeout(function() {
+    // Long-press (1 s) → reset to auto
+    localStorage.setItem('gold-digger-theme', 'auto');
+    _initAutoTheme();
+  }, 1000);
+});
+document.getElementById('themeToggle').addEventListener('mouseup', function() {
+  clearTimeout(_themeHoldTimer);
+});
 document.getElementById('themeToggle').addEventListener('click', function() {
-  document.body.classList.toggle('light');
+  clearTimeout(_themeHoldTimer);
+  var saved   = localStorage.getItem('gold-digger-theme') || 'auto';
   var isLight = document.body.classList.contains('light');
-  this.textContent = isLight ? 'Dark' : 'Light';
-  localStorage.setItem('gold-digger-theme', isLight ? 'light' : 'dark');
+  if (saved === 'auto') {
+    // First click: override to opposite
+    var next = !isLight;
+    localStorage.setItem('gold-digger-theme', next ? 'light' : 'dark');
+    _applyTheme(next, true);
+  } else if (saved === 'light') {
+    localStorage.setItem('gold-digger-theme', 'dark');
+    _applyTheme(false, true);
+  } else {
+    // Was dark → go back to auto
+    localStorage.setItem('gold-digger-theme', 'auto');
+    _initAutoTheme();
+  }
 });
 
 // Scan button
