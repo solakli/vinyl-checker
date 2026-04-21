@@ -422,7 +422,7 @@ function connectSSE(username, force) {
     updateStats();
     render();
     // Show optimizer banner when there are in-stock results
-    var inStockCount = allItems.filter(function(i) { return i.stores && i.stores.some(function(s) { return s.inStock; }); }).length;
+    var inStockCount = resultsData.filter(function(i) { return i.stores && i.stores.some(function(s) { return s.inStock; }); }).length;
     if (inStockCount > 0) {
       document.getElementById('optimizerBanner').style.display = 'flex';
       var nb = document.getElementById('navbarCartBtn');
@@ -2817,22 +2817,22 @@ function switchView(view, linkEl) {
 }
 
 function renderDashboard() {
-  if (!allItems || allItems.length === 0) {
+  if (!resultsData || resultsData.length === 0) {
     document.getElementById('dashStats').innerHTML = '<p style="color:#666;padding:24px">Load your wantlist first.</p>';
     return;
   }
 
-  var total      = allItems.length;
-  var inStock    = allItems.filter(function(i) { return i.stores && i.stores.some(function(s) { return s.inStock; }); });
+  var total      = resultsData.length;
+  var inStock    = resultsData.filter(function(i) { return i.stores && i.stores.some(function(s) { return s.inStock; }); });
   var inStockN   = inStock.length;
-  var withDiscogs= allItems.filter(function(i) { return i.discogsPrice && i.discogsPrice.lowestPrice; }).length;
+  var withDiscogs= resultsData.filter(function(i) { return i.discogsPrice && i.discogsPrice.lowestPrice; }).length;
 
   // Cheapest in-stock finds
   var cheapest = inStock.slice().sort(function(a, b) { return getLowestPrice(a) - getLowestPrice(b); }).slice(0, 6);
 
   // Store breakdown
   var storeCounts = {};
-  allItems.forEach(function(i) {
+  resultsData.forEach(function(i) {
     (i.stores || []).forEach(function(s) {
       if (s.inStock && !s.linkOnly) storeCounts[s.store] = (storeCounts[s.store] || 0) + 1;
     });
@@ -2840,7 +2840,7 @@ function renderDashboard() {
 
   // Genre breakdown (top 6)
   var genreCounts = {};
-  allItems.forEach(function(i) {
+  resultsData.forEach(function(i) {
     if (!i.item.genres) return;
     i.item.genres.split(', ').forEach(function(g) { if (g) genreCounts[g] = (genreCounts[g] || 0) + 1; });
   });
@@ -3117,7 +3117,7 @@ function loadCollection(forceRefresh) {
   var username = getCurrentUsername();
   if (!username) {
     document.getElementById('collGrid').innerHTML =
-      '<div class="coll-empty">Connect your Discogs account to see your collection.</div>';
+      '<div class="coll-empty">Enter your Discogs username above to see your collection.</div>';
     return;
   }
 
@@ -3132,14 +3132,23 @@ function loadCollection(forceRefresh) {
   document.getElementById('collStatsBar').innerHTML = '';
   document.getElementById('collGenreRow').innerHTML = '';
 
-  var url = '/api/collection/' + encodeURIComponent(username) + (forceRefresh ? '?refresh=1' : '');
+  var url = 'api/collection/' + encodeURIComponent(username) + (forceRefresh ? '?refresh=1' : '');
 
   fetch(url)
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      if (data.error && (!data.items || !data.items.length)) {
-        document.getElementById('collGrid').innerHTML =
-          '<div class="coll-empty">Could not load collection: ' + escapeHtml(data.error) + '</div>';
+      // If empty + error, show a helpful message (often means private collection / no OAuth)
+      if ((!data.items || !data.items.length) && (data.error || data.total === 0)) {
+        var msg = data.error || '';
+        var hint = '';
+        if (msg.indexOf('401') !== -1 || msg.toLowerCase().indexOf('auth') !== -1 ||
+            msg.toLowerCase().indexOf('private') !== -1) {
+          hint = 'Your Discogs collection may be private. ' +
+                 '<a href="api/auth/discogs" style="color:var(--gold);text-decoration:underline">Connect Discogs OAuth</a> to access it.';
+        } else {
+          hint = msg ? 'Could not load: ' + escapeHtml(msg) : 'No collection found for ' + escapeHtml(username) + '.';
+        }
+        document.getElementById('collGrid').innerHTML = '<div class="coll-empty">' + hint + '</div>';
         return;
       }
       _collectionData   = data.items || [];
@@ -3150,7 +3159,7 @@ function loadCollection(forceRefresh) {
     })
     .catch(function(e) {
       document.getElementById('collGrid').innerHTML =
-        '<div class="coll-empty">Failed to load collection.</div>';
+        '<div class="coll-empty">Failed to connect to server. Please try again.</div>';
     });
 }
 
