@@ -557,9 +557,10 @@ async function loadExisting(username) {
   if (!username) return;
   document.getElementById('usernameInput').value = username;
 
-  // Reset optimizer state so a new user doesn't see the previous user's results
+  // Reset optimizer + discover state so a new user doesn't see the previous user's results
   if (_optimizerPollTimer) { clearInterval(_optimizerPollTimer); _optimizerPollTimer = null; }
   _lastOptimizerResult = null;
+  _discoverCache = null;
   var overlay = document.getElementById('optimizerOverlay');
   if (overlay) overlay.style.display = 'none';
   var banner = document.getElementById('optimizerBanner');
@@ -2911,6 +2912,189 @@ function renderDashboard() {
       return '<div class="dash-genre-chip"><span class="dash-genre-name">' + escapeHtml(g) + '</span><span class="dash-genre-count">' + genreCounts[g] + ' · ' + pct + '%</span></div>';
     }).join('') +
     '</div>';
+
+  // Discover section — async, loads recommendations from server
+  var discoverWrap = document.getElementById('dashDiscover');
+  if (discoverWrap) {
+    discoverWrap.style.display = '';
+    loadDiscoverSection();
+  }
+}
+
+// ─── Discovered For You ───────────────────────────────────────────────────────
+var _discoverCache    = null;   // cached server response
+var _discoverFilter   = 'all';  // active filter pill
+var _discoverLoading  = false;
+
+function loadDiscoverSection(forceRefresh) {
+  if (_discoverLoading) return;
+  var username = getCurrentUsername();
+  if (!username) return;
+
+  var wrap = document.getElementById('dashDiscover');
+  if (!wrap) return;
+
+  if (_discoverCache && !forceRefresh) {
+    renderDiscoverSection(_discoverCache);
+    return;
+  }
+
+  _discoverLoading = true;
+  _discoverFilter  = 'all';
+
+  wrap.innerHTML =
+    '<div class="discover-header">' +
+      '<span class="dash-section-title" style="margin-bottom:0">Discovered For You</span>' +
+      '<span class="discover-status" id="discoverStatus">Analysing your taste profile…</span>' +
+    '</div>' +
+    '<div class="discover-rack discover-rack-skeleton">' +
+      [0,1,2,3,4,5].map(function() {
+        return '<div class="disc-card disc-card-skeleton"><div class="disc-art-skel"></div><div class="disc-info-skel"><div class="disc-skel-line"></div><div class="disc-skel-line short"></div></div></div>';
+      }).join('') +
+    '</div>';
+
+  fetch('/api/recommend/' + encodeURIComponent(username) + '?limit=40')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      _discoverCache   = data;
+      _discoverLoading = false;
+      renderDiscoverSection(data);
+    })
+    .catch(function(e) {
+      _discoverLoading = false;
+      var wrap2 = document.getElementById('dashDiscover');
+      if (wrap2) wrap2.innerHTML =
+        '<div class="discover-header"><span class="dash-section-title" style="margin-bottom:0">Discovered For You</span>' +
+        '<span class="discover-status discover-err">Could not load recommendations.</span></div>';
+    });
+}
+
+function renderDiscoverSection(data) {
+  var wrap = document.getElementById('dashDiscover');
+  if (!wrap) return;
+
+  var recs = (data && data.recommendations) || [];
+
+  // Determine which filter tabs to show
+  var hasArtist = recs.some(function(r) { return r.reasonTypes && r.reasonTypes.indexOf('artist') !== -1; });
+  var hasLabel  = recs.some(function(r) { return r.reasonTypes && r.reasonTypes.indexOf('label')  !== -1; });
+  var hasStyle  = recs.some(function(r) { return r.reasonTypes && r.reasonTypes.indexOf('style')  !== -1; });
+
+  var filters = ['all'];
+  if (hasArtist) filters.push('artist');
+  if (hasLabel)  filters.push('label');
+  if (hasStyle)  filters.push('style');
+
+  var metaStr = data
+    ? data.inventorySize + ' items scanned · ' + data.wantlistSize + ' in your taste profile · ' + (data.computeMs || 0) + 'ms'
+    : '';
+
+  var topStyleStr = (data && data.topStyles && data.topStyles.length)
+    ? data.topStyles.slice(0, 4).join(', ')
+    : '';
+
+  wrap.innerHTML =
+    '<div class="discover-header">' +
+      '<div>' +
+        '<span class="dash-section-title" style="margin-bottom:0">Discovered For You</span>' +
+        (topStyleStr ? '<span class="discover-taste-pill">' + escapeHtml(topStyleStr) + '</span>' : '') +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:12px">' +
+        '<span class="discover-status">' + escapeHtml(metaStr) + '</span>' +
+        '<button class="discover-refresh-btn" onclick="loadDiscoverSection(true)" title="Refresh recommendations">↻</button>' +
+      '</div>' +
+    '</div>' +
+    // Filter pills
+    '<div class="discover-filters" id="discoverFilters">' +
+      filters.map(function(f) {
+        var label = f === 'all' ? 'All' : f === 'artist' ? 'Artist Match' : f === 'label' ? 'Label Match' : 'Style Match';
+        return '<button class="discover-filter-pill' + (f === _discoverFilter ? ' active' : '') +
+               '" onclick="setDiscoverFilter(\'' + f + '\')">' + label + '</button>';
+      }).join('') +
+    '</div>' +
+    // Cards rack
+    '<div class="discover-rack" id="discoverRack">' +
+      renderDiscoverCards(recs, _discoverFilter) +
+    '</div>';
+}
+
+function setDiscoverFilter(filter) {
+  _discoverFilter = filter;
+  // Update pill active state
+  var pills = document.querySelectorAll('.discover-filter-pill');
+  pills.forEach(function(p) {
+    p.classList.toggle('active', p.textContent.toLowerCase().indexOf(filter === 'all' ? 'all' : filter) !== -1);
+  });
+  // Re-render cards
+  var rack = document.getElementById('discoverRack');
+  if (rack && _discoverCache) {
+    rack.innerHTML = renderDiscoverCards(_discoverCache.recommendations || [], filter);
+  }
+}
+
+// Store display names + colours (matches optimizer card colours)
+var _discoverStoreColour = {
+  gramaphone:  '#c8102e',
+  further:     '#d97706',
+  octopus:     '#3a9bd5',
+  uvs:         '#20c997',
+};
+
+function renderDiscoverCards(recs, filter) {
+  var filtered = recs;
+  if (filter && filter !== 'all') {
+    filtered = recs.filter(function(r) {
+      return r.reasonTypes && r.reasonTypes.indexOf(filter) !== -1;
+    });
+  }
+
+  if (!filtered.length) {
+    return '<div class="discover-empty">No items match this filter — try "All".</div>';
+  }
+
+  return filtered.slice(0, 30).map(function(rec) {
+    var img = rec.image
+      ? '<img class="disc-art-img" src="' + escapeHtml(rec.image) + '" loading="lazy" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">'
+        + '<div class="disc-art-placeholder" style="display:none">♪</div>'
+      : '<div class="disc-art-placeholder">♪</div>';
+
+    var pct     = rec.matchPct || 0;
+    var pctColor = pct >= 80 ? '#4ade80' : pct >= 60 ? '#C9A227' : '#888';
+
+    var reasonPills = (rec.reasons || []).map(function(r, i) {
+      var type  = (rec.reasonTypes || [])[i] || 'style';
+      var cls   = 'disc-reason disc-reason-' + type;
+      return '<span class="' + cls + '">' + escapeHtml(r) + '</span>';
+    }).join('');
+
+    var price  = rec.price ? '$' + rec.price.toFixed(2) : '';
+    var year   = rec.year  ? rec.year : '';
+    var store  = rec.store || '';
+    var storeColour = _discoverStoreColour[store.toLowerCase()] || '#666';
+    var storeLabel  = store.charAt(0).toUpperCase() + store.slice(1);
+
+    var cardUrl = rec.url ? ' onclick="window.open(\'' + escapeHtml(rec.url) + '\',\'_blank\')"' : '';
+
+    return '<div class="disc-card"' + cardUrl + '>' +
+      '<div class="disc-art">' + img + '</div>' +
+      '<div class="disc-match-badge" style="background:' + pctColor + '">' + pct + '%</div>' +
+      '<div class="disc-body">' +
+        '<div class="disc-artist">' + escapeHtml(rec.artist || '') + '</div>' +
+        '<div class="disc-title">' + escapeHtml(rec.title || '') + '</div>' +
+        '<div class="disc-meta">' +
+          '<span class="disc-label">' + escapeHtml(rec.label || '') + '</span>' +
+          (year ? '<span class="disc-year">' + year + '</span>' : '') +
+        '</div>' +
+        '<div class="disc-footer">' +
+          '<div class="disc-reasons">' + reasonPills + '</div>' +
+          '<div class="disc-price-store">' +
+            (price ? '<span class="disc-price">' + price + '</span>' : '') +
+            '<span class="disc-store-badge" style="background:' + storeColour + '">' + escapeHtml(storeLabel) + '</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
 }
 
 function dashStat(value, label, color) {

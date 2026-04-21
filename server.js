@@ -816,6 +816,21 @@ app.get('/api/optimize/latest/:username', function (req, res) {
     }
 });
 
+// ─── Taste-based recommendations ─────────────────────────────────────────────
+app.get('/api/recommend/:username', function (req, res) {
+    var username = (req.params.username || '').trim();
+    if (!username) return res.status(400).json({ error: 'Username required' });
+    try {
+        var rec = require('./lib/recommendations');
+        var limit = Math.min(parseInt(req.query.limit) || 30, 60);
+        var result = rec.getRecommendations(username, limit);
+        res.json(result);
+    } catch (e) {
+        console.error('[recommend] Error for', username, ':', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ═══════════════════════════════════════════════════════════
 // Verify a single store result (user-triggered validation)
 app.post('/api/verify', async function (req, res) {

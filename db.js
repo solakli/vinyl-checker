@@ -1096,6 +1096,13 @@ function getInStockInventory(store) {
     ).all(store);
 }
 
+/** All in-stock inventory across every synced store — for recommendations. */
+function getAllInStockInventory() {
+    return getDb().prepare(
+        'SELECT * FROM store_inventory WHERE available = 1 ORDER BY last_synced_at DESC'
+    ).all();
+}
+
 function getInventoryStats(store) {
     return getDb().prepare(`
         SELECT
@@ -1486,6 +1493,7 @@ module.exports = {
     upsertInventoryBatch: upsertInventoryBatch,
     markStaleInventoryUnavailable: markStaleInventoryUnavailable,
     getInStockInventory: getInStockInventory,
+    getAllInStockInventory: getAllInStockInventory,
     getInventoryStats: getInventoryStats,
     upsertMarketListings: upsertMarketListings,
     getMarketListings: getMarketListings,
