@@ -898,18 +898,23 @@ function render() {
     var storeRowsHtml = '';
     var inStockStores = visibleStores.filter(function(s) { return s.inStock || s.linkOnly; });
 
-    // Build Discogs row — either from extension-synced listings or API price summary
+    // Build Discogs row — three tiers of data richness:
+    //   1. discogsListings  — Chrome extension synced full per-listing details
+    //   2. marketListings   — optimizer-cache summary (seller count, cheapest, US count)
+    //   3. discogsPrice     — API summary only (lowest price + for-sale count)
     var discogsRowHtml = '';
     var dl = item.discogsListings;
+    var ml = item.marketListings;
     var dp = item.discogsPrice;
+    var discogsUrl = (dp && dp.marketplaceUrl) ? dp.marketplaceUrl : ('https://www.discogs.com/sell/release/' + item.item.id);
+
     if (dl && dl.numListings > 0) {
-      // Extension has synced individual listings — show rich data
+      // Tier 1: Extension has synced individual listings — richest data
       var currSym = (dp && dp.currency === 'GBP') ? '£' : (dp && dp.currency === 'EUR') ? '€' : '$';
-      var cheapestDiscogsPrice = dl.cheapestUsd ? (currSym + dl.cheapestUsd.toFixed(2)) : (dp && dp.lowestPrice ? (currSym + dp.lowestPrice.toFixed(2)) : null);
+      var cheapestDiscogsPrice = dl.cheapestUsd ? '$' + dl.cheapestUsd.toFixed(2) : (dp && dp.lowestPrice ? (currSym + dp.lowestPrice.toFixed(2)) : null);
       var usHtml = dl.usCount > 0
         ? '<span class="card-store-tag us-ship">🇺🇸 from $' + dl.cheapestUsUsd.toFixed(2) + '</span>'
         : '<span class="card-store-tag no-us">No US sellers</span>';
-      var discogsUrl = (dp && dp.marketplaceUrl) ? dp.marketplaceUrl : ('https://www.discogs.com/sell/release/' + item.item.id);
       discogsRowHtml = '<a class="card-store-row discogs-row" href="' + escapeHtml(discogsUrl) + '" target="_blank" onclick="event.stopPropagation()">' +
         '<img class="card-store-logo" src="img/discogs.png" alt="Discogs">' +
         '<span class="card-store-name">Discogs</span>' +
@@ -917,15 +922,27 @@ function render() {
         usHtml +
         (cheapestDiscogsPrice ? '<span class="card-store-price">' + cheapestDiscogsPrice + '</span>' : '') +
         '</a>';
+    } else if (ml && ml.numListings > 0) {
+      // Tier 2: Optimizer has fetched marketplace listings — show seller details
+      var mlUsHtml = ml.usCount > 0
+        ? '<span class="card-store-tag us-ship">🇺🇸 from $' + ml.cheapestUsUsd.toFixed(2) + '</span>'
+        : (ml.cheapestUsd ? '' : '<span class="card-store-tag no-us">No US sellers</span>');
+      var mlPrice = ml.cheapestUsd ? '$' + ml.cheapestUsd.toFixed(2) : '';
+      discogsRowHtml = '<a class="card-store-row discogs-row" href="' + escapeHtml(discogsUrl) + '" target="_blank" onclick="event.stopPropagation()">' +
+        '<img class="card-store-logo" src="img/discogs.png" alt="Discogs">' +
+        '<span class="card-store-name">Discogs</span>' +
+        '<span class="card-store-meta">' + ml.numListings + ' listing' + (ml.numListings !== 1 ? 's' : '') + '</span>' +
+        mlUsHtml +
+        (mlPrice ? '<span class="card-store-price">' + mlPrice + '</span>' : '') +
+        '</a>';
     } else if (dp && dp.lowestPrice) {
-      // Only API price summary available
+      // Tier 3: Only API price summary — prompt user to run optimizer for full details
       var currSym2 = dp.currency === 'GBP' ? '£' : dp.currency === 'EUR' ? '€' : '$';
-      var discogsUrl2 = dp.marketplaceUrl || ('https://www.discogs.com/sell/release/' + item.item.id);
-      discogsRowHtml = '<a class="card-store-row discogs-row" href="' + escapeHtml(discogsUrl2) + '" target="_blank" onclick="event.stopPropagation()">' +
+      discogsRowHtml = '<a class="card-store-row discogs-row" href="' + escapeHtml(discogsUrl) + '" target="_blank" onclick="event.stopPropagation()">' +
         '<img class="card-store-logo" src="img/discogs.png" alt="Discogs">' +
         '<span class="card-store-name">Discogs</span>' +
         '<span class="card-store-meta">' + (dp.numForSale || '?') + ' for sale</span>' +
-        '<span class="card-store-tag sync-hint">Sync for details</span>' +
+        '<span class="card-store-tag sync-hint">Run optimizer</span>' +
         '<span class="card-store-price">' + currSym2 + dp.lowestPrice.toFixed(2) + '</span>' +
         '</a>';
     }
@@ -2037,27 +2054,26 @@ window.addEventListener('golddigger:syncstate', function (e) {
   }
 });
 
-function openOptimizer() {
-  document.getElementById('optimizerOverlay').style.display = 'flex';
+// Show the prefs/settings panel inside the overlay (called by rerunOptimizer and fallback).
+function _showOptimizerPrefsPanel(username) {
   document.getElementById('optimizerPrefs').style.display = 'block';
   document.getElementById('optimizerProgress').style.display = 'none';
   document.getElementById('optimizerResults').style.display = 'none';
 
-  // Pre-fill preferences
-  var username = getCurrentUsername();
+  // Pre-fill saved preferences
   if (username) {
     fetch('api/preferences/' + encodeURIComponent(username))
       .then(function(r) { return r.json(); })
       .then(function(prefs) {
-        if (prefs.postcode) document.getElementById('optPostcode').value = prefs.postcode;
-        if (prefs.min_condition) document.getElementById('optCondition').value = prefs.min_condition;
+        if (prefs.postcode)          document.getElementById('optPostcode').value  = prefs.postcode;
+        if (prefs.min_condition)     document.getElementById('optCondition').value = prefs.min_condition;
         if (prefs.min_seller_rating != null) document.getElementById('optRating').value = String(prefs.min_seller_rating);
-        if (prefs.max_price_usd) document.getElementById('optMaxPrice').value = prefs.max_price_usd;
+        if (prefs.max_price_usd)     document.getElementById('optMaxPrice').value  = prefs.max_price_usd;
       })
       .catch(function() {});
   }
 
-  // If extension is installed, kick off Discogs sync automatically
+  // Kick off Discogs sync so listings are fresh before the user hits Run
   if (_extInstalled && username) {
     var serverUrl = (window.location.origin + window.location.pathname).replace(/\/$/, '');
     window.dispatchEvent(new CustomEvent('golddigger:startsync', {
@@ -2066,6 +2082,62 @@ function openOptimizer() {
   } else {
     checkDiscogsSyncStatus();
   }
+}
+
+/**
+ * Open optimizer modal.
+ * - If a result is already in memory → show it immediately.
+ * - Else if the server has a completed result from the last 24 h → restore it.
+ * - Else → show the prefs/run form.
+ */
+function openOptimizer() {
+  document.getElementById('optimizerOverlay').style.display = 'flex';
+  var username = getCurrentUsername();
+
+  // 1. In-memory cache (same session)
+  if (_lastOptimizerResult) {
+    document.getElementById('optimizerPrefs').style.display = 'none';
+    document.getElementById('optimizerProgress').style.display = 'none';
+    document.getElementById('optimizerResults').style.display = 'block';
+    showOptimizerResults(_lastOptimizerResult);
+    return;
+  }
+
+  // 2. Show a brief "Loading…" state while we check the server cache
+  document.getElementById('optimizerPrefs').style.display = 'none';
+  document.getElementById('optimizerProgress').style.display = 'block';
+  document.getElementById('optimizerResults').style.display = 'none';
+  document.getElementById('optProgressFill').style.width = '10%';
+  document.getElementById('optProgressText').textContent = 'Loading last result…';
+
+  if (!username) { _showOptimizerPrefsPanel(username); return; }
+
+  fetch('api/optimize/latest/' + encodeURIComponent(username))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.found && data.result) {
+        // Restore cached result — no need to re-run
+        _lastOptimizerResult = data.result;
+        document.getElementById('optimizerProgress').style.display = 'none';
+        document.getElementById('optimizerResults').style.display = 'block';
+        showOptimizerResults(data.result);
+      } else {
+        // No recent result — fall through to the prefs form
+        _showOptimizerPrefsPanel(username);
+      }
+    })
+    .catch(function() {
+      _showOptimizerPrefsPanel(username);
+    });
+}
+
+/**
+ * Force the prefs/run form — used by "↺ Optimise again" button
+ * so users can change settings and re-run without the cache check.
+ */
+function rerunOptimizer() {
+  document.getElementById('optimizerOverlay').style.display = 'flex';
+  _showOptimizerPrefsPanel(getCurrentUsername());
 }
 
 function checkDiscogsSyncStatus() {
@@ -2293,7 +2365,7 @@ function updateSidebarOptimizer(result) {
     '</div>' +
     '<div class="sidebar-sellers-scroll">' + sellerRowsHtml + '</div>' +
     '<button class="btn-checkout" onclick="viewFullCart()">⛏ VIEW FULL CART</button>' +
-    '<button class="btn-rerun-optimizer" onclick="openOptimizer()">↺ Optimise again</button>';
+    '<button class="btn-rerun-optimizer" onclick="rerunOptimizer()">↺ Optimise again</button>';
 }
 
 function showOptimizerResults(result) {
@@ -2349,9 +2421,13 @@ function showOptimizerResults(result) {
         '</div>';
       }).join('');
 
-      var isDiscogs = entry.sourceType !== 'store';
-      var sellerProfileUrl = isDiscogs
-        ? 'https://www.discogs.com/seller/' + encodeURIComponent(entry.sourceName) + '/profile'
+      var isDiscogs = entry.sourceType === 'discogs' || entry.sourceType === 'discogs_seller';
+      // Use the raw sellerUsername field; fall back to stripping " (Discogs)" from sourceName
+      // so older cached results still work.
+      var sellerUsername = entry.sellerUsername ||
+        (isDiscogs ? entry.sourceName.replace(/\s*\(Discogs\)\s*$/, '').trim() : null);
+      var sellerProfileUrl = sellerUsername
+        ? 'https://www.discogs.com/seller/' + encodeURIComponent(sellerUsername) + '/profile'
         : null;
       var visitBtn = sellerProfileUrl
         ? '<a class="sc-visit-seller" href="' + sellerProfileUrl + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">Visit Seller ↗</a>'

@@ -268,6 +268,76 @@ function initTables() {
             started_at TEXT,
             completed_at TEXT
         );
+
+        -- ── OBSERVABILITY ─────────────────────────────────────────────
+
+        -- One row per scan job (full, force, background, daily).
+        -- Gives timing, throughput, and error counts per run.
+        CREATE TABLE IF NOT EXISTS scan_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            run_type TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            finished_at TEXT,
+            items_checked INTEGER DEFAULT 0,
+            items_in_stock INTEGER DEFAULT 0,
+            items_cached INTEGER DEFAULT 0,
+            items_error INTEGER DEFAULT 0,
+            changes_detected INTEGER DEFAULT 0,
+            duration_ms INTEGER,
+            error TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_scan_runs_user ON scan_runs(user_id, started_at);
+
+        -- Per-store scraper error log (one row per error per item).
+        -- Populated by scanner whenever a store check returns .error.
+        CREATE TABLE IF NOT EXISTS scraper_errors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scan_run_id INTEGER,
+            user_id INTEGER,
+            store TEXT NOT NULL,
+            artist TEXT,
+            title TEXT,
+            error_msg TEXT,
+            error_type TEXT,
+            occurred_at TEXT NOT NULL,
+            FOREIGN KEY (scan_run_id) REFERENCES scan_runs(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_scraper_errors_store ON scraper_errors(store, occurred_at);
+        CREATE INDEX IF NOT EXISTS idx_scraper_errors_run ON scraper_errors(scan_run_id);
+
+        -- One row per validator job run (TP/FP/FN/TN aggregate).
+        CREATE TABLE IF NOT EXISTS validator_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            started_at TEXT NOT NULL,
+            finished_at TEXT,
+            items_checked INTEGER DEFAULT 0,
+            tp INTEGER DEFAULT 0,
+            fp INTEGER DEFAULT 0,
+            fn INTEGER DEFAULT 0,
+            tn INTEGER DEFAULT 0,
+            errors INTEGER DEFAULT 0,
+            duration_ms INTEGER
+        );
+
+        -- Cumulative confusion matrix per store, updated after each validator run.
+        -- precision_pct = tp/(tp+fp)*100,  recall_pct = tp/(tp+fn)*100
+        CREATE TABLE IF NOT EXISTS store_accuracy (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            store TEXT UNIQUE NOT NULL,
+            tp INTEGER DEFAULT 0,
+            fp INTEGER DEFAULT 0,
+            fn INTEGER DEFAULT 0,
+            tn INTEGER DEFAULT 0,
+            errors INTEGER DEFAULT 0,
+            checked INTEGER DEFAULT 0,
+            precision_pct REAL,
+            recall_pct REAL,
+            last_updated TEXT
+        );
     `);
 
     // Indexes
@@ -617,10 +687,40 @@ function getFullResults(userId) {
         }
     }
 
+    // Build per-item summary from market_listings (populated by the cart optimizer).
+    // Keyed by discogs_id since market_listings doesn't know wantlist_ids.
+    var marketListingsSummary = {};
+    if (items.length > 0) {
+        var discogIds = items.map(function (w) { return w.discogs_id; }).filter(Boolean);
+        if (discogIds.length > 0) {
+            var ph2 = discogIds.map(function () { return '?'; }).join(',');
+            try {
+                var mlRows = d.prepare(
+                    'SELECT discogs_release_id,' +
+                    '  COUNT(*) as num_listings,' +
+                    '  MIN(price_usd) as cheapest_usd,' +
+                    '  MIN(CASE WHEN seller_country IN (\'US\',\'United States\') THEN price_usd END) as cheapest_us_usd,' +
+                    '  SUM(CASE WHEN seller_country IN (\'US\',\'United States\') THEN 1 ELSE 0 END) as us_count' +
+                    ' FROM market_listings' +
+                    ' WHERE discogs_release_id IN (' + ph2 + ') AND expires_at > ?' +
+                    ' GROUP BY discogs_release_id'
+                ).all([...discogIds, new Date().toISOString()]);
+                var mlByRelease = {};
+                mlRows.forEach(function (r) { mlByRelease[r.discogs_release_id] = r; });
+                items.forEach(function (w) {
+                    if (w.discogs_id && mlByRelease[w.discogs_id]) {
+                        marketListingsSummary[w.id] = mlByRelease[w.discogs_id];
+                    }
+                });
+            } catch (e) { /* market_listings may be empty — not fatal */ }
+        }
+    }
+
     return items.map(function (w) {
         var stores = getStoreResults(w.id);
         var price = getDiscogsPrice(w.id);
         var ls = listingsSummary[w.id] || null;
+        var mls = marketListingsSummary[w.id] || null;
 
         return {
             item: {
@@ -651,6 +751,13 @@ function getFullResults(userId) {
                 cheapestUsUsd: ls.cheapest_us_usd || null,
                 usCount: ls.us_count || 0,
                 cheapestUsCond: ls.cheapest_us_cond || null
+            } : null,
+            // Summary from market_listings (populated when cart optimizer is run)
+            marketListings: mls ? {
+                numListings: mls.num_listings || 0,
+                cheapestUsd: mls.cheapest_usd || null,
+                cheapestUsUsd: mls.cheapest_us_usd || null,
+                usCount: mls.us_count || 0
             } : null,
             wantlistId: w.id
         };
@@ -1118,6 +1225,20 @@ function getOptimizerJob(jobId) {
     return getDb().prepare('SELECT * FROM optimizer_jobs WHERE id = ?').get(jobId) || null;
 }
 
+/**
+ * Return the most recent completed optimizer job for a user,
+ * if it was completed within maxAgeHours (default 24).
+ */
+function getLatestCompletedOptimization(username, maxAgeHours) {
+    maxAgeHours = maxAgeHours || 24;
+    var cutoff = new Date(Date.now() - maxAgeHours * 3600 * 1000).toISOString();
+    return getDb().prepare(
+        "SELECT id, username, completed_at, result FROM optimizer_jobs " +
+        "WHERE username = ? AND status = 'done' AND completed_at > ? " +
+        "ORDER BY completed_at DESC LIMIT 1"
+    ).get(username, cutoff) || null;
+}
+
 function getActiveJobForUser(username) {
     return getDb().prepare(
         "SELECT * FROM optimizer_jobs WHERE username = ? AND status IN ('pending','processing') ORDER BY created_at DESC LIMIT 1"
@@ -1178,6 +1299,150 @@ function cleanupOldOptimizerJobs() {
     return info.changes;
 }
 
+// ═══════════════════════════════════════════════════════════
+// OBSERVABILITY — scan run logging
+// ═══════════════════════════════════════════════════════════
+
+function startScanRun(userId, runType) {
+    var info = getDb().prepare(
+        'INSERT INTO scan_runs (user_id, run_type, started_at) VALUES (?, ?, ?)'
+    ).run(userId, runType, new Date().toISOString());
+    return info.lastInsertRowid;
+}
+
+function finishScanRun(runId, stats) {
+    stats = stats || {};
+    var now = new Date().toISOString();
+    var row = getDb().prepare('SELECT started_at FROM scan_runs WHERE id = ?').get(runId);
+    var durationMs = row ? (Date.now() - new Date(row.started_at).getTime()) : null;
+    getDb().prepare(`
+        UPDATE scan_runs SET
+            finished_at = ?, items_checked = ?, items_in_stock = ?,
+            items_cached = ?, items_error = ?, changes_detected = ?,
+            duration_ms = ?, error = ?
+        WHERE id = ?
+    `).run(
+        now,
+        stats.itemsChecked || 0, stats.itemsInStock || 0,
+        stats.itemsCached || 0, stats.itemsError || 0,
+        stats.changesDetected || 0, durationMs, stats.error || null,
+        runId
+    );
+}
+
+// Log a single scraper error (store check returned .error field).
+// error_type: one of 'err_timeout', 'err_nav', 'err_protocol', 'err_selector', 'err_other'
+function logScraperError(scanRunId, userId, store, artist, title, errorMsg, errorType) {
+    getDb().prepare(`
+        INSERT INTO scraper_errors
+            (scan_run_id, user_id, store, artist, title, error_msg, error_type, occurred_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+        scanRunId || null, userId || null, store,
+        artist || null, title || null,
+        errorMsg || null, errorType || null,
+        new Date().toISOString()
+    );
+}
+
+function getRecentScanRuns(userId, limit) {
+    return getDb().prepare(
+        'SELECT * FROM scan_runs WHERE user_id = ? ORDER BY started_at DESC LIMIT ?'
+    ).all(userId, limit || 20);
+}
+
+// Aggregate error counts per store over the last N days
+function getScraperErrorStats(days) {
+    days = days || 7;
+    var since = new Date(Date.now() - days * 86400000).toISOString();
+    return getDb().prepare(`
+        SELECT store,
+               COUNT(*) AS total_errors,
+               SUM(CASE WHEN error_type = 'err_timeout'  THEN 1 ELSE 0 END) AS timeouts,
+               SUM(CASE WHEN error_type = 'err_nav'      THEN 1 ELSE 0 END) AS nav_errors,
+               SUM(CASE WHEN error_type = 'err_protocol' THEN 1 ELSE 0 END) AS protocol_errors,
+               SUM(CASE WHEN error_type = 'err_selector' THEN 1 ELSE 0 END) AS selector_errors,
+               MAX(occurred_at) AS last_error_at
+        FROM scraper_errors
+        WHERE occurred_at >= ?
+        GROUP BY store
+        ORDER BY total_errors DESC
+    `).all(since);
+}
+
+// ═══════════════════════════════════════════════════════════
+// OBSERVABILITY — validator tracking
+// ═══════════════════════════════════════════════════════════
+
+function startValidatorRun() {
+    var info = getDb().prepare(
+        'INSERT INTO validator_runs (started_at) VALUES (?)'
+    ).run(new Date().toISOString());
+    return info.lastInsertRowid;
+}
+
+function finishValidatorRun(runId, stats) {
+    stats = stats || {};
+    var now = new Date().toISOString();
+    var row = getDb().prepare('SELECT started_at FROM validator_runs WHERE id = ?').get(runId);
+    var durationMs = row ? (Date.now() - new Date(row.started_at).getTime()) : null;
+    var total = (stats.tp || 0) + (stats.fp || 0) + (stats.fn || 0) + (stats.tn || 0) + (stats.errors || 0);
+    getDb().prepare(`
+        UPDATE validator_runs SET
+            finished_at = ?, items_checked = ?,
+            tp = ?, fp = ?, fn = ?, tn = ?, errors = ?, duration_ms = ?
+        WHERE id = ?
+    `).run(
+        now, total,
+        stats.tp || 0, stats.fp || 0, stats.fn || 0, stats.tn || 0, stats.errors || 0,
+        durationMs, runId
+    );
+}
+
+// Accumulate delta into per-store cumulative confusion matrix.
+// delta: { tp, fp, fn, tn, errors, checked }
+function updateStoreAccuracy(store, delta) {
+    var d = getDb();
+    var now = new Date().toISOString();
+    var existing = d.prepare('SELECT * FROM store_accuracy WHERE store = ?').get(store);
+    if (existing) {
+        var tp = (existing.tp || 0) + (delta.tp || 0);
+        var fp = (existing.fp || 0) + (delta.fp || 0);
+        var fn = (existing.fn || 0) + (delta.fn || 0);
+        var tn = (existing.tn || 0) + (delta.tn || 0);
+        var errs = (existing.errors || 0) + (delta.errors || 0);
+        var checked = (existing.checked || 0) + (delta.checked || 0);
+        var precision = (tp + fp) > 0 ? Math.round(tp / (tp + fp) * 1000) / 10 : null;
+        var recall    = (tp + fn) > 0 ? Math.round(tp / (tp + fn) * 1000) / 10 : null;
+        d.prepare(`
+            UPDATE store_accuracy
+            SET tp=?, fp=?, fn=?, tn=?, errors=?, checked=?,
+                precision_pct=?, recall_pct=?, last_updated=?
+            WHERE store=?
+        `).run(tp, fp, fn, tn, errs, checked, precision, recall, now, store);
+    } else {
+        var tp2 = delta.tp || 0, fp2 = delta.fp || 0, fn2 = delta.fn || 0;
+        var precision2 = (tp2 + fp2) > 0 ? Math.round(tp2 / (tp2 + fp2) * 1000) / 10 : null;
+        var recall2    = (tp2 + fn2) > 0 ? Math.round(tp2 / (tp2 + fn2) * 1000) / 10 : null;
+        d.prepare(`
+            INSERT INTO store_accuracy
+                (store, tp, fp, fn, tn, errors, checked, precision_pct, recall_pct, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(store, tp2, fp2, fn2, delta.tn || 0, delta.errors || 0, delta.checked || 0,
+               precision2, recall2, now);
+    }
+}
+
+function getStoreAccuracy() {
+    return getDb().prepare('SELECT * FROM store_accuracy ORDER BY store').all();
+}
+
+function getValidatorRunHistory(limit) {
+    return getDb().prepare(
+        'SELECT * FROM validator_runs ORDER BY started_at DESC LIMIT ?'
+    ).all(limit || 20);
+}
+
 module.exports = {
     getDb: getDb,
     getOrCreateUser: getOrCreateUser,
@@ -1230,6 +1495,7 @@ module.exports = {
     saveUserPreferences: saveUserPreferences,
     createOptimizerJob: createOptimizerJob,
     getOptimizerJob: getOptimizerJob,
+    getLatestCompletedOptimization: getLatestCompletedOptimization,
     getActiveJobForUser: getActiveJobForUser,
     getQueuePosition: getQueuePosition,
     claimNextJob: claimNextJob,
@@ -1240,5 +1506,16 @@ module.exports = {
     saveDiscogsListings: saveDiscogsListings,
     getDiscogsListings: getDiscogsListings,
     getMarketplaceSyncStatus: getMarketplaceSyncStatus,
+    // Observability
+    startScanRun: startScanRun,
+    finishScanRun: finishScanRun,
+    logScraperError: logScraperError,
+    getRecentScanRuns: getRecentScanRuns,
+    getScraperErrorStats: getScraperErrorStats,
+    startValidatorRun: startValidatorRun,
+    finishValidatorRun: finishValidatorRun,
+    updateStoreAccuracy: updateStoreAccuracy,
+    getStoreAccuracy: getStoreAccuracy,
+    getValidatorRunHistory: getValidatorRunHistory,
     close: close
 };

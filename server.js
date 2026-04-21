@@ -801,6 +801,21 @@ app.get('/api/optimize/job/:jobId', function (req, res) {
     res.json(response);
 });
 
+// GET /api/optimize/latest/:username — return last completed result (within 24h)
+// Used by the client to restore results without re-running.
+app.get('/api/optimize/latest/:username', function (req, res) {
+    var username = req.params.username.trim();
+    if (!username) return res.status(400).json({ error: 'Username required' });
+    var job = db.getLatestCompletedOptimization(username, 24);
+    if (!job || !job.result) return res.json({ found: false });
+    try {
+        var result = JSON.parse(job.result);
+        res.json({ found: true, jobId: job.id, completedAt: job.completed_at, result: result });
+    } catch (e) {
+        res.json({ found: false });
+    }
+});
+
 // ═══════════════════════════════════════════════════════════
 // Verify a single store result (user-triggered validation)
 app.post('/api/verify', async function (req, res) {
@@ -1245,6 +1260,24 @@ app.get('/api/health', function (req, res) {
         var jobHealthData = scanner.getJobHealth ? scanner.getJobHealth() : {};
         var validationData = scanner.getValidationStats ? scanner.getValidationStats() : {};
 
+        // ── Observability (persisted) ──────────────────────────────
+        // Recent scan runs (all users, last 10)
+        var recentScanRuns = [];
+        try {
+            recentScanRuns = d.prepare(
+                'SELECT sr.*, u.username FROM scan_runs sr JOIN users u ON u.id = sr.user_id ORDER BY sr.started_at DESC LIMIT 10'
+            ).all();
+        } catch(e) {}
+
+        // Error rate per store (last 7 days)
+        var scraperErrorStats = db.getScraperErrorStats(7);
+
+        // Cumulative accuracy per store
+        var storeAccuracy = db.getStoreAccuracy();
+
+        // Last 5 validator runs
+        var validatorHistory = db.getValidatorRunHistory(5);
+
         res.json({
             status: 'ok',
             timestamp: new Date().toISOString(),
@@ -1262,7 +1295,12 @@ app.get('/api/health', function (req, res) {
             activeScans: activeScanInfo,
             jobHealth: jobHealthData,
             validation: validationData,
-            workers: 3
+            // Persisted observability
+            recentScanRuns: recentScanRuns,
+            scraperErrorStats: scraperErrorStats,
+            storeAccuracy: storeAccuracy,
+            validatorHistory: validatorHistory,
+            workers: scanner.NUM_WORKERS || 5
         });
     } catch (e) {
         res.status(500).json({ status: 'error', error: e.message });
