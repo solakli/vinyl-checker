@@ -645,11 +645,14 @@ app.get('/api/collection/:username', async function (req, res) {
     try {
         var oauthToken = db.getOAuthToken(user.id, 'discogs');
         var headersFn  = null;
-        if (oauthToken) {
+        if (oauthToken && oauthToken.access_token && oauthToken.access_secret) {
             var oauthLib = require('./lib/oauth');
             headersFn = function (method, path) {
-                return oauthLib.buildDiscogsHeaders(method, 'https://api.discogs.com' + path,
-                    oauthToken.access_token, oauthToken.access_secret);
+                var url = 'https://api.discogs.com' + path;
+                return {
+                    'User-Agent': 'VinylWantlistChecker/1.0',
+                    'Authorization': oauthLib.discogsAuthHeader(method, url, oauthToken.access_token, oauthToken.access_secret)
+                };
             };
         }
         var items = await discogs.fetchCollection(username, headersFn);
