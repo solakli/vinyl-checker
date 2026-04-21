@@ -1404,7 +1404,7 @@ app.post('/api/admin/cleanup', function (req, res) {
 // ═══════════════════════════════════════════════════════════════
 
 var SYNC_INTERVAL = parseInt(process.env.SYNC_INTERVAL) || (60 * 60 * 1000); // default 1 hour
-var DAILY_CHECK_INTERVAL = 15 * 60 * 1000; // Check every 15 min if any user needs daily rescan
+var DAILY_CHECK_INTERVAL = 60 * 60 * 1000; // Check every 1 hour if any user needs daily rescan
 var NOTIFICATION_WEBHOOK = process.env.NOTIFICATION_WEBHOOK || '';
 
 app.listen(PORT, function () {
