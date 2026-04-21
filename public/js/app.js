@@ -2037,6 +2037,10 @@ window.addEventListener('golddigger:syncstate', function (e) {
     }
     if (runBtn) runBtn.disabled = true;
   } else if (state.completedAt) {
+    // Stamp sync time so we skip re-syncing for 30 min
+    var syncUser = getCurrentUsername();
+    if (syncUser) _lastDiscogsSyncTime[syncUser] = Date.now();
+
     if (hint)   hint.style.display   = 'none';
     if (doneEl) {
       doneEl.style.display = 'block';
@@ -2073,8 +2077,12 @@ function _showOptimizerPrefsPanel(username) {
       .catch(function() {});
   }
 
-  // Kick off Discogs sync so listings are fresh before the user hits Run
-  if (_extInstalled && username) {
+  // Kick off Discogs sync — but only if we haven't synced recently (< 30 min)
+  var SYNC_STALE_MS = 30 * 60 * 1000;
+  var lastSync = _lastDiscogsSyncTime[username] || 0;
+  var syncIsStale = (Date.now() - lastSync) > SYNC_STALE_MS;
+
+  if (_extInstalled && username && syncIsStale) {
     var serverUrl = (window.location.origin + window.location.pathname).replace(/\/$/, '');
     window.dispatchEvent(new CustomEvent('golddigger:startsync', {
       detail: { username: username, serverUrl: serverUrl }
@@ -2083,6 +2091,9 @@ function _showOptimizerPrefsPanel(username) {
     checkDiscogsSyncStatus();
   }
 }
+
+// Tracks when we last triggered a Discogs sync per username
+var _lastDiscogsSyncTime = {};
 
 /**
  * Open optimizer modal.
