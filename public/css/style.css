@@ -2682,57 +2682,57 @@ a.sc-item-price:hover { text-decoration: underline; }
 
 .card-art {
   position: relative;
-  height: 160px;
-  background: #0e0e0e;
+  height: 190px;
+  background: #0a0a0a;
   overflow: hidden;
   flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  padding: 16px 12px 16px 16px;
-  gap: 0;
 }
 
-/* Album cover — small, crisp, no stretching */
+/* Album sleeve — left 60% of the card art, full height */
 .card-cover {
-  width: 120px;
-  height: 120px;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 60%;
+  height: 100%;
   object-fit: cover;
-  border-radius: 3px;
-  flex-shrink: 0;
-  position: relative;
   z-index: 2;
-  box-shadow: -4px 0 16px rgba(0,0,0,0.6);
+  /* Right-edge shadow so disc looks physically behind sleeve */
+  box-shadow: 8px 0 24px rgba(0,0,0,0.9);
 }
 
-/* Vinyl disc peeking out from behind the cover */
+/* Vinyl disc — 50% hidden behind sleeve, 50% peeking out right */
 .card-vinyl-disc {
   position: absolute;
-  right: -8px;
+  /* left: center of disc = right edge of sleeve (60%) → left = 60% - 50% of disc width */
+  left: calc(60% - 90px);
   top: 50%;
   transform: translateY(-50%);
-  width: 136px;
-  height: 136px;
+  width: 180px;
+  height: 180px;
   z-index: 1;
-  opacity: 0.9;
+  filter: drop-shadow(3px 0 10px rgba(0,0,0,0.7));
 }
 
+/* Placeholder sleeve when no album art */
 .card-art-placeholder {
-  width: 120px;
-  height: 120px;
-  flex-shrink: 0;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 60%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #1a1a1a;
-  border-radius: 3px;
-  position: relative;
   z-index: 2;
+  box-shadow: 8px 0 24px rgba(0,0,0,0.9);
 }
 
 .card-art-placeholder svg {
-  width: 70%;
-  height: 70%;
-  opacity: 0.25;
+  width: 55%;
+  height: 55%;
+  opacity: 0.2;
 }
 
 .card-condition {

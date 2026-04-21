@@ -782,19 +782,35 @@ function render() {
     // Discogs release URL for Wishlist button
     var discogsReleaseUrl = 'https://www.discogs.com/release/' + item.item.id;
 
-    // Vinyl disc SVG — always shown peeking behind the cover
+    // Vinyl disc SVG — half peeking out from behind the sleeve
     var vinylDisc = '<svg class="card-vinyl-disc" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">' +
-      '<circle cx="50" cy="50" r="50" fill="#111"/>' +
-      '<circle cx="50" cy="50" r="46" fill="none" stroke="#222" stroke-width="1.5"/>' +
-      '<circle cx="50" cy="50" r="42" fill="none" stroke="#1e1e1e" stroke-width="3"/>' +
-      '<circle cx="50" cy="50" r="37" fill="none" stroke="#222" stroke-width="2"/>' +
-      '<circle cx="50" cy="50" r="32" fill="none" stroke="#1e1e1e" stroke-width="2.5"/>' +
-      '<circle cx="50" cy="50" r="27" fill="none" stroke="#222" stroke-width="1.5"/>' +
-      '<circle cx="50" cy="50" r="22" fill="none" stroke="#1e1e1e" stroke-width="2"/>' +
-      '<circle cx="50" cy="50" r="17" fill="none" stroke="#222" stroke-width="1.5"/>' +
-      '<circle cx="50" cy="50" r="10" fill="#1a1a1a"/>' +
-      '<circle cx="50" cy="50" r="10" fill="none" stroke="#C9A227" stroke-width="0.8" opacity="0.5"/>' +
-      '<circle cx="50" cy="50" r="3" fill="#C9A227" opacity="0.7"/>' +
+      '<defs>' +
+        // Subtle shine gradient — catches light on the right (visible) half
+        '<radialGradient id="discShine" cx="65%" cy="35%" r="55%">' +
+          '<stop offset="0%" stop-color="#2a2a2a"/>' +
+          '<stop offset="60%" stop-color="#111"/>' +
+          '<stop offset="100%" stop-color="#0a0a0a"/>' +
+        '</radialGradient>' +
+      '</defs>' +
+      '<circle cx="50" cy="50" r="50" fill="url(#discShine)"/>' +
+      // Grooves — more rings for realism
+      '<circle cx="50" cy="50" r="47" fill="none" stroke="#1e1e1e" stroke-width="0.8"/>' +
+      '<circle cx="50" cy="50" r="44" fill="none" stroke="#252525" stroke-width="1"/>' +
+      '<circle cx="50" cy="50" r="41" fill="none" stroke="#1a1a1a" stroke-width="1.2"/>' +
+      '<circle cx="50" cy="50" r="38" fill="none" stroke="#252525" stroke-width="0.8"/>' +
+      '<circle cx="50" cy="50" r="35" fill="none" stroke="#1a1a1a" stroke-width="1.2"/>' +
+      '<circle cx="50" cy="50" r="32" fill="none" stroke="#222" stroke-width="0.8"/>' +
+      '<circle cx="50" cy="50" r="29" fill="none" stroke="#1a1a1a" stroke-width="1"/>' +
+      '<circle cx="50" cy="50" r="26" fill="none" stroke="#252525" stroke-width="0.8"/>' +
+      '<circle cx="50" cy="50" r="23" fill="none" stroke="#1a1a1a" stroke-width="1"/>' +
+      '<circle cx="50" cy="50" r="20" fill="none" stroke="#222" stroke-width="0.8"/>' +
+      // Label area
+      '<circle cx="50" cy="50" r="14" fill="#141414"/>' +
+      '<circle cx="50" cy="50" r="14" fill="none" stroke="#C9A227" stroke-width="0.6" opacity="0.4"/>' +
+      '<circle cx="50" cy="50" r="9"  fill="none" stroke="#C9A227" stroke-width="0.4" opacity="0.25"/>' +
+      // Centre spindle hole
+      '<circle cx="50" cy="50" r="2.5" fill="#0a0a0a"/>' +
+      '<circle cx="50" cy="50" r="2.5" fill="none" stroke="#C9A227" stroke-width="0.5" opacity="0.6"/>' +
     '</svg>';
 
     // Album art
