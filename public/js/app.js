@@ -956,8 +956,10 @@ function render() {
         priceHtml +
         storeRowsHtml +
         '<div class="card-actions">' +
-          '<button class="btn-add-cart" onclick="event.stopPropagation();window.open(\'' + escapeHtml(cheapestUrl) + '\',\'_blank\')">Add to Cart</button>' +
-          '<button class="btn-wishlist" onclick="event.stopPropagation();window.open(\'' + discogsReleaseUrl + '\',\'_blank\')">Wishlist</button>' +
+          (cheapestUrl !== '#'
+            ? '<button class="btn-add-cart" onclick="event.stopPropagation();window.open(\'' + escapeHtml(cheapestUrl) + '\',\'_blank\')">Buy Now</button>'
+            : '<button class="btn-add-cart" onclick="event.stopPropagation();window.open(\'' + discogsReleaseUrl + '/marketplace\',\'_blank\')">Buy Now</button>') +
+          '<button class="btn-wishlist" onclick="event.stopPropagation();window.open(\'' + discogsReleaseUrl + '\',\'_blank\')">View on Discogs</button>' +
         '</div>' +
       '</div>' +
     '</div>';
@@ -2418,6 +2420,131 @@ function statBlock(value, label) {
   return '<div class="opt-stat">' +
     '<div class="opt-stat-value">' + value + '</div>' +
     '<div class="opt-stat-label">' + label + '</div>' +
+  '</div>';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// VIEW SWITCHING — Wantlist / Dashboard / Collection
+// ═══════════════════════════════════════════════════════════════
+
+function switchView(view, linkEl) {
+  // Update active nav link
+  document.querySelectorAll('.nav-link').forEach(function(a) { a.classList.remove('active'); });
+  if (linkEl) linkEl.classList.add('active');
+
+  // Show/hide views
+  var isWantlist = view === 'wantlist';
+  document.getElementById('view-dashboard').style.display  = view === 'dashboard'  ? 'block' : 'none';
+  document.getElementById('view-collection').style.display = view === 'collection' ? 'block' : 'none';
+  document.getElementById('headerControls').style.display  = isWantlist ? '' : 'none';
+  document.querySelector('.app-layout').style.display      = isWantlist ? '' : 'none';
+
+  if (view === 'dashboard') renderDashboard();
+}
+
+function renderDashboard() {
+  if (!allItems || allItems.length === 0) {
+    document.getElementById('dashStats').innerHTML = '<p style="color:#666;padding:24px">Load your wantlist first.</p>';
+    return;
+  }
+
+  var total      = allItems.length;
+  var inStock    = allItems.filter(function(i) { return i.stores && i.stores.some(function(s) { return s.inStock; }); });
+  var inStockN   = inStock.length;
+  var withDiscogs= allItems.filter(function(i) { return i.discogsPrice && i.discogsPrice.lowestPrice; }).length;
+
+  // Cheapest in-stock finds
+  var cheapest = inStock.slice().sort(function(a, b) { return getLowestPrice(a) - getLowestPrice(b); }).slice(0, 6);
+
+  // Store breakdown
+  var storeCounts = {};
+  allItems.forEach(function(i) {
+    (i.stores || []).forEach(function(s) {
+      if (s.inStock && !s.linkOnly) storeCounts[s.store] = (storeCounts[s.store] || 0) + 1;
+    });
+  });
+
+  // Genre breakdown (top 6)
+  var genreCounts = {};
+  allItems.forEach(function(i) {
+    if (!i.item.genres) return;
+    i.item.genres.split(', ').forEach(function(g) { if (g) genreCounts[g] = (genreCounts[g] || 0) + 1; });
+  });
+  var topGenres = Object.keys(genreCounts).sort(function(a,b){return genreCounts[b]-genreCounts[a];}).slice(0,6);
+
+  // Optimizer summary
+  var optSummary = _lastOptimizerResult
+    ? '<div class="dash-opt-summary">' +
+        '<div class="dash-opt-label">Last Optimizer Run</div>' +
+        '<div class="dash-opt-stats">' +
+          '<span>$' + _lastOptimizerResult.grandTotalUsd.toFixed(2) + ' total</span>' +
+          '<span>' + _lastOptimizerResult.covered + '/' + _lastOptimizerResult.total + ' covered</span>' +
+          '<span>' + _lastOptimizerResult.numSellers + ' sellers</span>' +
+        '</div>' +
+        '<button class="dash-opt-btn" onclick="switchView(\'wantlist\',document.querySelector(\'[data-view=wantlist]\'));setTimeout(viewFullCart,100)">View Cart →</button>' +
+      '</div>'
+    : '<div class="dash-opt-summary empty"><p>Run the optimizer to see your best cart here.</p>' +
+        '<button class="dash-opt-btn" onclick="switchView(\'wantlist\',document.querySelector(\'[data-view=wantlist]\'));setTimeout(openOptimizer,100)">⛏ Dig For Gold</button>' +
+      '</div>';
+
+  // Big stat blocks
+  document.getElementById('dashStats').innerHTML =
+    '<div class="dash-stat-row">' +
+      dashStat(total, 'In Wantlist', '#888') +
+      dashStat(inStockN, 'In Stock Now', '#4caf50') +
+      dashStat(withDiscogs, 'Discogs Prices', '#C9A227') +
+      dashStat(Object.keys(storeCounts).length, 'Stores Found In', '#6a9adf') +
+    '</div>' +
+    optSummary;
+
+  // Best finds
+  document.getElementById('dashInStock').innerHTML =
+    '<div class="dash-section-title">Cheapest In Stock Right Now</div>' +
+    '<div class="dash-finds">' +
+    cheapest.map(function(item) {
+      var price = getLowestPrice(item);
+      var thumb = item.item.thumb ? '<img src="' + escapeHtml(item.item.thumb) + '" alt="">' : '<div class="dash-find-nothumb">♪</div>';
+      return '<div class="dash-find" onclick="openReleaseDetail(' + item.item.id + ')">' +
+        '<div class="dash-find-thumb">' + thumb + '</div>' +
+        '<div class="dash-find-info">' +
+          '<div class="dash-find-artist">' + escapeHtml(item.item.artist) + '</div>' +
+          '<div class="dash-find-title">' + escapeHtml(item.item.title) + '</div>' +
+        '</div>' +
+        '<div class="dash-find-price">$' + price.toFixed(2) + '</div>' +
+      '</div>';
+    }).join('') +
+    '</div>';
+
+  // Store breakdown
+  document.getElementById('dashStores').innerHTML =
+    '<div class="dash-section-title">In Stock By Store</div>' +
+    '<div class="dash-store-bars">' +
+    Object.keys(storeCounts).sort(function(a,b){return storeCounts[b]-storeCounts[a];}).map(function(store) {
+      var pct = Math.round((storeCounts[store] / total) * 100);
+      var logo = storeLogoMap[store] ? '<img src="img/' + storeLogoMap[store] + '" alt="">' : '';
+      return '<div class="dash-bar-row">' +
+        '<div class="dash-bar-label">' + logo + escapeHtml(storeDisplayName[store] || store) + '</div>' +
+        '<div class="dash-bar-track"><div class="dash-bar-fill" style="width:' + Math.max(pct * 4, 4) + '%"></div></div>' +
+        '<div class="dash-bar-count">' + storeCounts[store] + '</div>' +
+      '</div>';
+    }).join('') +
+    '</div>';
+
+  // Genre breakdown
+  document.getElementById('dashGenres').innerHTML =
+    '<div class="dash-section-title">Your Collection By Genre</div>' +
+    '<div class="dash-genre-chips">' +
+    topGenres.map(function(g) {
+      var pct = Math.round((genreCounts[g] / total) * 100);
+      return '<div class="dash-genre-chip"><span class="dash-genre-name">' + escapeHtml(g) + '</span><span class="dash-genre-count">' + genreCounts[g] + ' · ' + pct + '%</span></div>';
+    }).join('') +
+    '</div>';
+}
+
+function dashStat(value, label, color) {
+  return '<div class="dash-stat">' +
+    '<div class="dash-stat-value" style="color:' + color + '">' + value + '</div>' +
+    '<div class="dash-stat-label">' + label + '</div>' +
   '</div>';
 }
 

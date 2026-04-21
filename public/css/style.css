@@ -1029,8 +1029,23 @@ body.light .store-row.link-only-row:hover { border-color: rgba(0,0,0,0.15); }
 body.light .welcome-input { background: rgba(0,0,0,0.03); }
 body.light .welcome-go { border-color: rgba(201,162,39,0.3); }
 
-/* THEME TOGGLE */
+/* GEAR / THEME TOGGLE — now in navbar */
+.navbar-gear {
+  background: transparent;
+  border: none;
+  color: #666;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: color 0.15s;
+  line-height: 1;
+}
+.navbar-gear:hover { color: #C9A227; }
+
+/* THEME TOGGLE (legacy fixed-position, hidden now navbar has gear) */
 .theme-toggle {
+  display: none; /* replaced by .navbar-gear */
   position: fixed; top: 16px; right: 28px; z-index: 200;
   background: rgba(255,255,255,0.04);
   border: 1px solid var(--border);
@@ -3177,3 +3192,213 @@ body.light .card-price-v2.no-price { color: #bbb; }
   .app-layout { padding: 0 12px 32px; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
 }
+
+/* ═══════════════════════════════════════════════════════
+   DASHBOARD & COLLECTION VIEWS
+═══════════════════════════════════════════════════════ */
+
+.alt-view { min-height: 80vh; }
+
+.dash-wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 24px 60px;
+}
+
+/* Big stat blocks */
+.dash-stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.dash-stat {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  padding: 24px 20px;
+  text-align: center;
+}
+
+.dash-stat-value {
+  font-family: 'Oswald', sans-serif;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+
+.dash-stat-label {
+  font-size: 11px;
+  color: #666;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+/* Optimizer summary */
+.dash-opt-summary {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-left: 3px solid #C9A227;
+  border-radius: 12px;
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+.dash-opt-summary.empty { border-left-color: #333; opacity: 0.7; }
+
+.dash-opt-label {
+  font-size: 11px;
+  color: #666;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.dash-opt-stats {
+  display: flex;
+  gap: 20px;
+  flex: 1;
+}
+
+.dash-opt-stats span {
+  font-size: 14px;
+  font-weight: 600;
+  color: #C9A227;
+}
+
+.dash-opt-btn {
+  background: transparent;
+  border: 1px solid #C9A227;
+  color: #C9A227;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: 'Oswald', sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.dash-opt-btn:hover { background: #C9A227; color: #111; }
+
+/* Section layout */
+.dash-sections {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 20px;
+}
+
+.dash-section {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.dash-section-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #C9A227;
+  margin-bottom: 16px;
+}
+
+/* Cheapest finds */
+.dash-finds { display: flex; flex-direction: column; gap: 10px; }
+
+.dash-find {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  transition: background 0.12s;
+}
+.dash-find:hover { background: #222; }
+
+.dash-find-thumb {
+  width: 38px;
+  height: 38px;
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #111;
+}
+.dash-find-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.dash-find-nothumb { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #444; font-size: 16px; }
+
+.dash-find-info { flex: 1; min-width: 0; }
+.dash-find-artist { font-size: 10px; color: #C9A227; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dash-find-title { font-size: 12px; color: #ddd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dash-find-price { font-size: 14px; font-weight: 700; color: #fff; flex-shrink: 0; }
+
+/* Store bars */
+.dash-store-bars { display: flex; flex-direction: column; gap: 10px; }
+
+.dash-bar-row { display: flex; align-items: center; gap: 10px; }
+
+.dash-bar-label {
+  width: 80px;
+  font-size: 11px;
+  color: #888;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.dash-bar-label img { width: 14px; height: 14px; object-fit: contain; }
+
+.dash-bar-track { flex: 1; height: 6px; background: #2a2a2a; border-radius: 3px; overflow: hidden; }
+.dash-bar-fill { height: 100%; background: #C9A227; border-radius: 3px; transition: width 0.4s; }
+.dash-bar-count { font-size: 11px; color: #666; width: 20px; text-align: right; flex-shrink: 0; }
+
+/* Genre chips */
+.dash-genre-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.dash-genre-chip {
+  background: #222;
+  border: 1px solid #2a2a2a;
+  border-radius: 20px;
+  padding: 6px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.dash-genre-name { font-size: 12px; font-weight: 600; color: #ddd; }
+.dash-genre-count { font-size: 10px; color: #666; }
+
+/* Collection coming soon */
+.collection-coming-soon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 60vh;
+  gap: 16px;
+}
+.coming-soon-icon { font-size: 64px; }
+.collection-coming-soon h2 { font-size: 32px; font-weight: 800; color: #fff; }
+.collection-coming-soon p { font-size: 16px; color: #888; max-width: 460px; line-height: 1.6; }
+.coming-soon-sub { font-size: 13px !important; color: #555 !important; }
+
+/* Light mode overrides */
+body.light .dash-stat { background: #fff; border-color: #e8e8e8; }
+body.light .dash-section { background: #fff; border-color: #e8e8e8; }
+body.light .dash-opt-summary { background: #fff; border-color: #e8e8e8; }
+body.light .dash-find:hover { background: #f5f5f5; }
+body.light .dash-bar-track { background: #eee; }
+body.light .dash-genre-chip { background: #f5f5f5; border-color: #e0e0e0; }
+body.light .dash-find-title { color: #333; }
+body.light .dash-stat-label { color: #999; }

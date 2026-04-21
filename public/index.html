@@ -17,11 +17,9 @@
     <span>GOLD</span><span style="color:#fff"> DIGGER</span>
   </div>
   <div class="navbar-nav">
-    <a href="#" class="active">Dashboard</a>
-    <a href="#">Market</a>
-    <a href="#">My Collection</a>
-    <a href="#">Wishlist</a>
-    <a href="#">Settings</a>
+    <a href="#" class="nav-link active" data-view="wantlist" onclick="switchView('wantlist',this);return false;">Wantlist</a>
+    <a href="#" class="nav-link" data-view="dashboard" onclick="switchView('dashboard',this);return false;">Dashboard</a>
+    <a href="#" class="nav-link" data-view="collection" onclick="switchView('collection',this);return false;">My Collection</a>
   </div>
   <div class="navbar-right">
     <div class="live-badge" id="liveBadge" style="display:none"><div class="live-dot"></div> Scanning</div>
@@ -48,8 +46,8 @@
       </button>
       <span class="auth-status" id="authStatus"></span>
     </div>
-    <button class="theme-toggle" id="themeToggle">Dark</button>
-    <button class="navbar-cart" id="navbarCartBtn" style="display:none" onclick="openOptimizer()">Dig For Gold</button>
+    <button class="navbar-gear" id="themeToggle" title="Toggle theme">⚙</button>
+    <button class="navbar-cart" id="navbarCartBtn" style="display:none" onclick="openOptimizer()">⛏ Dig For Gold</button>
   </div>
 </nav>
 
@@ -113,6 +111,28 @@
 </div>
 
 <!-- ═══ MAIN APP LAYOUT ═══ -->
+<!-- ═══ DASHBOARD VIEW ═══ -->
+<div id="view-dashboard" class="alt-view" style="display:none">
+  <div class="dash-wrap">
+    <div class="dash-stats" id="dashStats"></div>
+    <div class="dash-sections">
+      <div class="dash-section" id="dashInStock"></div>
+      <div class="dash-section" id="dashStores"></div>
+      <div class="dash-section" id="dashGenres"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ COLLECTION VIEW ═══ -->
+<div id="view-collection" class="alt-view" style="display:none">
+  <div class="dash-wrap collection-coming-soon">
+    <div class="coming-soon-icon">📀</div>
+    <h2>My Collection</h2>
+    <p>Sync your Discogs collection and browse it with the same card layout — condition grades, purchase prices, and more.</p>
+    <p class="coming-soon-sub">Coming soon. The same Chrome extension that syncs your wantlist will handle this too.</p>
+  </div>
+</div>
+
 <div class="app-layout">
 
   <!-- Left: grid -->
