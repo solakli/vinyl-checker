@@ -3824,3 +3824,270 @@ body.light .disc-art-skel, body.light .disc-skel-line {
   background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
   background-size: 200% 100%;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   COLLECTION VIEW
+   ═══════════════════════════════════════════════════════════════ */
+
+.coll-wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 24px 60px;
+}
+
+.coll-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.coll-header-left { display: flex; align-items: baseline; gap: 10px; }
+.coll-header-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.coll-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.coll-count {
+  font-size: 12px;
+  color: #666;
+  letter-spacing: 0.3px;
+}
+
+.coll-search {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #ddd;
+  font-family: 'Oswald', sans-serif;
+  font-size: 13px;
+  padding: 7px 12px;
+  width: 220px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.coll-search::placeholder { color: #555; }
+.coll-search:focus { border-color: #C9A227; }
+
+.coll-sort {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #aaa;
+  font-family: 'Oswald', sans-serif;
+  font-size: 12px;
+  padding: 7px 10px;
+  outline: none;
+  cursor: pointer;
+}
+
+.coll-refresh-btn {
+  background: transparent;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #666;
+  font-family: 'Oswald', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+.coll-refresh-btn:hover { border-color: #C9A227; color: #C9A227; }
+
+/* Stats bar */
+.coll-stats-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #555;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.coll-stats-sep { color: #333; }
+
+/* Genre filter pills */
+.coll-genre-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+.coll-genre-pill {
+  background: transparent;
+  border: 1px solid #2e2e2e;
+  border-radius: 20px;
+  color: #666;
+  font-family: 'Oswald', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.coll-genre-pill:hover { border-color: #C9A227; color: #C9A227; }
+.coll-genre-pill.active { border-color: #C9A227; background: #C9A227; color: #111; }
+.coll-pill-count { opacity: 0.7; font-size: 10px; }
+
+/* Card grid */
+.coll-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.coll-card {
+  background: #1e1e1e;
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+  display: flex;
+  flex-direction: column;
+}
+.coll-card:hover {
+  border-color: #C9A227;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+}
+
+.coll-art-wrap {
+  width: 100%;
+  aspect-ratio: 1;
+  background: #111;
+  overflow: hidden;
+  position: relative;
+}
+.coll-card-art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.coll-art-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2a2a2a;
+  font-size: 40px;
+}
+
+.coll-card-body {
+  padding: 10px 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+}
+
+.coll-card-artist {
+  font-size: 10px;
+  font-weight: 700;
+  color: #C9A227;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.3px;
+}
+.coll-card-title {
+  font-size: 12px;
+  color: #ddd;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.3;
+}
+.coll-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+.coll-label {
+  font-size: 10px;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+.coll-year {
+  font-size: 10px;
+  color: #555;
+  flex-shrink: 0;
+}
+
+.coll-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 4px;
+}
+.coll-chip {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: rgba(201,162,39,0.1);
+  color: #C9A227;
+  letter-spacing: 0.2px;
+}
+.coll-chip-style {
+  background: rgba(100,180,220,0.1);
+  color: #6ab4dc;
+}
+
+.coll-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 5px;
+}
+.coll-format {
+  font-size: 9px;
+  color: #555;
+  letter-spacing: 0.2px;
+}
+.coll-rating {
+  font-size: 10px;
+  color: #C9A227;
+  letter-spacing: 1px;
+}
+
+.coll-loading, .coll-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 60px 20px;
+  color: #555;
+  font-size: 14px;
+}
+
+/* Light mode */
+body.light .coll-title       { color: #111; }
+body.light .coll-search      { background: #fff; border-color: #ddd; color: #333; }
+body.light .coll-sort        { background: #fff; border-color: #ddd; color: #666; }
+body.light .coll-refresh-btn { border-color: #ddd; color: #aaa; }
+body.light .coll-genre-pill  { border-color: #e0e0e0; color: #aaa; }
+body.light .coll-genre-pill:hover  { border-color: #C9A227; color: #a07c10; }
+body.light .coll-genre-pill.active { background: #C9A227; color: #111; }
+body.light .coll-card       { background: #fff; border-color: #eee; }
+body.light .coll-card:hover { border-color: #C9A227; }
+body.light .coll-art-wrap   { background: #f5f5f5; }
+body.light .coll-art-placeholder { color: #ddd; }
+body.light .coll-card-title { color: #333; }
+body.light .coll-label      { color: #999; }
+body.light .coll-stats-bar  { color: #bbb; }

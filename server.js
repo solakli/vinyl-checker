@@ -57,7 +57,11 @@ const STORE_SYNCERS = {
     octopus: function () {
         var m = require('./lib/stores/octopus');
         return { name: m.STORE_NAME, sync: m.syncOctopus };
-    }
+    },
+    hardwax: function () {
+        var m = require('./lib/stores/hardwax');
+        return { name: m.STORE_NAME, sync: m.syncHardwax };
+    },
 };
 const SYNC_STALE_AFTER_MS = 20 * 60 * 60 * 1000; // re-sync if last run was 20+ hours ago
 
@@ -609,6 +613,49 @@ app.get('/api/results/:username', function (req, res) {
         });
     } catch (e) {
         res.json({ username: req.params.username, total: 0, inStock: 0, results: [] });
+    }
+});
+
+// ─── Collection sync + retrieval ─────────────────────────────────────────────
+app.get('/api/collection/:username', async function (req, res) {
+    var username = (req.params.username || '').trim();
+    if (!username) return res.status(400).json({ error: 'Username required' });
+
+    var user = db.getOrCreateUser(username);
+    var forceRefresh = req.query.refresh === '1';
+
+    // Return cached collection unless force-refresh requested
+    if (!forceRefresh) {
+        var cached = db.getCollection(user.id);
+        if (cached && cached.length > 0) {
+            var stats = db.getCollectionStats(user.id);
+            return res.json({ source: 'cache', total: cached.length, stats: stats, items: cached });
+        }
+    }
+
+    // Fetch fresh from Discogs
+    try {
+        var oauthToken = db.getOAuthToken(user.id, 'discogs');
+        var headersFn  = null;
+        if (oauthToken) {
+            var oauthLib = require('./lib/oauth');
+            headersFn = function (method, path) {
+                return oauthLib.buildDiscogsHeaders(method, 'https://api.discogs.com' + path,
+                    oauthToken.access_token, oauthToken.access_secret);
+            };
+        }
+        var items = await discogs.fetchCollection(username, headersFn);
+        db.syncCollectionItems(user.id, items);
+        var stats2 = db.getCollectionStats(user.id);
+        res.json({ source: 'fresh', total: items.length, stats: stats2, items: db.getCollection(user.id) });
+    } catch (e) {
+        console.error('[collection] Error for', username, ':', e.message);
+        // Fall back to cache even if stale
+        var stale = db.getCollection(user.id);
+        if (stale && stale.length > 0) {
+            return res.json({ source: 'stale', total: stale.length, items: stale, error: e.message });
+        }
+        res.status(500).json({ error: e.message });
     }
 });
 

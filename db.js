@@ -347,6 +347,30 @@ function initTables() {
     // Migrations — add columns if missing
     try { db.exec('ALTER TABLE users ADD COLUMN last_daily_rescan TEXT'); } catch(e) {}
     try { db.exec('ALTER TABLE market_listings ADD COLUMN price_usd REAL'); } catch(e) {}
+
+    // Collection table — mirrors user's Discogs collection (records they own)
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS collection (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL,
+            discogs_id  INTEGER,
+            instance_id INTEGER,
+            artist      TEXT,
+            title       TEXT,
+            year        INTEGER,
+            label       TEXT,
+            catno       TEXT,
+            thumb       TEXT,
+            genres      TEXT DEFAULT '',
+            styles      TEXT DEFAULT '',
+            formats     TEXT DEFAULT '',
+            date_added  TEXT,
+            rating      INTEGER DEFAULT 0,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            UNIQUE(user_id, instance_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_collection_user ON collection(user_id);
+    `);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1450,6 +1474,59 @@ function getValidatorRunHistory(limit) {
     ).all(limit || 20);
 }
 
+// ═══════════════════════════════════════════════════════════
+// COLLECTION OPERATIONS
+// ═══════════════════════════════════════════════════════════
+
+function syncCollectionItems(userId, items) {
+    var d = getDb();
+    var stmt = d.prepare(`
+        INSERT INTO collection
+            (user_id, discogs_id, instance_id, artist, title, year, label, catno,
+             thumb, genres, styles, formats, date_added, rating)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(user_id, instance_id) DO UPDATE SET
+            artist=excluded.artist, title=excluded.title, year=excluded.year,
+            label=excluded.label, catno=excluded.catno, thumb=excluded.thumb,
+            genres=excluded.genres, styles=excluded.styles, formats=excluded.formats,
+            date_added=excluded.date_added, rating=excluded.rating
+    `);
+    var run = d.transaction(function(rows) {
+        rows.forEach(function(item) {
+            stmt.run(
+                userId, item.discogs_id || null, item.instance_id || null,
+                item.artist || '', item.title || '',
+                item.year || null, item.label || '', item.catno || '',
+                item.thumb || '', item.genres || '', item.styles || '',
+                item.formats || '', item.date_added || null, item.rating || 0
+            );
+        });
+    });
+    run(items);
+
+    // Mark items that disappeared from Discogs as removed (soft delete via negative instance_id)
+    // For now, just add — we don't prune (user might have removed from Discogs but we keep history)
+    return items.length;
+}
+
+function getCollection(userId) {
+    return getDb().prepare(
+        'SELECT * FROM collection WHERE user_id = ? ORDER BY date_added DESC'
+    ).all(userId);
+}
+
+function getCollectionStats(userId) {
+    return getDb().prepare(`
+        SELECT
+            COUNT(*) AS total,
+            COUNT(DISTINCT label) AS unique_labels,
+            COUNT(DISTINCT artist) AS unique_artists,
+            MIN(year) AS earliest_year,
+            MAX(year) AS latest_year
+        FROM collection WHERE user_id = ?
+    `).get(userId);
+}
+
 module.exports = {
     getDb: getDb,
     getOrCreateUser: getOrCreateUser,
@@ -1525,5 +1602,8 @@ module.exports = {
     updateStoreAccuracy: updateStoreAccuracy,
     getStoreAccuracy: getStoreAccuracy,
     getValidatorRunHistory: getValidatorRunHistory,
-    close: close
+    close: close,
+    syncCollectionItems: syncCollectionItems,
+    getCollection: getCollection,
+    getCollectionStats: getCollectionStats,
 };

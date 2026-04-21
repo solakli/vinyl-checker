@@ -138,11 +138,31 @@
 
 <!-- ═══ COLLECTION VIEW ═══ -->
 <div id="view-collection" class="alt-view" style="display:none">
-  <div class="dash-wrap collection-coming-soon">
-    <div class="coming-soon-icon">📀</div>
-    <h2>My Collection</h2>
-    <p>Sync your Discogs collection and browse it with the same card layout — condition grades, purchase prices, and more.</p>
-    <p class="coming-soon-sub">Coming soon. The same Chrome extension that syncs your wantlist will handle this too.</p>
+  <div class="coll-wrap">
+    <!-- Header bar -->
+    <div class="coll-header">
+      <div class="coll-header-left">
+        <span class="coll-title">My Collection</span>
+        <span class="coll-count" id="collCount"></span>
+      </div>
+      <div class="coll-header-right">
+        <input type="text" class="coll-search" id="collSearch" placeholder="Search artist, title, label…">
+        <select class="coll-sort" id="collSort">
+          <option value="date-new">Date Added (Newest)</option>
+          <option value="date-old">Date Added (Oldest)</option>
+          <option value="artist">Artist A–Z</option>
+          <option value="year-new">Year (Newest)</option>
+          <option value="year-old">Year (Oldest)</option>
+        </select>
+        <button class="coll-refresh-btn" id="collRefreshBtn" onclick="loadCollection(true)" title="Sync from Discogs">↻ Sync</button>
+      </div>
+    </div>
+    <!-- Genre filter chips -->
+    <div class="coll-genre-row" id="collGenreRow"></div>
+    <!-- Stats bar -->
+    <div class="coll-stats-bar" id="collStatsBar"></div>
+    <!-- Grid -->
+    <div class="coll-grid" id="collGrid"></div>
   </div>
 </div>
 

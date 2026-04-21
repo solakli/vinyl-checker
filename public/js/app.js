@@ -2812,7 +2812,8 @@ function switchView(view, linkEl) {
   document.getElementById('headerControls').style.display  = isWantlist ? '' : 'none';
   document.querySelector('.app-layout').style.display      = isWantlist ? '' : 'none';
 
-  if (view === 'dashboard') renderDashboard();
+  if (view === 'dashboard')  renderDashboard();
+  if (view === 'collection') loadCollection(false);
 }
 
 function renderDashboard() {
@@ -3103,5 +3104,180 @@ function dashStat(value, label, color) {
     '<div class="dash-stat-label">' + label + '</div>' +
   '</div>';
 }
+
+// ═══════════════════════════════════════════════════════════════
+// COLLECTION VIEW
+// ═══════════════════════════════════════════════════════════════
+
+var _collectionData    = null;   // raw items from server
+var _collectionLoaded  = false;
+var _collGenreFilter   = null;   // active genre pill
+
+function loadCollection(forceRefresh) {
+  var username = getCurrentUsername();
+  if (!username) {
+    document.getElementById('collGrid').innerHTML =
+      '<div class="coll-empty">Connect your Discogs account to see your collection.</div>';
+    return;
+  }
+
+  if (_collectionLoaded && !forceRefresh) {
+    renderCollectionGrid();
+    return;
+  }
+
+  _collGenreFilter = null;
+  document.getElementById('collGrid').innerHTML = '<div class="coll-loading">Syncing collection from Discogs…</div>';
+  document.getElementById('collCount').textContent = '';
+  document.getElementById('collStatsBar').innerHTML = '';
+  document.getElementById('collGenreRow').innerHTML = '';
+
+  var url = '/api/collection/' + encodeURIComponent(username) + (forceRefresh ? '?refresh=1' : '');
+
+  fetch(url)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error && (!data.items || !data.items.length)) {
+        document.getElementById('collGrid').innerHTML =
+          '<div class="coll-empty">Could not load collection: ' + escapeHtml(data.error) + '</div>';
+        return;
+      }
+      _collectionData   = data.items || [];
+      _collectionLoaded = true;
+      renderCollectionStats(data.stats);
+      renderCollectionGenres();
+      renderCollectionGrid();
+    })
+    .catch(function(e) {
+      document.getElementById('collGrid').innerHTML =
+        '<div class="coll-empty">Failed to load collection.</div>';
+    });
+}
+
+function renderCollectionStats(stats) {
+  var countEl = document.getElementById('collCount');
+  if (countEl && _collectionData) countEl.textContent = _collectionData.length + ' records';
+
+  var bar = document.getElementById('collStatsBar');
+  if (!bar || !stats) return;
+  var parts = [];
+  if (stats.unique_artists) parts.push('<span>' + stats.unique_artists + ' artists</span>');
+  if (stats.unique_labels)  parts.push('<span>' + stats.unique_labels  + ' labels</span>');
+  if (stats.earliest_year && stats.latest_year && stats.earliest_year !== stats.latest_year)
+    parts.push('<span>' + stats.earliest_year + ' – ' + stats.latest_year + '</span>');
+  bar.innerHTML = parts.join('<span class="coll-stats-sep">·</span>');
+}
+
+function renderCollectionGenres() {
+  var row = document.getElementById('collGenreRow');
+  if (!row || !_collectionData) return;
+
+  var genreCounts = {};
+  _collectionData.forEach(function(item) {
+    (item.genres || '').split('|').map(function(g) { return g.trim(); }).filter(Boolean)
+      .forEach(function(g) { genreCounts[g] = (genreCounts[g] || 0) + 1; });
+  });
+
+  var genres = Object.keys(genreCounts).sort(function(a,b) { return genreCounts[b]-genreCounts[a]; }).slice(0, 12);
+  if (!genres.length) { row.innerHTML = ''; return; }
+
+  row.innerHTML =
+    '<button class="coll-genre-pill' + (!_collGenreFilter ? ' active' : '') + '" onclick="setCollGenre(null)">All</button>' +
+    genres.map(function(g) {
+      return '<button class="coll-genre-pill' + (g === _collGenreFilter ? ' active' : '') +
+             '" onclick="setCollGenre(\'' + escapeHtml(g) + '\')">' + escapeHtml(g) + ' <span class="coll-pill-count">' + genreCounts[g] + '</span></button>';
+    }).join('');
+}
+
+function setCollGenre(genre) {
+  _collGenreFilter = genre;
+  renderCollectionGenres();
+  renderCollectionGrid();
+}
+
+function renderCollectionGrid() {
+  if (!_collectionData) return;
+
+  var search = (document.getElementById('collSearch')  || {}).value || '';
+  var sort   = (document.getElementById('collSort')    || {}).value || 'date-new';
+  var searchL = search.toLowerCase();
+
+  var items = _collectionData.filter(function(item) {
+    if (_collGenreFilter) {
+      var genres = (item.genres || '').split('|').map(function(g) { return g.trim(); });
+      if (genres.indexOf(_collGenreFilter) === -1) return false;
+    }
+    if (searchL) {
+      var hay = ((item.artist || '') + ' ' + (item.title || '') + ' ' + (item.label || '') + ' ' + (item.catno || '')).toLowerCase();
+      if (hay.indexOf(searchL) === -1) return false;
+    }
+    return true;
+  });
+
+  items = items.slice().sort(function(a, b) {
+    switch (sort) {
+      case 'date-new': return (b.date_added || '').localeCompare(a.date_added || '');
+      case 'date-old': return (a.date_added || '').localeCompare(b.date_added || '');
+      case 'artist':   return (a.artist || '').localeCompare(b.artist || '');
+      case 'year-new': return (b.year || 0) - (a.year || 0);
+      case 'year-old': return (a.year || 0) - (b.year || 0);
+      default: return 0;
+    }
+  });
+
+  var grid = document.getElementById('collGrid');
+  var countEl = document.getElementById('collCount');
+  if (countEl) countEl.textContent = items.length + ' of ' + _collectionData.length + ' records';
+
+  if (!items.length) {
+    grid.innerHTML = '<div class="coll-empty">' + (search || _collGenreFilter ? 'No records match your filter.' : 'No collection items found.') + '</div>';
+    return;
+  }
+
+  grid.innerHTML = items.map(function(item) {
+    var thumb = item.thumb
+      ? '<img class="coll-card-art" src="' + escapeHtml(item.thumb) + '" loading="lazy" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">'
+        + '<div class="coll-card-art coll-art-placeholder" style="display:none">♪</div>'
+      : '<div class="coll-card-art coll-art-placeholder">♪</div>';
+
+    var genreChips = (item.genres || '').split('|').map(function(g) { return g.trim(); }).filter(Boolean).slice(0,2)
+      .map(function(g) { return '<span class="coll-chip">' + escapeHtml(g) + '</span>'; }).join('');
+    var styleChips = (item.styles || '').split('|').map(function(s) { return s.trim(); }).filter(Boolean).slice(0,2)
+      .map(function(s) { return '<span class="coll-chip coll-chip-style">' + escapeHtml(s) + '</span>'; }).join('');
+
+    var formats = item.formats ? '<span class="coll-format">' + escapeHtml(item.formats.split(';')[0].trim()) + '</span>' : '';
+    var year    = item.year    ? '<span class="coll-year">' + item.year + '</span>' : '';
+    var rating  = item.rating  ? '★'.repeat(item.rating) : '';
+
+    var discUrl = item.discogs_id
+      ? ' onclick="window.open(\'https://www.discogs.com/release/' + item.discogs_id + '\',\'_blank\')"'
+      : '';
+
+    return '<div class="coll-card"' + discUrl + '>' +
+      '<div class="coll-art-wrap">' + thumb + '</div>' +
+      '<div class="coll-card-body">' +
+        '<div class="coll-card-artist">' + escapeHtml(item.artist || '') + '</div>' +
+        '<div class="coll-card-title">'  + escapeHtml(item.title  || '') + '</div>' +
+        '<div class="coll-card-meta">' +
+          '<span class="coll-label">' + escapeHtml(item.label || '') + '</span>' +
+          year +
+        '</div>' +
+        '<div class="coll-card-tags">' + genreChips + styleChips + '</div>' +
+        '<div class="coll-card-footer">' +
+          formats +
+          (rating ? '<span class="coll-rating">' + rating + '</span>' : '') +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+// Wire search/sort inputs to re-render
+document.addEventListener('DOMContentLoaded', function() {
+  var searchEl = document.getElementById('collSearch');
+  var sortEl   = document.getElementById('collSort');
+  if (searchEl) searchEl.addEventListener('input',  function() { if (_collectionLoaded) renderCollectionGrid(); });
+  if (sortEl)   sortEl.addEventListener('change', function() { if (_collectionLoaded) renderCollectionGrid(); });
+});
 
 
