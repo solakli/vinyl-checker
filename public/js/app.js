@@ -2161,10 +2161,11 @@ function checkDiscogsSyncStatus() {
 
 document.getElementById('optimizerClose').addEventListener('click', function() {
   document.getElementById('optimizerOverlay').style.display = 'none';
+  _stopOptimizerFlavor();
 });
 
 document.getElementById('optimizerOverlay').addEventListener('click', function(e) {
-  if (e.target === this) this.style.display = 'none';
+  if (e.target === this) { this.style.display = 'none'; _stopOptimizerFlavor(); }
 });
 
 document.getElementById('optPostcode').addEventListener('input', function() {
@@ -2197,6 +2198,86 @@ function getCurrentUsername() {
 }
 
 var _optimizerPollTimer = null;
+var _optimizerFlavorTimer = null;
+var _optimizerFlavorPhase = 'pending';
+var _optimizerFlavorIdx = 0;
+
+var _optimizerFlavor = {
+  pending: [
+    'Getting in line…',
+    'Waiting for the worker to finish their coffee…',
+    'Queued up behind another digger…',
+  ],
+  wantlist: [
+    'Pulling your hit list…',
+    'How many records do you even need?',
+    'Counting the damage…',
+  ],
+  stores: [
+    'Raiding Gramaphone, Further Records, Octopus…',
+    'Checking what\'s actually on the shelves…',
+    'Counting crates…',
+  ],
+  discogs: [
+    'Hitting up the Discogs marketplace…',
+    'Sorting through seller feedback scores…',
+    'Filtering out the "VG++ plays like new" liars…',
+    'Calculating overseas shipping nightmares…',
+    'Checking who actually ships internationally…',
+    'Reading between the lines of seller notes…',
+    'Avoiding the guy with 83% positive feedback…',
+    'Looking for the NM copy that won\'t bankrupt you…',
+    'Cross-referencing 14 different countries…',
+    'Doing the currency conversion math…',
+    'Scrolling through seller profiles like it\'s a dating app…',
+    'Spotting which "NM" is actually "EX at best"…',
+    'Weighing up the "buyer pays exact postage" gamble…',
+    'Ignoring the guy charging $12 for a $2 record…',
+    'Finding Japanese pressings at US prices…',
+    'Checking if that seller will actually respond…',
+    'Reading the fine print on Media Mail shipping…',
+    'Mentally adding up all the "small" shipping fees…',
+    'Looking for sellers who won\'t use a paper bag…',
+    'Praying the condition photos are accurate…',
+  ],
+  optimize: [
+    'Crunching the numbers…',
+    'Building your perfect cart…',
+    'Finding the cheapest path through the crates…',
+    'Running the algorithm…',
+    'Doing the math so you don\'t have to…',
+    'Minimizing the damage…',
+  ]
+};
+
+function _startOptimizerFlavor(phase) {
+  _optimizerFlavorPhase = phase || 'pending';
+  _optimizerFlavorIdx = 0;
+  if (_optimizerFlavorTimer) clearInterval(_optimizerFlavorTimer);
+
+  var msgs = _optimizerFlavor[_optimizerFlavorPhase] || _optimizerFlavor.pending;
+  var el = document.getElementById('optProgressFlavor');
+  if (el) el.textContent = msgs[0];
+
+  _optimizerFlavorTimer = setInterval(function() {
+    var phMsgs = _optimizerFlavor[_optimizerFlavorPhase] || _optimizerFlavor.pending;
+    _optimizerFlavorIdx = (_optimizerFlavorIdx + 1) % phMsgs.length;
+    var el2 = document.getElementById('optProgressFlavor');
+    if (el2) {
+      el2.style.opacity = '0';
+      setTimeout(function() {
+        el2.textContent = phMsgs[_optimizerFlavorIdx];
+        el2.style.opacity = '1';
+      }, 150);
+    }
+  }, 3500);
+}
+
+function _stopOptimizerFlavor(finalMsg) {
+  if (_optimizerFlavorTimer) { clearInterval(_optimizerFlavorTimer); _optimizerFlavorTimer = null; }
+  var el = document.getElementById('optProgressFlavor');
+  if (el && finalMsg) el.textContent = finalMsg;
+}
 
 function runOptimizer() {
   var username = getCurrentUsername();
@@ -2212,8 +2293,10 @@ function runOptimizer() {
   document.getElementById('optimizerProgress').style.display = 'block';
   document.getElementById('optimizerResults').style.display = 'none';
   document.getElementById('optProgressFill').style.width = '2%';
-  document.getElementById('optProgressText').textContent = 'Submitting…';
+  document.getElementById('optProgressFlavor').textContent = 'Getting in line…';
+  document.getElementById('optProgressText').textContent = '';
   document.getElementById('optimizeRunBtn').disabled = true;
+  _startOptimizerFlavor('pending');
 
   var body = { postcode: postcode, minCondition: condition, minSellerRating: parseFloat(rating) };
   if (maxPrice) body.maxPriceUsd = parseFloat(maxPrice);
@@ -2247,13 +2330,16 @@ function pollOptimizerJob(jobId) {
       if (job.status === 'done') {
         clearInterval(_optimizerPollTimer);
         _optimizerPollTimer = null;
+        _stopOptimizerFlavor('Your cart is ready ⛏');
         document.getElementById('optimizeRunBtn').disabled = false;
         document.getElementById('optProgressFill').style.width = '100%';
-        setTimeout(function() { showOptimizerResults(job.result); }, 300);
+        document.getElementById('optProgressText').textContent = '';
+        setTimeout(function() { showOptimizerResults(job.result); }, 400);
         _notifyOptimizerDone();
       } else if (job.status === 'failed') {
         clearInterval(_optimizerPollTimer);
         _optimizerPollTimer = null;
+        _stopOptimizerFlavor('Something went wrong');
         document.getElementById('optimizeRunBtn').disabled = false;
         document.getElementById('optProgressText').textContent = '⚠ ' + (job.error || 'Optimization failed');
       }
@@ -2268,15 +2354,22 @@ function _updateOptimizerProgress(job) {
 
   if (job.status === 'pending') {
     var pos = job.queuePosition || 0;
-    text.textContent = pos === 0
-      ? 'Starting soon…'
-      : 'In queue — position ' + (pos + 1);
+    text.textContent = pos > 0 ? 'Position ' + (pos + 1) + ' in queue' : '';
     fill.style.width = '2%';
+    _startOptimizerFlavor('pending');
 
   } else if (job.status === 'processing') {
     var p = job.progress || {};
-    text.textContent = p.message || 'Processing…';
 
+    // Stats line (small, below bar) = server message with real numbers
+    text.textContent = p.message || '';
+
+    // Flavor phase — switch to right pool when phase changes
+    if (p.phase && p.phase !== _optimizerFlavorPhase) {
+      _startOptimizerFlavor(p.phase);
+    }
+
+    // Progress bar
     if (p.phase === 'discogs' && p.total > 0) {
       var pct = Math.min(95, 10 + Math.round(((p.done || 0) / p.total) * 80));
       fill.style.width = pct + '%';
