@@ -2686,8 +2686,6 @@ a.sc-item-price:hover { text-decoration: underline; }
   background: #0a0a0a;
   overflow: hidden;
   flex-shrink: 0;
-  border: 1px solid #C9A227;
-  border-radius: 6px 6px 0 0;
 }
 
 /* Album sleeve — left 60% of the card art, full height */
@@ -2699,6 +2697,9 @@ a.sc-item-price:hover { text-decoration: underline; }
   height: 100%;
   object-fit: cover;
   z-index: 2;
+  /* Gold border frames the sleeve like a physical jacket */
+  outline: 1px solid #C9A227;
+  outline-offset: -1px;
   /* Right-edge shadow so disc looks physically behind sleeve */
   box-shadow: 8px 0 24px rgba(0,0,0,0.9);
 }
@@ -2728,6 +2729,8 @@ a.sc-item-price:hover { text-decoration: underline; }
   justify-content: center;
   background: #1a1a1a;
   z-index: 2;
+  outline: 1px solid #C9A227;
+  outline-offset: -1px;
   box-shadow: 8px 0 24px rgba(0,0,0,0.9);
 }
 
