@@ -65,8 +65,16 @@ const STORE_SYNCERS = {
 };
 const SYNC_STALE_AFTER_MS = 20 * 60 * 60 * 1000; // re-sync if last run was 20+ hours ago
 
-// Prevent unhandled errors from crashing the server
-process.on('uncaughtException', function (e) { console.error('Uncaught:', e.message); });
+// Prevent unhandled errors from crashing the server.
+// EXCEPTION: EADDRINUSE means the port is already taken — exit so PM2 can restart us
+// rather than letting the process run silently without serving any HTTP traffic.
+process.on('uncaughtException', function (e) {
+    if (e.code === 'EADDRINUSE') {
+        console.error('[FATAL] Port already in use — exiting so PM2 can retry:', e.message);
+        process.exit(1);
+    }
+    console.error('Uncaught:', e.message);
+});
 process.on('unhandledRejection', function (e) { console.error('Unhandled:', e && e.message); });
 
 const app = express();
