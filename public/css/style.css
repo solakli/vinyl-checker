@@ -3142,6 +3142,24 @@ body.light .opt-shipping-row { background: rgba(0,0,0,0.03); }
 
 .btn-checkout:hover { filter: brightness(1.1); }
 
+.btn-rerun-optimizer {
+  width: 100%;
+  background: transparent;
+  color: var(--text-muted, #888);
+  border: 1px solid var(--border, #e5e5e5);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  margin-top: 4px;
+  font-family: 'Oswald', sans-serif;
+  transition: color 0.15s, border-color 0.15s;
+}
+.btn-rerun-optimizer:hover { color: var(--text, #111); border-color: var(--text, #111); }
+
 .sidebar-alt-link {
   display: block;
   text-align: center;

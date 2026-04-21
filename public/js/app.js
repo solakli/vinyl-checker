@@ -394,6 +394,17 @@ function resumeScan() {
 async function loadExisting(username) {
   if (!username) return;
   document.getElementById('usernameInput').value = username;
+
+  // Reset optimizer state so a new user doesn't see the previous user's results
+  if (_optimizerPollTimer) { clearInterval(_optimizerPollTimer); _optimizerPollTimer = null; }
+  _lastOptimizerResult = null;
+  var overlay = document.getElementById('optimizerOverlay');
+  if (overlay) overlay.style.display = 'none';
+  var banner = document.getElementById('optimizerBanner');
+  if (banner) banner.style.display = 'none';
+  var trigger = document.getElementById('optimizeTrigger');
+  if (trigger) trigger.style.display = 'none';
+
   // Check if a scan is still running on the server
   var scanning = await checkScanAndResume(username);
   if (!scanning) await loadResultsForUser(username);
@@ -2281,7 +2292,8 @@ function updateSidebarOptimizer(result) {
       '<div class="sidebar-stat-row total"><span>Total Cost</span><span>$' + result.grandTotalUsd.toFixed(2) + '</span></div>' +
     '</div>' +
     '<div class="sidebar-sellers-scroll">' + sellerRowsHtml + '</div>' +
-    '<button class="btn-checkout" onclick="viewFullCart()">⛏ VIEW FULL CART</button>';
+    '<button class="btn-checkout" onclick="viewFullCart()">⛏ VIEW FULL CART</button>' +
+    '<button class="btn-rerun-optimizer" onclick="openOptimizer()">↺ Optimise again</button>';
 }
 
 function showOptimizerResults(result) {
