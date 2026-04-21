@@ -770,10 +770,24 @@ function snapshotStoreResults(userId) {
 }
 
 function insertScanChange(userId, wantlistId, changeType, store, oldVal, newVal) {
-    getDb().prepare(`
-        INSERT INTO scan_changes (user_id, wantlist_id, change_type, store, old_value, new_value, detected_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(userId, wantlistId, changeType, store, JSON.stringify(oldVal), JSON.stringify(newVal), new Date().toISOString());
+    var d = getDb();
+    var now = new Date().toISOString();
+    // Deduplicate: if an undismissed change of the same type already exists for this
+    // item+store, update its timestamp and new_value instead of inserting a duplicate.
+    // This prevents the banner showing the same record twice when the validator briefly
+    // flips it to 0 and the next daily re-detects it as now_in_stock.
+    var existing = d.prepare(
+        'SELECT id FROM scan_changes WHERE user_id=? AND wantlist_id=? AND change_type=? AND store=? AND dismissed=0'
+    ).get(userId, wantlistId, changeType, store);
+    if (existing) {
+        d.prepare('UPDATE scan_changes SET new_value=?, detected_at=? WHERE id=?')
+            .run(JSON.stringify(newVal), now, existing.id);
+    } else {
+        d.prepare(`
+            INSERT INTO scan_changes (user_id, wantlist_id, change_type, store, old_value, new_value, detected_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(userId, wantlistId, changeType, store, JSON.stringify(oldVal), JSON.stringify(newVal), now);
+    }
 }
 
 function getUndismissedChanges(userId, since) {

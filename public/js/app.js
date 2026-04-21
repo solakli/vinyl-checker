@@ -442,11 +442,16 @@ async function loadResultsForUser(username) {
 
 async function fetchChanges(username) {
   try {
+    // Filter out server-dismissed changes AND changes the user previously dismissed
+    // locally (stored in localStorage for unauthenticated sessions).
+    var localDismissed = new Set(JSON.parse(localStorage.getItem('dismissedChanges') || '[]'));
+
     var res = await fetch('api/changes/' + encodeURIComponent(username));
     if (!res.ok) return;
     var data = await res.json();
-    if (data.changes && data.changes.length > 0) {
-      showChangesBanner(data.changes);
+    var changes = (data.changes || []).filter(function(c) { return !localDismissed.has(c.id); });
+    if (changes.length > 0) {
+      showChangesBanner(changes);
     }
   } catch(e) {}
 }
@@ -473,6 +478,8 @@ function showChangesBanner(changes) {
 
   // Build detail items (show first 5 most interesting changes)
   var topChanges = newInStock.concat(priceDrops).slice(0, 5);
+  // Collect all IDs for dismiss tracking (all changes, not just the 5 shown)
+  var allIds = changes.map(function(c) { return c.id; }).filter(Boolean);
   var detailHtml = '';
   if (topChanges.length > 0) {
     detailHtml = '<div class="changes-details">';
@@ -483,7 +490,7 @@ function showChangesBanner(changes) {
       var info = c.change_type === 'now_in_stock'
         ? (c.store + (newVal.price ? ' · ' + newVal.price : ''))
         : (c.store + ' · ' + (newVal.price || ''));
-      detailHtml += '<div class="changes-item">' +
+      detailHtml += '<div class="changes-item" data-change-id="' + (c.id || '') + '">' +
         '<span class="changes-icon">' + icon + '</span>' +
         '<span class="changes-item-text">' + escapeHtml(c.artist) + ' — ' + escapeHtml(c.title) + '</span>' +
         '<span class="changes-item-info">' + escapeHtml(info) + '</span>' +
@@ -498,6 +505,8 @@ function showChangesBanner(changes) {
   var banner = document.createElement('div');
   banner.id = 'changesBanner';
   banner.className = 'changes-banner';
+  // Store all change IDs on the banner element for dismiss to collect
+  banner.dataset.allIds = JSON.stringify(allIds);
   banner.innerHTML =
     '<div class="changes-header">' +
       '<div class="changes-summary">' +
@@ -515,33 +524,42 @@ function showChangesBanner(changes) {
 
 async function dismissChanges() {
   var banner = document.getElementById('changesBanner');
+  // Always hide the banner immediately — don't block on server response
+  if (banner) {
+    banner.classList.add('changes-hiding');
+    setTimeout(function() { banner.remove(); }, 300);
+  }
+
+  // Collect all change IDs stored on the banner element
+  var displayedIds = [];
+  if (banner && banner.dataset.allIds) {
+    try { displayedIds = JSON.parse(banner.dataset.allIds); } catch(e) {}
+  }
+
+  // Persist dismissed IDs in localStorage so they stay hidden on reload
+  // even if the server dismiss fails (e.g. user isn't authenticated)
+  if (displayedIds.length > 0) {
+    try {
+      var stored = JSON.parse(localStorage.getItem('dismissedChanges') || '[]');
+      var merged = Array.from(new Set(stored.concat(displayedIds)));
+      // Cap at 500 to avoid unbounded growth
+      if (merged.length > 500) merged = merged.slice(merged.length - 500);
+      localStorage.setItem('dismissedChanges', JSON.stringify(merged));
+    } catch(e) {}
+  }
+
+  // Try server-side dismiss (authoritative, clears from DB for authenticated sessions)
   try {
     var res = await fetch('api/changes/dismiss', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({})
     });
-    if (!res.ok) {
-      // Session missing — create one from current username and retry
-      var username = document.getElementById('usernameInput').value.trim();
-      if (username) {
-        await fetch('api/session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: username })
-        });
-        await fetch('api/changes/dismiss', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({})
-        });
-      }
+    if (!res.ok && res.status === 401) {
+      // Not authenticated — localStorage dismiss above is the fallback, that's fine
+      console.log('[changes] Not authenticated — dismissed locally only');
     }
   } catch(e) {}
-  if (banner) {
-    banner.classList.add('changes-hiding');
-    setTimeout(function() { banner.remove(); }, 300);
-  }
 }
 
 function parsePrice(priceStr) {
