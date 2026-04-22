@@ -2954,7 +2954,7 @@ function loadDiscoverSection(forceRefresh) {
       }).join('') +
     '</div>';
 
-  fetch('/api/recommend/' + encodeURIComponent(username) + '?limit=40')
+  fetch('api/recommend/' + encodeURIComponent(username) + '?limit=40')
     .then(function(r) { return r.json(); })
     .then(function(data) {
       _discoverCache   = data;
