@@ -1415,7 +1415,7 @@ app.post('/api/admin/cleanup', function (req, res) {
 // ═══════════════════════════════════════════════════════════════
 
 var SYNC_INTERVAL = parseInt(process.env.SYNC_INTERVAL) || (60 * 60 * 1000); // default 1 hour
-var DAILY_CHECK_INTERVAL = 60 * 60 * 1000; // Check every 1 hour if any user needs daily rescan
+var DAILY_CHECK_INTERVAL = 60 * 60 * 1000; // Check every hour — users only marked due after 23 h (effectively once/day)
 var NOTIFICATION_WEBHOOK = process.env.NOTIFICATION_WEBHOOK || '';
 
 app.listen(PORT, function () {
@@ -1434,8 +1434,8 @@ app.listen(PORT, function () {
             .catch(function (e) { console.error('[sync] Fatal:', e.message); scanner.trackJobRun('sync', false, e.message); });
     }, SYNC_INTERVAL);
 
-    // Daily full rescan scheduler — checks every 15 min if any user is due
-    console.log('[daily] Daily rescan checker every 15 minutes');
+    // Daily full rescan scheduler — checks hourly, fires for users not scanned in 23+ hours
+    console.log('[daily] Daily rescan checker every 1 hour (users due after 23 h)');
     setInterval(function () {
         scanner.dailyFullRescan()
             .then(function() { scanner.trackJobRun('daily', true); })

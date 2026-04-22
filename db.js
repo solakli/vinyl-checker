@@ -371,6 +371,53 @@ function initTables() {
         );
         CREATE INDEX IF NOT EXISTS idx_collection_user ON collection(user_id);
     `);
+
+    // ── Streaming integration ────────────────────────────────────────────────────
+
+    // Popularity/metadata per release fetched from streaming APIs.
+    // Keyed by discogs_id so we can join with wantlist.
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS streaming_metadata (
+            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+            discogs_id               INTEGER NOT NULL,
+            spotify_album_uri        TEXT,
+            spotify_artist_uri       TEXT,
+            spotify_popularity       INTEGER,
+            spotify_artist_followers INTEGER,
+            youtube_video_id         TEXT,
+            youtube_view_count       INTEGER,
+            youtube_like_count       INTEGER,
+            soundcloud_track_id      INTEGER,
+            soundcloud_playback_count INTEGER,
+            soundcloud_reposts       INTEGER,
+            soundcloud_likes         INTEGER,
+            fetched_at               TEXT NOT NULL,
+            UNIQUE(discogs_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_streaming_meta_discogs ON streaming_metadata(discogs_id);
+    `);
+
+    // User listening activity synced from Spotify / SoundCloud / YouTube.
+    // One row per track/artist event (top_artist, recent_play, liked_track, etc.)
+    // user_affinity is a pre-computed 0-1 score used by the recommendation engine.
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS user_streaming_activity (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id       INTEGER NOT NULL,
+            provider      TEXT NOT NULL,
+            activity_type TEXT NOT NULL,
+            artist_name   TEXT,
+            track_name    TEXT,
+            album_name    TEXT,
+            provider_uri  TEXT,
+            play_count    INTEGER,
+            user_affinity REAL,
+            recorded_at   TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_streaming_activity_user
+            ON user_streaming_activity(user_id, provider, activity_type);
+    `);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -952,7 +999,7 @@ function getUsersDueForRescan() {
     return getDb().prepare(`
         SELECT u.* FROM users u
         WHERE EXISTS (SELECT 1 FROM wantlist w WHERE w.user_id = u.id AND w.active = 1)
-        AND (u.last_daily_rescan IS NULL OR u.last_daily_rescan < datetime('now', '-20 hours'))
+        AND (u.last_daily_rescan IS NULL OR u.last_daily_rescan < datetime('now', '-23 hours'))
     `).all();
 }
 
@@ -1527,6 +1574,151 @@ function getCollectionStats(userId) {
     `).get(userId);
 }
 
+// ═══════════════════════════════════════════════════════════
+// STREAMING ACTIVITY OPERATIONS
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Upsert a batch of streaming activity rows for a user.
+ * activityTag is used to clear old rows of the same type before inserting
+ * fresh data (e.g. 'top_artist_short_term', 'recent_play').
+ *
+ * @param {number} userId
+ * @param {string} provider  - 'spotify' | 'soundcloud' | 'youtube'
+ * @param {string} activityTag  - used to scope the clear (e.g. 'top_artist_short_term')
+ * @param {Array}  rows
+ */
+function saveStreamingActivity(userId, provider, activityTag, rows) {
+    if (!rows || rows.length === 0) return 0;
+    var d = getDb();
+
+    // Derive the activity_type from the tag (strip the _short/medium/long suffix for top_artist)
+    var activityType = activityTag.replace(/_short_term|_medium_term|_long_term$/, '');
+
+    // Clear stale rows for this provider+activityType combo
+    d.prepare(
+        'DELETE FROM user_streaming_activity WHERE user_id = ? AND provider = ? AND activity_type = ?'
+    ).run(userId, provider, activityType);
+
+    var insert = d.prepare(`
+        INSERT INTO user_streaming_activity
+            (user_id, provider, activity_type, artist_name, track_name, album_name,
+             provider_uri, play_count, user_affinity, recorded_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    var insertMany = d.transaction(function (rowList) {
+        rowList.forEach(function (row) {
+            insert.run(
+                row.userId || userId,
+                row.provider || provider,
+                row.activityType || activityType,
+                row.artistName || null,
+                row.trackName  || null,
+                row.albumName  || null,
+                row.providerUri || null,
+                row.playCount != null ? row.playCount : null,
+                row.userAffinity != null ? row.userAffinity : null,
+                row.recordedAt || new Date().toISOString()
+            );
+        });
+    });
+
+    insertMany(rows);
+    return rows.length;
+}
+
+/**
+ * Get all streaming activity rows for a user (all providers).
+ */
+function getStreamingActivity(userId) {
+    return getDb().prepare(
+        'SELECT * FROM user_streaming_activity WHERE user_id = ? ORDER BY user_affinity DESC, recorded_at DESC'
+    ).all(userId);
+}
+
+/**
+ * Remove all streaming activity for a user (or optionally a single provider).
+ */
+function clearStreamingActivity(userId, provider) {
+    if (provider) {
+        getDb().prepare(
+            'DELETE FROM user_streaming_activity WHERE user_id = ? AND provider = ?'
+        ).run(userId, provider);
+    } else {
+        getDb().prepare(
+            'DELETE FROM user_streaming_activity WHERE user_id = ?'
+        ).run(userId);
+    }
+}
+
+/**
+ * Upsert streaming metadata for a Discogs release.
+ */
+function saveStreamingMetadata(discogsId, meta) {
+    var d = getDb();
+    d.prepare(`
+        INSERT INTO streaming_metadata
+            (discogs_id, spotify_album_uri, spotify_artist_uri, spotify_popularity,
+             spotify_artist_followers, youtube_video_id, youtube_view_count, youtube_like_count,
+             soundcloud_track_id, soundcloud_playback_count, soundcloud_reposts,
+             soundcloud_likes, fetched_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(discogs_id) DO UPDATE SET
+            spotify_album_uri        = COALESCE(excluded.spotify_album_uri,        spotify_album_uri),
+            spotify_artist_uri       = COALESCE(excluded.spotify_artist_uri,       spotify_artist_uri),
+            spotify_popularity       = COALESCE(excluded.spotify_popularity,       spotify_popularity),
+            spotify_artist_followers = COALESCE(excluded.spotify_artist_followers, spotify_artist_followers),
+            youtube_video_id         = COALESCE(excluded.youtube_video_id,         youtube_video_id),
+            youtube_view_count       = COALESCE(excluded.youtube_view_count,       youtube_view_count),
+            youtube_like_count       = COALESCE(excluded.youtube_like_count,       youtube_like_count),
+            soundcloud_track_id      = COALESCE(excluded.soundcloud_track_id,      soundcloud_track_id),
+            soundcloud_playback_count= COALESCE(excluded.soundcloud_playback_count,soundcloud_playback_count),
+            soundcloud_reposts       = COALESCE(excluded.soundcloud_reposts,       soundcloud_reposts),
+            soundcloud_likes         = COALESCE(excluded.soundcloud_likes,         soundcloud_likes),
+            fetched_at               = excluded.fetched_at
+    `).run(
+        discogsId,
+        meta.spotifyAlbumUri        || null,
+        meta.spotifyArtistUri       || null,
+        meta.spotifyPopularity      != null ? meta.spotifyPopularity      : null,
+        meta.spotifyArtistFollowers != null ? meta.spotifyArtistFollowers : null,
+        meta.youtubeVideoId         || null,
+        meta.youtubeViewCount       != null ? meta.youtubeViewCount       : null,
+        meta.youtubeLikeCount       != null ? meta.youtubeLikeCount       : null,
+        meta.soundcloudTrackId      != null ? meta.soundcloudTrackId      : null,
+        meta.soundcloudPlaybackCount!= null ? meta.soundcloudPlaybackCount: null,
+        meta.soundcloudReposts      != null ? meta.soundcloudReposts      : null,
+        meta.soundcloudLikes        != null ? meta.soundcloudLikes        : null,
+        new Date().toISOString()
+    );
+}
+
+/**
+ * Get streaming metadata for a Discogs release.
+ */
+function getStreamingMetadata(discogsId) {
+    return getDb().prepare(
+        'SELECT * FROM streaming_metadata WHERE discogs_id = ?'
+    ).get(discogsId) || null;
+}
+
+/**
+ * Return a summary of streaming sync status for a user.
+ */
+function getStreamingSyncStatus(userId) {
+    var d = getDb();
+    var providers = ['spotify', 'soundcloud', 'youtube'];
+    var result = {};
+    providers.forEach(function (p) {
+        var row = d.prepare(
+            'SELECT COUNT(*) as cnt, MAX(recorded_at) as last_synced FROM user_streaming_activity WHERE user_id = ? AND provider = ?'
+        ).get(userId, p);
+        result[p] = { activityRows: row ? row.cnt : 0, lastSynced: row ? row.last_synced : null };
+    });
+    return result;
+}
+
 module.exports = {
     getDb: getDb,
     getOrCreateUser: getOrCreateUser,
@@ -1606,4 +1798,11 @@ module.exports = {
     syncCollectionItems: syncCollectionItems,
     getCollection: getCollection,
     getCollectionStats: getCollectionStats,
+    // Streaming integration
+    saveStreamingActivity: saveStreamingActivity,
+    getStreamingActivity: getStreamingActivity,
+    clearStreamingActivity: clearStreamingActivity,
+    saveStreamingMetadata: saveStreamingMetadata,
+    getStreamingMetadata: getStreamingMetadata,
+    getStreamingSyncStatus: getStreamingSyncStatus,
 };
