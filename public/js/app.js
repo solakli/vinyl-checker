@@ -3272,6 +3272,41 @@ function setCollGenre(genre) {
   renderCollectionGrid();
 }
 
+/**
+ * Open the release detail modal from a collection card.
+ * Populates currentFilteredIds with the current grid order so
+ * swipe / arrow navigation moves through the collection.
+ */
+function openCollRelease(discogsId) {
+  var search  = ((document.getElementById('collSearch') || {}).value || '').toLowerCase();
+  var sort    = (document.getElementById('collSort')    || {}).value || 'date-new';
+
+  var items = (_collectionData || []).filter(function(item) {
+    if (_collGenreFilter) {
+      var genres = (item.genres || '').split('|').map(function(g) { return g.trim(); });
+      if (genres.indexOf(_collGenreFilter) === -1) return false;
+    }
+    if (search) {
+      var hay = ((item.artist || '') + ' ' + (item.title || '') + ' ' + (item.label || '') + ' ' + (item.catno || '')).toLowerCase();
+      if (hay.indexOf(search) === -1) return false;
+    }
+    return true;
+  }).sort(function(a, b) {
+    switch (sort) {
+      case 'date-new': return (b.date_added || '').localeCompare(a.date_added || '');
+      case 'date-old': return (a.date_added || '').localeCompare(b.date_added || '');
+      case 'artist':   return (a.artist || '').localeCompare(b.artist || '');
+      case 'year-new': return (b.year || 0) - (a.year || 0);
+      case 'year-old': return (a.year || 0) - (b.year || 0);
+      default: return 0;
+    }
+  });
+
+  // Set navigation context so swipe/arrow moves through collection
+  currentFilteredIds = items.map(function(item) { return item.discogs_id; });
+  openReleaseDetail(discogsId);
+}
+
 function renderCollectionGrid() {
   if (!_collectionData) return;
 
@@ -3326,11 +3361,11 @@ function renderCollectionGrid() {
     var year    = item.year    ? '<span class="coll-year">' + item.year + '</span>' : '';
     var rating  = item.rating  ? '★'.repeat(item.rating) : '';
 
-    var discUrl = item.discogs_id
-      ? ' onclick="window.open(\'https://www.discogs.com/release/' + item.discogs_id + '\',\'_blank\')"'
+    var clickHandler = item.discogs_id
+      ? ' onclick="openCollRelease(' + item.discogs_id + ')"'
       : '';
 
-    return '<div class="coll-card"' + discUrl + '>' +
+    return '<div class="coll-card"' + clickHandler + '>' +
       '<div class="coll-art-wrap">' + thumb + '</div>' +
       '<div class="coll-card-body">' +
         '<div class="coll-card-artist">' + escapeHtml(item.artist || '') + '</div>' +
