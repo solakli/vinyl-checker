@@ -1139,10 +1139,9 @@ process.on('SIGTERM', function () { db.close(); reapChrome(); process.exit(0); }
 function reapChrome() {
     try {
         var { execSync } = require('child_process');
-        // List all chromium/chrome processes that are children of this process
+        // Kill zombie Chrome child-processes
         var myPid = process.pid;
         try {
-            // pgrep with --parent finds direct children; -x for exact name match
             var out = execSync('pgrep -P ' + myPid + ' -f "chrom" 2>/dev/null || true').toString().trim();
             if (out) {
                 var pids = out.split('\n').filter(Boolean);
@@ -1152,6 +1151,8 @@ function reapChrome() {
                 if (pids.length > 0) console.log('[reaper] Killed ' + pids.length + ' zombie Chrome process(es)');
             }
         } catch(e) {}
+        // Clean up orphaned Puppeteer tmp profile dirs older than 10 min
+        try { scanner.reapOrphanedProfiles(); } catch(e) {}
     } catch(e) {}
 }
 
@@ -1661,6 +1662,12 @@ app.listen(PORT, function () {
 
     // Kill any zombie Chrome processes left from a previous crash
     reapChrome();
+
+    // Sweep orphaned Puppeteer /tmp/puppeteer_dev_profile-* dirs every 10 min.
+    // Each orphaned dir is 250-420 MB — 2000+ of them ate 17 GB on the VPS.
+    // scanner.js now cleans up after each browser.close(), but this interval
+    // catches anything that slips through (OOM kills, external process deaths).
+    setInterval(function () { reapChrome(); }, 10 * 60 * 1000);
 
     // Cart optimizer job queue worker
     var optimizerWorker = require('./lib/optimizer-worker');
