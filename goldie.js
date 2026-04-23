@@ -63,13 +63,22 @@ const SYSTEM_PROMPT = `You are GOLDIE, an expert vinyl record intelligence agent
 You have access to a set of tools that query the platform's live database. Always use tools to get fresh data before making recommendations — never guess at prices, stock levels or user taste.
 
 ## Platform overview
-- Users sync their Discogs wantlist. The platform scrapes ~15 stores and shows which wanted items are in stock.
+- Users sync their Discogs wantlist and collection. The platform scrapes ~15 independent stores and shows which wanted items are in stock.
 - Stores scraped: HHV (Berlin), Deejay.de (Berlin), Hardwax (Berlin), Decks.de (Germany), Juno (London), Phonica (London), Yoyaku (Tokyo), Turntable Lab (NYC), Gramaphone (Chicago), Further Records (US), Underground Vinyl (US), Octopus Records (NYC).
 - Each user has a taste profile built from wantlist + collection: top genres, styles, artists, era, personality archetypes, rarity score.
-- The optimizer groups in-stock items by seller/store to minimize shipping and suggest optimal carts.
+- The optimizer groups in-stock items by store to minimize shipping and suggest optimal carts.
+
+## Chrome Extension & Discogs Marketplace Sync
+The platform has a Chrome extension called **Gold Digger** that syncs real Discogs marketplace data:
+- **Marketplace sync**: scrapes individual seller listings for every wantlist item from Discogs.com, capturing seller username, seller rating, condition (VG+/NM/etc.), price, and ships-from country.
+- **Wantlist sync**: keeps the local DB in sync with the user's Discogs wantlist in real time.
+- This data lets you compare store prices vs Discogs marketplace prices, find the best-rated seller, or filter by condition and shipping origin.
+- Use `get_discogs_marketplace` to query this data. If no listings found, tell the user to run a marketplace sync from the app or Chrome extension.
 
 ## Your capabilities
-- Show a user what's in stock for them right now
+- Show a user what's in stock for them right now (scraped stores)
+- Look up Discogs marketplace listings for wantlist items: price, seller, condition, ships-from
+- Compare store prices vs Discogs marketplace prices — surface where a record is cheapest
 - Suggest carts per store based on their taste profile and budget
 - Rank in-stock items by rarity, price value vs Discogs market, or taste alignment
 - Compare taste between diggers and find shared interests
@@ -78,9 +87,10 @@ You have access to a set of tools that query the platform's live database. Alway
 - Provide store recommendations (which stores are best for their taste)
 
 ## Personality
-You are knowledgeable, passionate about vinyl culture, concise. You speak like an experienced record store owner who also knows data. You surface insights ("this press only has 47 collectors worldwide") and make opinionated recommendations backed by data. You keep responses focused and scannable — use bullet lists when presenting multiple items.
+You are knowledgeable, passionate about vinyl culture, concise. You speak like an experienced record store owner who also knows data. You surface insights ("this press only has 47 collectors worldwide", "98% seller rating ships from Germany — solid buy") and make opinionated recommendations backed by data. Keep responses focused and scannable — use bullet lists when presenting multiple items.
 
 When suggesting carts, group by store and include: item name, price, rarity (community_have), and a one-line reason.
+When surfacing Discogs marketplace listings, always show: seller, condition, price, ships-from, and seller rating.
 
 Today's date: ${new Date().toISOString().slice(0,10)}`;
 
@@ -189,6 +199,24 @@ const TOOLS = [
                 username2: { type: 'string' }
             },
             required: ['username1', 'username2']
+        }
+    },
+    {
+        name: 'get_discogs_marketplace',
+        description: 'Query real Discogs marketplace seller listings for a user\'s wantlist items — synced by the Gold Digger Chrome extension. Returns individual seller listings with condition, price, seller rating, and ships-from country. Use this to find the best deal on a specific record, compare Discogs prices vs store prices, or filter by condition/origin. Also returns Discogs summary stats (lowest price, num copies for sale) where available.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                username:          { type: 'string',  description: 'Discogs username' },
+                query:             { type: 'string',  description: 'Search by artist or title (optional — omit to see all synced listings)' },
+                min_condition:     { type: 'string',  description: 'Minimum condition: M, NM, VG+, VG, G+ (optional)' },
+                ships_from:        { type: 'string',  description: 'Filter by ships-from country code or name, e.g. DE, US, UK, JP (optional)' },
+                max_price_usd:     { type: 'number',  description: 'Maximum price in USD (optional)' },
+                min_seller_rating: { type: 'number',  description: 'Minimum seller rating 0-100 (optional, 97+ recommended)' },
+                sort:              { type: 'string',  enum: ['price_asc','price_desc','condition','seller_rating'], description: 'Sort order (default: price_asc)' },
+                limit:             { type: 'number',  description: 'Max listings to return (default 20)' }
+            },
+            required: ['username']
         }
     }
 ];
@@ -530,17 +558,106 @@ function toolCompareDiggers({ username1, username2 }) {
     };
 }
 
+// Condition rank for filtering (higher = better)
+var CONDITION_RANK = { 'M': 6, 'NM': 5, 'VG+': 4, 'VG': 3, 'G+': 2, 'G': 1, 'F': 0 };
+function conditionRank(c) {
+    if (!c) return -1;
+    var norm = c.replace(/\s*\(.*\)/, '').trim().toUpperCase().replace('NEAR MINT', 'NM').replace('VERY GOOD PLUS', 'VG+').replace('VERY GOOD', 'VG').replace('GOOD PLUS', 'G+');
+    return CONDITION_RANK[norm] !== undefined ? CONDITION_RANK[norm] : -1;
+}
+
+function toolGetDiscogsMarketplace({ username, query, min_condition, ships_from, max_price_usd, min_seller_rating, sort, limit }) {
+    var d = db.getDb();
+    var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
+    if (!user) return { error: 'User not found: ' + username };
+    limit = Math.min(limit || 20, 100);
+
+    // Build query — join discogs_listings with wantlist
+    var q = '%' + (query || '').toLowerCase() + '%';
+    var hasQuery = !!(query && query.trim());
+
+    var rows = d.prepare(`
+        SELECT dl.listing_id, dl.seller_username, dl.seller_rating, dl.seller_num_ratings,
+               dl.price_usd, dl.price_original, dl.currency, dl.condition, dl.ships_from,
+               dl.listing_url, dl.fetched_at,
+               w.artist, w.title, w.year, w.label, w.discogs_id,
+               dp.lowest_price as market_low, dp.num_for_sale, dp.currency as market_currency
+        FROM discogs_listings dl
+        JOIN wantlist w ON w.id = dl.wantlist_id
+        LEFT JOIN discogs_prices dp ON dp.wantlist_id = w.id
+        WHERE w.user_id = ? AND w.active = 1
+          ${hasQuery ? "AND (LOWER(w.artist) LIKE ? OR LOWER(w.title) LIKE ?)" : ''}
+          ${max_price_usd ? 'AND (dl.price_usd IS NULL OR dl.price_usd <= ' + parseFloat(max_price_usd) + ')' : ''}
+          ${min_seller_rating ? 'AND (dl.seller_rating IS NULL OR dl.seller_rating >= ' + parseFloat(min_seller_rating) + ')' : ''}
+          ${ships_from ? "AND LOWER(dl.ships_from) LIKE '%" + ships_from.toLowerCase().replace(/'/g,"''") + "%'" : ''}
+    `).all(hasQuery ? [user.id, q, q] : [user.id]);
+
+    // Filter by condition client-side (easier than SQL for ranked comparison)
+    if (min_condition) {
+        var minRank = conditionRank(min_condition);
+        rows = rows.filter(function(r) { return conditionRank(r.condition) >= minRank; });
+    }
+
+    // Sort
+    if (sort === 'price_desc') {
+        rows.sort(function(a,b){ return (b.price_usd||999)-(a.price_usd||999); });
+    } else if (sort === 'condition') {
+        rows.sort(function(a,b){ return conditionRank(b.condition)-conditionRank(a.condition); });
+    } else if (sort === 'seller_rating') {
+        rows.sort(function(a,b){ return (b.seller_rating||0)-(a.seller_rating||0); });
+    } else {
+        // price_asc (default)
+        rows.sort(function(a,b){ return (a.price_usd||999)-(b.price_usd||999); });
+    }
+
+    var total = rows.length;
+    rows = rows.slice(0, limit);
+
+    if (total === 0) {
+        return {
+            listings: [],
+            total: 0,
+            message: 'No Discogs marketplace listings found' + (query ? ' for "' + query + '"' : '') + '. Run a marketplace sync from the app or use the Gold Digger Chrome extension to fetch seller data.'
+        };
+    }
+
+    return {
+        total: total,
+        showing: rows.length,
+        listings: rows.map(function(r) {
+            return {
+                artist:          r.artist,
+                title:           r.title,
+                year:            r.year,
+                condition:       r.condition || 'Unknown',
+                price_usd:       r.price_usd ? '$' + r.price_usd.toFixed(2) : null,
+                price_original:  r.price_original ? r.price_original + ' ' + (r.currency || '') : null,
+                seller:          r.seller_username,
+                seller_rating:   r.seller_rating ? r.seller_rating + '%' : null,
+                seller_ratings_count: r.seller_num_ratings,
+                ships_from:      r.ships_from || null,
+                listing_url:     r.listing_url || null,
+                market_low:      r.market_low ? '$' + parseFloat(r.market_low).toFixed(2) + ' (Discogs low)' : null,
+                num_for_sale:    r.num_for_sale || null,
+                discogs_id:      r.discogs_id,
+                synced_at:       r.fetched_at
+            };
+        })
+    };
+}
+
 // Tool dispatch
 function runTool(name, input) {
     switch(name) {
-        case 'get_user_profile':   return toolGetUserProfile(input);
-        case 'get_in_stock':       return toolGetInStock(input);
-        case 'suggest_cart':       return toolSuggestCart(input);
-        case 'get_diggers':        return toolGetDiggers(input);
-        case 'search_wantlist':    return toolSearchWantlist(input);
-        case 'get_store_breakdown':return toolGetStoreBreakdown(input);
-        case 'get_rare_finds':     return toolGetRareFinds(input);
-        case 'compare_diggers':    return toolCompareDiggers(input);
+        case 'get_user_profile':        return toolGetUserProfile(input);
+        case 'get_in_stock':            return toolGetInStock(input);
+        case 'suggest_cart':            return toolSuggestCart(input);
+        case 'get_diggers':             return toolGetDiggers(input);
+        case 'search_wantlist':         return toolSearchWantlist(input);
+        case 'get_store_breakdown':     return toolGetStoreBreakdown(input);
+        case 'get_rare_finds':          return toolGetRareFinds(input);
+        case 'compare_diggers':         return toolCompareDiggers(input);
+        case 'get_discogs_marketplace': return toolGetDiscogsMarketplace(input);
         default: return { error: 'Unknown tool: ' + name };
     }
 }
