@@ -4441,8 +4441,8 @@ body.light .mobile-tab.active { color: #C9A227; }
 /* ─── Store grid ─── */
 .disc-store-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
 }
 
 /* ─── Store card ─── */
@@ -4454,6 +4454,10 @@ body.light .mobile-tab.active { color: #C9A227; }
   transition: border-color 0.15s;
 }
 .disc-store-card:hover { border-color: #333; }
+/* Expanded card spans all columns — gives item list full width */
+.disc-store-card.expanded {
+  grid-column: 1 / -1;
+}
 
 .disc-card-header {
   display: flex;
@@ -4548,9 +4552,9 @@ body.light .mobile-tab.active { color: #C9A227; }
 
 .disc-item-list-header {
   display: grid;
-  grid-template-columns: 48px 1fr 80px 80px 90px;
-  gap: 8px;
-  padding: 8px 14px;
+  grid-template-columns: 52px minmax(0,1fr) 76px 76px 110px;
+  gap: 10px;
+  padding: 8px 16px;
   background: #0d0d0d;
   font-size: 10px;
   color: #444;
@@ -4561,10 +4565,10 @@ body.light .mobile-tab.active { color: #C9A227; }
 
 .disc-item-row {
   display: grid;
-  grid-template-columns: 48px 1fr 80px 80px 90px;
-  gap: 8px;
+  grid-template-columns: 52px minmax(0,1fr) 76px 76px 110px;
+  gap: 10px;
   align-items: center;
-  padding: 9px 14px;
+  padding: 10px 16px;
   border-bottom: 1px solid #161616;
   transition: background 0.12s;
 }
@@ -4572,48 +4576,57 @@ body.light .mobile-tab.active { color: #C9A227; }
 .disc-item-row:hover { background: #161616; }
 
 .disc-item-thumb {
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
   object-fit: cover;
-  border-radius: 3px;
+  border-radius: 4px;
   background: #1a1a1a;
   flex-shrink: 0;
 }
 
 .disc-item-thumb-placeholder {
-  width: 48px;
-  height: 48px;
-  border-radius: 3px;
+  width: 52px;
+  height: 52px;
+  border-radius: 4px;
   background: #1a1a1a;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #333;
-  font-size: 16px;
+  font-size: 18px;
   flex-shrink: 0;
 }
 
-.disc-item-info { overflow: hidden; }
+.disc-item-info {
+  overflow: hidden;
+  min-width: 0;
+}
 .disc-item-artist {
   font-size: 12px;
   font-weight: 600;
-  color: #ccc;
+  color: #ddd;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
 }
 .disc-item-title {
   font-size: 11px;
-  color: #777;
+  color: #888;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-top: 1px;
+  margin-top: 2px;
+  max-width: 100%;
 }
 .disc-item-meta {
   font-size: 10px;
   color: #444;
-  margin-top: 2px;
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .disc-item-price-col { display: flex; align-items: center; justify-content: flex-end; }
