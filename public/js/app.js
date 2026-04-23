@@ -3405,6 +3405,7 @@ var _discoverGenreFilter = null;
 var _activeDiscoverStore = null;
 var _discoverCartSet     = {};
 var _forYouFilter        = 'all';      // 'all' | 'artist' | 'style'
+var _inStockVendor       = 'all';      // 'all' | storeName | 'discogs'
 
 function loadDiscover() {
   var username = getCurrentUsername();
@@ -3596,11 +3597,54 @@ function renderForYouCard(item) {
 
 // ─── IN STOCK TAB ─────────────────────────────────────────────────────────────
 
+function setInStockVendor(vendor, btn) {
+  _inStockVendor = vendor;
+  document.querySelectorAll('.disc-vendor-pill').forEach(function(p) { p.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  renderInStockBody();
+}
+
 function renderInStockTab() {
+  var stores  = _discoverData.stores || [];
+  var dgItems = _discoverData.discogsListings || [];
+
+  // Vendor filter pills
+  var pillsHtml = '<button class="disc-vendor-pill' + (_inStockVendor === 'all' ? ' active' : '') +
+    '" onclick="setInStockVendor(\'all\',this)">All <span class="disc-vendor-count">' + stores.reduce(function(n,s){ return n + s.itemCount; }, 0) + '</span></button>';
+  stores.forEach(function(s) {
+    var cls = storeClassMap[s.store] || '';
+    pillsHtml += '<button class="disc-vendor-pill ' + cls + (_inStockVendor === s.store ? ' active' : '') +
+      '" onclick="setInStockVendor(\'' + escapeAttr(s.store) + '\',this)">' +
+      escapeHtml(storeDisplayName[s.store] || s.store) +
+      ' <span class="disc-vendor-count">' + s.itemCount + '</span></button>';
+  });
+  // Discogs pill — always shown; count from synced listings
+  var dgCount = dgItems.length;
+  pillsHtml += '<button class="disc-vendor-pill discogs' + (_inStockVendor === 'discogs' ? ' active' : '') +
+    '" onclick="setInStockVendor(\'discogs\',this)">' +
+    '<img src="img/discogs.png" style="width:10px;height:10px;opacity:0.7;vertical-align:middle;margin-right:4px">' +
+    'Discogs' + (dgCount > 0 ? ' <span class="disc-vendor-count">' + dgCount + '</span>' : '') + '</button>';
+
+  document.getElementById('discBody').innerHTML =
+    '<div class="disc-vendor-filter">' + pillsHtml + '</div>' +
+    '<div id="discInStockBody"></div>';
+
+  renderInStockBody();
+}
+
+function renderInStockBody() {
+  var el = document.getElementById('discInStockBody');
+  if (!el) return;
+
+  if (_inStockVendor === 'discogs') {
+    el.innerHTML = renderDiscogsSection();
+    return;
+  }
+
   var stores = _discoverData.stores || [];
 
-  var controls =
-    '<div class="disc-controls" style="display:flex">' +
+  var sortControls =
+    '<div class="disc-controls" style="display:flex;margin-bottom:14px">' +
       '<div class="disc-sort-row">' +
         '<span class="disc-sort-label">Sort by</span>' +
         '<button class="disc-sort-btn' + (_discoverSort === 'items' ? ' active' : '') + '" onclick="setDiscoverSort(\'items\',this)">Most Items</button>' +
@@ -3609,29 +3653,96 @@ function renderInStockTab() {
       '</div>' +
     '</div>';
 
-  if (stores.length === 0) {
-    document.getElementById('discBody').innerHTML = controls +
-      '<div class="disc-empty">No in-stock items found. Run a scan first.</div>';
+  var filtered = (_inStockVendor === 'all' ? stores : stores.filter(function(s) { return s.store === _inStockVendor; }))
+    .slice().sort(function(a, b) {
+      if (_discoverSort === 'total') {
+        return (a.totalWithShipping !== null ? a.totalWithShipping : 9999) - (b.totalWithShipping !== null ? b.totalWithShipping : 9999);
+      }
+      if (_discoverSort === 'alpha') return a.store.localeCompare(b.store);
+      return b.itemCount - a.itemCount;
+    });
+
+  if (filtered.length === 0) {
+    el.innerHTML = sortControls + '<div class="disc-empty">No in-stock items found. Run a scan first.</div>';
     return;
   }
 
-  var filtered = stores.slice().sort(function(a, b) {
-    if (_discoverSort === 'total') {
-      var ta = a.totalWithShipping !== null ? a.totalWithShipping : 9999;
-      var tb = b.totalWithShipping !== null ? b.totalWithShipping : 9999;
-      return ta - tb;
-    }
-    if (_discoverSort === 'alpha') return a.store.localeCompare(b.store);
-    return b.itemCount - a.itemCount;
-  });
-
-  document.getElementById('discBody').innerHTML = controls +
-    '<div class="disc-store-grid">' + filtered.map(renderStoreCard).join('') + '</div>';
+  el.innerHTML = sortControls + '<div class="disc-store-grid">' + filtered.map(renderStoreCard).join('') + '</div>';
 
   if (_activeDiscoverStore) {
     var card = document.querySelector('.disc-store-card[data-store="' + CSS.escape(_activeDiscoverStore) + '"]');
     if (card) card.classList.add('expanded');
   }
+}
+
+// ─── DISCOGS MARKETPLACE SECTION ─────────────────────────────────────────────
+
+function renderDiscogsSection() {
+  var items = _discoverData.discogsListings || [];
+
+  if (items.length === 0) {
+    return '<div class="disc-discogs-empty">' +
+      '<img src="img/discogs.png" style="width:20px;height:20px;opacity:0.5;margin-bottom:10px">' +
+      '<div class="disc-discogs-empty-title">No Discogs listings synced yet</div>' +
+      '<div class="disc-discogs-empty-hint">Use the Gold Digger Chrome Extension to sync seller listings from your Discogs session.</div>' +
+      '<button class="disc-discogs-ext-btn" onclick="openOptimizer()">Open Extension Sync</button>' +
+    '</div>';
+  }
+
+  var totalUsd = items.reduce(function(n, i) { return n + (i.cheapestUsd || 0); }, 0);
+  var withPrice = items.filter(function(i) { return i.cheapestUsd > 0; }).length;
+
+  var summaryHtml =
+    '<div class="disc-discogs-summary">' +
+      '<span>' + items.length + ' release' + (items.length !== 1 ? 's' : '') + ' with listings</span>' +
+      (withPrice > 0 ? '<span class="disc-discogs-total">~$' + totalUsd.toFixed(0) + ' cheapest total</span>' : '') +
+      '<button class="disc-discogs-resync-btn" onclick="openOptimizer()">↻ Re-sync via Extension</button>' +
+    '</div>';
+
+  var gridHtml = '<div class="disc-discogs-grid">' +
+    items.map(function(item) {
+      var artHtml = item.thumb
+        ? '<img class="disc-dg-art" src="' + escapeHtml(item.thumb) + '" loading="lazy" alt="" onerror="this.style.display=\'none\';">'
+        : '<div class="disc-dg-art-placeholder">♪</div>';
+
+      var priceHtml = item.cheapestUsd
+        ? '<span class="disc-dg-price">' + escapeHtml(item.cheapestStr || ('$' + item.cheapestUsd.toFixed(2))) + '</span>'
+        : '<span class="disc-dg-price-na">—</span>';
+
+      var condBadge = item.condition
+        ? '<span class="disc-dg-cond">' + escapeHtml(item.condition.split(' ')[0]) + '</span>'
+        : '';
+
+      var sellerHtml = item.seller
+        ? '<span class="disc-dg-seller">' + escapeHtml(item.seller) +
+          (item.sellerRating ? ' <span class="disc-dg-rating">' + item.sellerRating.toFixed(1) + '%</span>' : '') +
+          '</span>'
+        : '';
+
+      var shipsHtml = item.shipsFrom ? '<span class="disc-dg-ships">ships ' + escapeHtml(item.shipsFrom) + '</span>' : '';
+
+      var listingsLabel = item.numListings > 1 ? item.numListings + ' listings' : '1 listing';
+
+      var linkAttr = item.listingUrl ? ' onclick="window.open(\'' + escapeAttr(item.listingUrl) + '\',\'_blank\')"' : '';
+
+      return '<div class="disc-dg-card"' + linkAttr + '>' +
+        '<div class="disc-dg-art-wrap">' + artHtml + '</div>' +
+        '<div class="disc-dg-body">' +
+          '<div class="disc-dg-artist">' + escapeHtml(item.artist) + '</div>' +
+          '<div class="disc-dg-title">' + escapeHtml(item.title) + '</div>' +
+          '<div class="disc-dg-footer">' +
+            priceHtml + condBadge +
+          '</div>' +
+          '<div class="disc-dg-meta">' +
+            sellerHtml + shipsHtml +
+            '<span class="disc-dg-count">' + listingsLabel + '</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('') +
+  '</div>';
+
+  return summaryHtml + gridHtml;
 }
 
 function renderStoreCard(s) {
@@ -3722,7 +3833,7 @@ function setDiscoverSort(sort, btn) {
   _discoverSort = sort;
   document.querySelectorAll('.disc-sort-btn').forEach(function(b) { b.classList.remove('active'); });
   if (btn) btn.classList.add('active');
-  renderInStockTab();
+  renderInStockBody();
 }
 
 function setDiscoverGenre(genre, btn) {

@@ -704,11 +704,11 @@ function saveDiscogsListings(wantlistId, listings) {
 
 function getDiscogsListings(userId) {
     return getDb().prepare(`
-        SELECT dl.*, w.artist, w.title, w.catno, w.discogs_id
+        SELECT dl.*, w.artist, w.title, w.catno, w.discogs_id, w.thumb, w.genres, w.styles
         FROM discogs_listings dl
         JOIN wantlist w ON w.id = dl.wantlist_id
         WHERE w.user_id = ? AND w.active = 1
-        ORDER BY dl.seller_username, dl.price_usd ASC
+        ORDER BY dl.wantlist_id, dl.price_usd ASC
     `).all(userId);
 }
 

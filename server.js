@@ -1642,6 +1642,61 @@ app.get('/api/discover/:username', function(req, res) {
             return b.matchPct - a.matchPct;
         });
 
+        // ── Discogs marketplace listings (from Chrome extension sync) ──────────
+        var rawDiscogs = db.getDiscogsListings(user.id);
+        var discogsMap = {};
+        rawDiscogs.forEach(function(l) {
+            var wid = l.wantlist_id;
+            if (!discogsMap[wid]) {
+                discogsMap[wid] = {
+                    wantlistId: wid,
+                    artist:  l.artist  || '',
+                    title:   l.title   || '',
+                    catno:   l.catno   || '',
+                    discogsId: l.discogs_id || null,
+                    thumb:   l.thumb   || '',
+                    genres:  l.genres  || '',
+                    styles:  l.styles  || '',
+                    numListings: 0,
+                    cheapest: null,
+                    cheapestUsd: null,
+                };
+            }
+            var item = discogsMap[wid];
+            item.numListings++;
+            if (!item.cheapest || (l.price_usd > 0 && (!item.cheapestUsd || l.price_usd < item.cheapestUsd))) {
+                item.cheapest = l;
+                item.cheapestUsd = l.price_usd;
+            }
+        });
+        var discogsItems = Object.keys(discogsMap).map(function(wid) {
+            var d = discogsMap[wid];
+            var c = d.cheapest;
+            var cheapestStr = '';
+            if (c && c.price_original) {
+                cheapestStr = c.currency === 'USD' ? '$' + parseFloat(c.price_original).toFixed(2)
+                    : parseFloat(c.price_original).toFixed(2) + ' ' + c.currency;
+            }
+            return {
+                wantlistId:   d.wantlistId,
+                artist:       d.artist,
+                title:        d.title,
+                catno:        d.catno,
+                discogsId:    d.discogsId,
+                thumb:        d.thumb,
+                genres:       d.genres,
+                styles:       d.styles,
+                numListings:  d.numListings,
+                cheapestUsd:  d.cheapestUsd,
+                cheapestStr:  cheapestStr,
+                seller:       c ? c.seller_username : null,
+                sellerRating: c ? c.seller_rating : null,
+                condition:    c ? c.condition : null,
+                shipsFrom:    c ? c.ships_from : null,
+                listingUrl:   c ? c.listing_url : null,
+            };
+        }).sort(function(a, b) { return (a.cheapestUsd || 9999) - (b.cheapestUsd || 9999); });
+
         res.json({
             username:     req.params.username,
             stores:       stores,
@@ -1650,6 +1705,8 @@ app.get('/api/discover/:username', function(req, res) {
             cart:         cartItems,
             cartSet:      cartSet,
             totalInStock: rows.length,
+            discogsListings:    discogsItems,
+            discogsListingCount: rawDiscogs.length,
         });
     } catch(e) {
         console.error('[discover]', e.message);
