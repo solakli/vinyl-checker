@@ -55,6 +55,64 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = 'claude-opus-4-5';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PERSONALITY ARCHETYPES (mirrored from server.js — no circular require)
+// ═══════════════════════════════════════════════════════════════════════════
+
+var ARCHETYPE_RULES = [
+    { label:'UK Garage Head',        icon:'🏴',  color:'teal',   styles:['UK Garage','Speed Garage','2-Step'],                    genres:[],            min:5  },
+    { label:'DnB / Jungle Junkie',   icon:'🥁',  color:'purple', styles:['Drum n Bass','Jungle','Darkstep','Neurofunk'],          genres:[],            min:7  },
+    { label:'Rominimal Head',        icon:'〰️', color:'blue',   styles:['Minimal','Minimal Techno','Microhouse'],                genres:[],            min:7  },
+    { label:'Detroit Purist',        icon:'🏭', color:'smoke',  styles:['Detroit Techno','Deep Techno'],                         genres:[],            min:5  },
+    { label:'Acid Freak',            icon:'🧪', color:'green',  styles:['Acid','Acid House','Acid Jazz','Acid Techno'],          genres:[],            min:5  },
+    { label:'Italo-Cosmic Head',     icon:'🪐', color:'pink',   styles:['Cosmic','Italo-Disco','Space'],                         genres:[],            min:5  },
+    { label:'House Music Lifer',     icon:'🏠', color:'orange', styles:['Chicago House','Deep House','Soulful House','House'],   genres:[],            min:9  },
+    { label:'Breaks Fiend',          icon:'💥', color:'red',    styles:['Breakbeat','Breaks','Nu-Skool Breaks','Big Beat'],      genres:[],            min:5  },
+    { label:'Dub Archaeologist',     icon:'🌿', color:'green',  styles:['Dub','Roots Reggae','Dub Techno','Lovers Rock'],        genres:['Reggae'],    min:7  },
+    { label:'Global Grooves Hunter', icon:'🌍', color:'gold',   styles:['Afrobeat','Highlife','Afro-Cuban','Cumbia','Baile Funk'],genres:[],            min:4  },
+    { label:'Ambient Explorer',      icon:'🌌', color:'blue',   styles:['Ambient','Drone','New Age','Dark Ambient'],             genres:[],            min:7  },
+    { label:'Industrial Head',       icon:'⚙️', color:'smoke',  styles:['EBM','Industrial','Dark Electro','Power Electronics'],  genres:[],            min:5  },
+    { label:'80s Synth Devotee',     icon:'🎛', color:'pink',   styles:['Synth-pop','New Wave','Post-Punk','Darkwave'],          genres:[],            min:7  },
+    { label:'Jazz Archaeologist',    icon:'🎷', color:'gold',   styles:['Bop','Post Bop','Hard Bop','Cool Jazz','Free Jazz'],    genres:['Jazz'],      min:8  },
+    { label:'Soul & Funk Hunter',    icon:'✊', color:'orange', styles:['Soul','Funk','Northern Soul','Neo Soul'],                genres:['Soul'],      min:10 },
+    { label:'Hip Hop Head',          icon:'🎤', color:'red',    styles:[],                                                       genres:['Hip Hop'],   min:12 },
+    { label:'Latin Grooves Collector',icon:'💃',color:'teal',   styles:['Cumbia','Salsa','Latin Jazz','Bossa Nova'],             genres:['Latin'],     min:5  },
+    { label:'Balearic Head',         icon:'🏝', color:'teal',   styles:['Balearic','Chill Out','Downtempo'],                     genres:[],            min:5  },
+    { label:'Trance Pilgrim',        icon:'🕊', color:'purple', styles:['Trance','Progressive Trance','Psy-Trance'],             genres:[],            min:7  },
+    { label:'Noise & Experimental',  icon:'📡', color:'smoke',  styles:['Noise','Avant-garde','Free Improvisation'],             genres:['Non-Music'], min:5  },
+    { label:'Classical Digger',      icon:'🎼', color:'gold',   styles:[],                                                       genres:['Classical'], min:10 },
+];
+
+function computePersonalityTags(genreCounts, styleCounts, totalItems, avgHave, topDecade) {
+    var scored = ARCHETYPE_RULES.map(function(rule) {
+        var sum = 0;
+        rule.styles.forEach(function(s){ sum += (styleCounts[s] || 0); });
+        rule.genres.forEach(function(g){ sum += (genreCounts[g] || 0); });
+        var pct = totalItems > 0 ? (sum / totalItems) * 100 : 0;
+        return { label: rule.label, icon: rule.icon, color: rule.color, pct: Math.round(pct*10)/10, min: rule.min };
+    });
+    scored.sort(function(a, b){ return b.pct - a.pct; });
+    var tags = scored.filter(function(r){ return r.pct >= r.min; }).slice(0, 3);
+
+    if (tags.length < 3 && typeof avgHave === 'number' && avgHave > 0) {
+        if      (avgHave < 50)  tags.push({ label:'Ultra Rare Digger',      icon:'💎', color:'gold' });
+        else if (avgHave < 150) tags.push({ label:'Underground Gem Hunter', icon:'🔍', color:'gold' });
+        else if (avgHave < 400) tags.push({ label:'Deep Digger',            icon:'⛏', color:'smoke' });
+    }
+    if (tags.length === 0 && topDecade) {
+        var eraMap = {
+            '60s':{ label:'60s Collector',     icon:'🎸', color:'orange' },
+            '70s':{ label:'Vintage Digger',     icon:'🕰', color:'gold'   },
+            '80s':{ label:"'80s Archaeologist", icon:'📼', color:'purple' },
+            '90s':{ label:"'90s Head",          icon:'💿', color:'blue'   },
+            '00s':{ label:'Y2K Era Explorer',   icon:'💾', color:'teal'   },
+            '10s':{ label:'2010s Digger',       icon:'📱', color:'smoke'  },
+        };
+        if (eraMap[topDecade]) tags.push(eraMap[topDecade]);
+    }
+    return tags.slice(0, 3);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // KNOWLEDGE BASE — GOLDIE's system prompt
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -270,26 +328,28 @@ function toolGetUserProfile({ username }) {
     yearRows.forEach(function(r){ var k=(Math.floor(r.yr/10)*10%100)+'s'; decades[k]=(decades[k]||0)+r.cnt; });
     var topDecade = Object.entries(decades).sort((a,b)=>b[1]-a[1])[0];
 
-    // Personality tags
-    var { computePersonalityTags: _cpt } = require('./server'); // reuse if exported, else inline
-    // Inline tag computation (avoid circular require)
+    // Personality tags — computed inline (no circular require needed)
+    var avgHave = meta && meta.synced > 0 ? Math.round(meta.avgHave) : null;
+    var personalityTags = computePersonalityTags(gC, sC, allItems.length, avgHave, topDecade ? topDecade[0] : null);
+
     return {
-        username:      user.username,
-        wantlistSize:  wantlistSize,
-        collectionSize:collectionSize,
-        inStockCount:  inStockCount,
-        inStockPct:    wantlistSize > 0 ? +(inStockCount/wantlistSize*100).toFixed(1) : 0,
-        neverFound:    neverFound,
-        topGenres:     topGenres,
-        topStyles:     topStyles,
-        topArtists:    topArtists,
-        era:           { topDecade: topDecade ? topDecade[0] : null, breakdown: decades },
-        rarity:        { avgHave: meta && meta.synced > 0 ? Math.round(meta.avgHave) : null,
-                         avgWant: meta && meta.synced > 0 ? Math.round(meta.avgWant) : null,
-                         rarePct: meta && meta.synced > 0 ? Math.round(rareCount/meta.synced*100) : null,
-                         metaSynced: meta ? meta.synced : 0 },
-        lastScan:      user.last_full_scan,
-        lastSync:      user.last_sync
+        username:        user.username,
+        wantlistSize:    wantlistSize,
+        collectionSize:  collectionSize,
+        inStockCount:    inStockCount,
+        inStockPct:      wantlistSize > 0 ? +(inStockCount/wantlistSize*100).toFixed(1) : 0,
+        neverFound:      neverFound,
+        topGenres:       topGenres,
+        topStyles:       topStyles,
+        topArtists:      topArtists,
+        era:             { topDecade: topDecade ? topDecade[0] : null, breakdown: decades },
+        rarity:          { avgHave: avgHave,
+                           avgWant: meta && meta.synced > 0 ? Math.round(meta.avgWant) : null,
+                           rarePct: meta && meta.synced > 0 ? Math.round(rareCount/meta.synced*100) : null,
+                           metaSynced: meta ? meta.synced : 0 },
+        personalityTags: personalityTags,
+        lastScan:        user.last_full_scan,
+        lastSync:        user.last_sync
     };
 }
 
@@ -602,7 +662,7 @@ function toolGetDiscogsMarketplace({ username, query, min_condition, ships_from,
           ${max_price_usd ? 'AND (dl.price_usd IS NULL OR dl.price_usd <= ' + parseFloat(max_price_usd) + ')' : ''}
           ${min_seller_rating ? 'AND (dl.seller_rating IS NULL OR dl.seller_rating >= ' + parseFloat(min_seller_rating) + ')' : ''}
           ${ships_from ? "AND LOWER(dl.ships_from) LIKE '%" + ships_from.toLowerCase().replace(/'/g,"''") + "%'" : ''}
-    `).all(hasQuery ? [user.id, q, q] : [user.id]);
+    `).all(...(hasQuery ? [user.id, q, q] : [user.id]));
 
     // Filter by condition client-side (easier than SQL for ranked comparison)
     if (min_condition) {
@@ -843,11 +903,11 @@ async function runAgent(session, userMessage, onChunk) {
         var toolUses = assistantContent.filter(function(b){ return b.type === 'tool_use'; });
         if (toolUses.length === 0) break; // no tool calls — done
 
-        // Run all tool calls
+        // Run all tool calls (await handles both sync and async handlers)
         var toolResults = [];
         for (var tu of toolUses) {
             if (onChunk) onChunk({ type: 'tool_call', name: tu.name, input: tu.input });
-            var result = runTool(tu.name, tu.input);
+            var result = await Promise.resolve(runTool(tu.name, tu.input));
             if (onChunk) onChunk({ type: 'tool_result', name: tu.name, result: result });
             toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(result) });
         }
@@ -995,7 +1055,7 @@ async function startMcpServer() {
         });
 
         mcp.tool(tool.name, tool.description, zodShape, async function(input) {
-            var result = runTool(tool.name, input);
+            var result = await Promise.resolve(runTool(tool.name, input));
             return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
         });
     });
