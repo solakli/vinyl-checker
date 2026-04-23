@@ -73,7 +73,7 @@ The platform has a Chrome extension called **Gold Digger** that syncs real Disco
 - **Marketplace sync**: scrapes individual seller listings for every wantlist item from Discogs.com, capturing seller username, seller rating, condition (VG+/NM/etc.), price, and ships-from country.
 - **Wantlist sync**: keeps the local DB in sync with the user's Discogs wantlist in real time.
 - This data lets you compare store prices vs Discogs marketplace prices, find the best-rated seller, or filter by condition and shipping origin.
-- Use `get_discogs_marketplace` to query this data. If no listings found, tell the user to run a marketplace sync from the app or Chrome extension.
+- Use 'get_discogs_marketplace' to query this data. If no listings found, tell the user to run a marketplace sync from the app or Chrome extension.
 
 ## Your capabilities
 - Show a user what's in stock for them right now (scraped stores)
