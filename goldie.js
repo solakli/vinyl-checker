@@ -24,6 +24,25 @@ const path    = require('path');
 const fs      = require('fs');
 const crypto  = require('crypto');
 const http    = require('http');
+
+// Load .env before anything else
+try {
+    var envPath = path.join(__dirname, '.env');
+    if (fs.existsSync(envPath)) {
+        fs.readFileSync(envPath, 'utf8').split('\n').forEach(function(line) {
+            line = line.trim();
+            if (line && !line.startsWith('#')) {
+                var eq = line.indexOf('=');
+                if (eq > 0) {
+                    var k = line.substring(0, eq).trim();
+                    var v = line.substring(eq + 1).trim();
+                    if (!process.env[k]) process.env[k] = v;
+                }
+            }
+        });
+    }
+} catch(e) {}
+
 const Anthropic = require('@anthropic-ai/sdk');
 
 // ── DB ──────────────────────────────────────────────────────────────────────
