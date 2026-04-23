@@ -1839,13 +1839,13 @@ app.listen(PORT, function () {
         syncStaleStores();
     }, DAILY_CHECK_INTERVAL);
 
-    // Also run daily check once on startup (after 2 min delay to let things settle)
+    // Also run daily check once on startup (after 5 min delay — gives manual scans priority window)
     setTimeout(function () {
         scanner.dailyFullRescan()
             .then(function() { scanner.trackJobRun('daily', true); })
             .catch(function (e) { console.error('[daily] Startup check fatal:', e.message); scanner.trackJobRun('daily', false, e.message); });
         syncStaleStores();
-    }, 120000);
+    }, 300000);
 
     // Stock validation — re-checks "in stock" items to catch false positives
     var VALIDATE_INTERVAL = parseInt(process.env.VALIDATE_INTERVAL) || 4 * 60 * 60 * 1000; // 4 hours
