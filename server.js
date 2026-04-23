@@ -1538,7 +1538,7 @@ function proxyToGoldie(req, res, extraPath) {
     proxyReq.end();
 }
 
-app.all('/api/goldie/:path(*)', function(req, res) { proxyToGoldie(req, res); });
+app.use('/api/goldie', function(req, res) { proxyToGoldie(req, res); });
 
 // Serve the app
 app.get('/', function (req, res) {
