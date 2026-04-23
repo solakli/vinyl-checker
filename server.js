@@ -1446,7 +1446,12 @@ app.get('/api/health', function (req, res) {
             storeAccuracy: storeAccuracy,
             validatorHistory: validatorHistory,
             recentStockChanges: recentStockChanges,
-            workers: scanner.NUM_WORKERS || 5
+            workers: scanner.NUM_WORKERS || 3,
+            workersConfig: {
+                manual: scanner.NUM_WORKERS || 3,
+                daily:  scanner.DAILY_WORKERS || 2,
+                bg:     scanner.BG_WORKERS || 1,
+            }
         });
     } catch (e) {
         res.status(500).json({ status: 'error', error: e.message });
@@ -1784,8 +1789,8 @@ app.post('/api/admin/cleanup', function (req, res) {
 // BACKGROUND SYNC
 // ═══════════════════════════════════════════════════════════════
 
-var SYNC_INTERVAL = parseInt(process.env.SYNC_INTERVAL) || (60 * 60 * 1000); // default 1 hour
-var DAILY_CHECK_INTERVAL = 24 * 60 * 60 * 1000; // Check once per day — users rescanned after 23 h without a scan
+var SYNC_INTERVAL = parseInt(process.env.SYNC_INTERVAL) || (4 * 60 * 60 * 1000); // default 4 hours — incremental new-items only
+var DAILY_CHECK_INTERVAL = 24 * 60 * 60 * 1000; // daily check fires once/day; users qualify after 23 h since last scan
 var NOTIFICATION_WEBHOOK = process.env.NOTIFICATION_WEBHOOK || '';
 
 app.listen(PORT, function () {
@@ -1829,8 +1834,8 @@ app.listen(PORT, function () {
             .catch(function (e) { console.error('[sync] Fatal:', e.message); scanner.trackJobRun('sync', false, e.message); });
     }, SYNC_INTERVAL);
 
-    // Daily full rescan scheduler — checks hourly, fires for users not scanned in 23+ hours
-    console.log('[daily] Daily rescan checker every 1 hour (users due after 23 h)');
+    // Daily full rescan scheduler — fires once per day for users not scanned in 23+ hours
+    console.log('[daily] Daily rescan fires once/day per user (23h threshold). ' + (scanner.DAILY_WORKERS || 2) + ' workers × 7 stores');
     setInterval(function () {
         scanner.dailyFullRescan()
             .then(function() { scanner.trackJobRun('daily', true); })
