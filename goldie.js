@@ -580,8 +580,29 @@ function getUserSessions(username) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function runAgent(session, userMessage, onChunk) {
+    // On the very first message of a session, prepend user identity so GOLDIE
+    // knows exactly who it's talking to without needing to ask.
+    var isFirstMessage = session.messages.length === 0;
+    var contextualMessage = userMessage;
+    if (isFirstMessage && session.username) {
+        var u = session.username;
+        // Quick snapshot: in-stock count so GOLDIE can tease it immediately
+        try {
+            var _d = db.getDb();
+            var _user = _d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(u);
+            if (_user) {
+                var _ic = _d.prepare(
+                    'SELECT COUNT(DISTINCT w.id) as c FROM wantlist w JOIN store_results sr ON sr.wantlist_id=w.id WHERE w.user_id=? AND w.active=1 AND sr.in_stock=1'
+                ).get(_user.id).c;
+                var _wc = _d.prepare('SELECT COUNT(*) as c FROM wantlist WHERE user_id=? AND active=1').get(_user.id).c;
+                contextualMessage = '[Context: You are speaking with Discogs user "' + u + '". They have ' +
+                    _wc + ' items on their wantlist and ' + _ic + ' are currently in stock across the scraped stores. Use their username when calling tools.]\n\n' + userMessage;
+            }
+        } catch(e) {}
+    }
+
     // Append user message to history
-    session.messages.push({ role: 'user', content: userMessage });
+    session.messages.push({ role: 'user', content: contextualMessage });
 
     // Keep last N messages to avoid context overflow (keep system + last 20)
     var historyToSend = session.messages.slice(-20);
