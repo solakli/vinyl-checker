@@ -5837,3 +5837,104 @@ body.light .prof-style-pill { background: #f5f5f5; border-color: #e5e5e5; color:
   transition: color 0.15s, border-color 0.15s;
 }
 .prof-share-btn:hover { color: #C9A227; border-color: #C9A227; }
+
+/* ─── Profile: Diggers community panel ─── */
+.prof-diggers-section {
+  background: #111;
+  border: 1px solid #1e1e1e;
+  border-radius: 8px;
+  padding: 18px 20px;
+  margin-top: 20px;
+}
+.prof-diggers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+.prof-digger-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #0e0e0e;
+  border: 1px solid #1a1a1a;
+  border-radius: 7px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.prof-digger-card:hover {
+  border-color: #C9A227;
+  background: #141414;
+}
+.prof-digger-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1e1e1e, #2a2a2a);
+  border: 1px solid #2a2a2a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Oswald', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: #C9A227;
+  flex-shrink: 0;
+  transition: border-color 0.15s;
+}
+.prof-digger-card:hover .prof-digger-avatar { border-color: #C9A227; }
+.prof-digger-info { flex: 1; min-width: 0; }
+.prof-digger-name {
+  font-family: 'Oswald', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ccc;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 3px;
+}
+.prof-digger-card:hover .prof-digger-name { color: #C9A227; }
+.prof-digger-stats {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 5px;
+}
+.prof-digger-stat   { font-size: 10px; color: #555; }
+.prof-digger-stat.gold { color: #C9A227; font-weight: 600; }
+.prof-digger-stat.dim  { color: #3a3a3a; }
+.prof-digger-dot    { font-size: 9px; color: #2a2a2a; }
+.prof-digger-genres { display: flex; gap: 4px; flex-wrap: wrap; }
+.prof-digger-genre {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #1a1a1a;
+  border: 1px solid #222;
+  color: #555;
+  font-family: 'Oswald', sans-serif;
+  white-space: nowrap;
+}
+.prof-digger-pct {
+  font-family: 'Oswald', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: #2a2a2a;
+  flex-shrink: 0;
+  transition: color 0.15s;
+  min-width: 44px;
+  text-align: right;
+}
+.prof-digger-card:hover .prof-digger-pct { color: #C9A227; }
+
+/* Light mode */
+body.light .prof-diggers-section { background: #fff; border-color: #eee; }
+body.light .prof-digger-card     { background: #f8f8f8; border-color: #eee; }
+body.light .prof-digger-card:hover { border-color: #C9A227; background: #fffdf0; }
+body.light .prof-digger-avatar   { background: #f0f0f0; border-color: #e0e0e0; }
+body.light .prof-digger-name     { color: #333; }
+body.light .prof-digger-genre    { background: #f0f0f0; border-color: #e5e5e5; color: #aaa; }

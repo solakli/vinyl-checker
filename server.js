@@ -1118,6 +1118,37 @@ app.get('/api/scan-status/:username', function (req, res) {
     res.json(scanner.getScanStatus(username));
 });
 
+// ─── Community / all diggers ───────────────────────────────────────────────
+app.get('/api/diggers', function (req, res) {
+    try {
+        var d = db.getDb();
+        var users = d.prepare('SELECT id, username, last_full_scan FROM users ORDER BY username').all();
+        var result = users.map(function(u) {
+            var wantlist  = d.prepare('SELECT COUNT(*) as c FROM wantlist WHERE user_id=? AND active=1').get(u.id).c;
+            var inStock   = d.prepare('SELECT COUNT(DISTINCT w.id) as c FROM wantlist w JOIN store_results sr ON sr.wantlist_id=w.id WHERE w.user_id=? AND w.active=1 AND sr.in_stock=1').get(u.id).c;
+            var scanCount = d.prepare('SELECT COUNT(*) as c FROM scan_runs WHERE user_id=? AND finished_at IS NOT NULL AND error IS NULL').get(u.id).c;
+            // Top 3 genres from wantlist
+            var genres = {};
+            d.prepare('SELECT genres FROM wantlist WHERE user_id=? AND active=1').all(u.id).forEach(function(w) {
+                (w.genres||'').split('|').forEach(function(g){ g=g.trim(); if(g) genres[g]=(genres[g]||0)+1; });
+            });
+            var topGenres = Object.keys(genres).sort(function(a,b){return genres[b]-genres[a];}).slice(0,3);
+            return {
+                username:  u.username,
+                wantlist:  wantlist,
+                inStock:   inStock,
+                inStockPct: wantlist > 0 ? Math.round((inStock/wantlist)*10)/10 : 0,
+                scanCount: scanCount,
+                lastScan:  u.last_full_scan,
+                topGenres: topGenres
+            };
+        });
+        res.json(result);
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ─── User Profile ─────────────────────────────────────────────────────────────
 app.get('/api/profile/:username', function (req, res) {
     try {
