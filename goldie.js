@@ -124,7 +124,8 @@ You have access to a set of tools that query the platform's live database. Alway
 - Users sync their Discogs wantlist and collection. The platform scrapes ~15 independent stores and shows which wanted items are in stock.
 - Stores scraped: HHV (Berlin), Deejay.de (Berlin), Hardwax (Berlin), Decks.de (Germany), Juno (London), Phonica (London), Yoyaku (Tokyo), Turntable Lab (NYC), Gramaphone (Chicago), Further Records (US), Underground Vinyl (US), Octopus Records (NYC).
 - Each user has a taste profile built from wantlist + collection: top genres, styles, artists, era, personality archetypes, rarity score.
-- The optimizer groups in-stock items by store to minimize shipping and suggest optimal carts.
+- The optimizer is the real cart-building engine: it covers the full wantlist using BOTH scraped stores AND individual Discogs marketplace sellers. It calculates real shipping per seller, picks the cheapest combination, and stores results in optimizer_jobs. Always use get_optimizer_result when the user mentions "optimize", "cart", or "checkout". If no result exists, use run_optimizer to trigger one.
+- suggest_cart is a lightweight fallback that only sees scraped in-stock items — not Discogs sellers and not real shipping costs.
 
 ## Chrome Extension & Discogs Marketplace Sync
 The platform has a Chrome extension called **Gold Digger** that syncs real Discogs marketplace data:
@@ -185,7 +186,7 @@ const TOOLS = [
     },
     {
         name: 'suggest_cart',
-        description: 'Build optimal per-store carts for a user based on their taste profile and in-stock availability. Groups items by store to minimize shipping. Returns store carts with items, total prices and reasoning.',
+        description: 'FALLBACK ONLY — simple store-only cart suggestion when no optimizer result exists. Prefer get_optimizer_result for any "cart" or "optimize" request. This tool only sees scraped store inventory (not Discogs marketplace sellers) and does not calculate real shipping. Use it when the user wants a quick in-stock store recommendation without running the full optimizer.',
         input_schema: {
             type: 'object',
             properties: {
@@ -285,6 +286,35 @@ const TOOLS = [
             properties: {
                 username: { type: 'string', description: 'Discogs username' },
                 type:     { type: 'string', enum: ['wantlist', 'marketplace', 'both'], description: 'What to sync: wantlist (pull from Discogs API), marketplace (scrape seller listings), or both (default: both)' }
+            },
+            required: ['username']
+        }
+    },
+    {
+        name: 'get_optimizer_result',
+        description: 'Get the latest cart optimization result for a user. The optimizer is the real cart-building engine — it covers the full wantlist using both scraped stores AND individual Discogs marketplace sellers, calculates real shipping costs per source, and picks the cheapest combination. ALWAYS use this instead of suggest_cart when the user asks to "optimize", "build a cart", or "check the optimizer". Returns store carts and top Discogs sellers with items, prices, shipping, and conditions.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                username:             { type: 'string',  description: 'Discogs username' },
+                max_age_hours:        { type: 'number',  description: 'How old the cached result can be in hours (default 24)' },
+                show_discogs_sellers: { type: 'boolean', description: 'Include top Discogs seller detail (default true)' },
+                limit_sellers:        { type: 'number',  description: 'How many top Discogs sellers to show (default 5)' }
+            },
+            required: ['username']
+        }
+    },
+    {
+        name: 'run_optimizer',
+        description: 'Trigger a new cart optimization job for a user. The optimizer scans ALL wantlist items across scraped stores and Discogs marketplace sellers to build the cheapest cart. Takes 1-2 minutes. After calling this, use get_optimizer_result to fetch the result. Use this when the user asks to re-optimize, or when get_optimizer_result returns no cached result.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                username:          { type: 'string',  description: 'Discogs username' },
+                min_condition:     { type: 'string',  description: 'Minimum record condition: M, NM, VG+, VG, G+ (default: VG)' },
+                min_seller_rating: { type: 'number',  description: 'Minimum Discogs seller rating 0-100 (default: 98)' },
+                max_price_usd:     { type: 'number',  description: 'Max price per record in USD (optional)' },
+                force_refresh:     { type: 'boolean', description: 'Force a new run even if a fresh cached result exists (default false)' }
             },
             required: ['username']
         }
@@ -721,27 +751,135 @@ function toolGetDiscogsMarketplace({ username, query, min_condition, ships_from,
 // GOLDIE's internal vinyl-checker URL (same machine, different port)
 var CHECKER_URL = 'http://127.0.0.1:' + (process.env.PORT || '5052');
 
+// Shared HTTP helper — POST JSON to vinyl-checker server
+function postToChecker(path, bodyObj) {
+    return new Promise(function(resolve) {
+        var bodyStr = bodyObj ? JSON.stringify(bodyObj) : '';
+        var opts = require('url').parse(CHECKER_URL + path);
+        opts.method = 'POST';
+        opts.headers = { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr) };
+        var req = http.request(opts, function(res) {
+            var body = '';
+            res.on('data', function(c){ body += c; });
+            res.on('end', function(){
+                try { resolve(JSON.parse(body)); } catch(e) { resolve({ raw: body }); }
+            });
+        });
+        req.on('error', function(e){ resolve({ error: e.message }); });
+        if (bodyStr) req.write(bodyStr);
+        req.end();
+    });
+}
+
+function toolGetOptimizerResult({ username, max_age_hours, show_discogs_sellers, limit_sellers }) {
+    var d = db.getDb();
+    var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
+    if (!user) return { error: 'User not found: ' + username };
+
+    max_age_hours = max_age_hours || 24;
+    limit_sellers = limit_sellers || 5;
+
+    // Check for active job first
+    var activeJob = d.prepare(
+        "SELECT id, status, created_at FROM optimizer_jobs WHERE username=? AND status IN ('pending','processing') ORDER BY created_at DESC LIMIT 1"
+    ).get(username);
+
+    // Get latest completed result
+    var cutoff = new Date(Date.now() - max_age_hours * 3600 * 1000).toISOString();
+    var job = d.prepare(
+        "SELECT id, completed_at, result FROM optimizer_jobs WHERE username=? AND status='done' AND completed_at>? ORDER BY completed_at DESC LIMIT 1"
+    ).get(username, cutoff);
+
+    if (!job || !job.result) {
+        return {
+            found: false,
+            active_job: activeJob ? { id: activeJob.id, status: activeJob.status } : null,
+            message: activeJob
+                ? 'Optimization is currently ' + activeJob.status + '. Check back shortly.'
+                : 'No recent optimization found (within ' + max_age_hours + 'h). Use run_optimizer to start one, or ask the user to click Optimize in the app.'
+        };
+    }
+
+    var r;
+    try { r = JSON.parse(job.result); } catch(e) { return { error: 'Could not parse optimizer result' }; }
+
+    var storeEntries   = (r.cart || []).filter(function(c){ return c.sourceType === 'store'; });
+    var sellerEntries  = (r.cart || []).filter(function(c){ return c.sourceType === 'discogs'; });
+
+    // Best store entries (full detail)
+    var storeCarts = storeEntries.map(function(s) {
+        return {
+            store:          s.sourceName,
+            source_id:      s.sourceId,
+            items:          s.items.length,
+            subtotal_usd:   +(s.subtotalUsd || 0).toFixed(2),
+            shipping_usd:   +(s.shippingCostUsd || 0).toFixed(2),
+            total_usd:      +(s.totalUsd || 0).toFixed(2),
+            records:        s.items.map(function(i){ return { artist: i.artist, title: i.title, condition: i.condition, price_usd: i.priceUsd }; })
+        };
+    });
+
+    // Top Discogs sellers
+    var topSellers = sellerEntries
+        .sort(function(a,b){ return b.items.length - a.items.length; })
+        .slice(0, show_discogs_sellers ? limit_sellers : 3)
+        .map(function(s) {
+            return {
+                seller:       s.sellerUsername,
+                country:      s.country,
+                rating:       s.sellerRating,
+                rating_count: s.sellerNumRatings,
+                items:        s.items.length,
+                subtotal_usd: +(s.subtotalUsd || 0).toFixed(2),
+                shipping_usd: +(s.shippingCostUsd || 0).toFixed(2),
+                total_usd:    +(s.totalUsd || 0).toFixed(2),
+                records:      s.items.slice(0,4).map(function(i){ return { artist: i.artist, title: i.title, condition: i.condition, price_usd: i.priceUsd }; })
+            };
+        });
+
+    return {
+        found:               true,
+        completed_at:        job.completed_at,
+        covered_items:       r.covered,
+        total_wantlist:      r.total,
+        uncovered_items:     r.uncoveredItems ? r.uncoveredItems.length : (r.total - r.covered),
+        grand_total_usd:     +(r.grandTotalUsd   || 0).toFixed(2),
+        grand_shipping_usd:  +(r.grandShippingUsd|| 0).toFixed(2),
+        grand_records_usd:   +(r.grandRecordsUsd || 0).toFixed(2),
+        num_sources:         r.numSellers,
+        store_count:         storeEntries.length,
+        discogs_seller_count:sellerEntries.length,
+        store_carts:         storeCarts,
+        top_discogs_sellers: topSellers,
+        note: 'This covers ' + r.covered + '/' + r.total + ' wantlist items. ' + sellerEntries.length + ' Discogs sellers + ' + storeEntries.length + ' scraped stores.'
+    };
+}
+
+async function toolRunOptimizer({ username, min_condition, min_seller_rating, max_price_usd, force_refresh }) {
+    var result = await postToChecker('/api/optimize/' + encodeURIComponent(username), {
+        minCondition:    min_condition    || 'VG',
+        minSellerRating: min_seller_rating != null ? min_seller_rating : 98,
+        maxPriceUsd:     max_price_usd    || null,
+        forceRefresh:    force_refresh    === true
+    });
+
+    if (result.error) return { error: result.error };
+
+    return {
+        started:        true,
+        job_id:         result.jobId,
+        status:         result.status,
+        queue_position: result.queuePosition,
+        reused:         result.reused,
+        message: result.reused
+            ? 'Optimizer found a fresh cached result — use get_optimizer_result to see it immediately.'
+            : 'Optimization job queued (position ' + (result.queuePosition || 1) + '). Takes 1-2 minutes. Use get_optimizer_result to check when done.'
+    };
+}
+
 async function toolTriggerSync({ username, type }) {
     type = type || 'both';
     var results = {};
-
-    // Helper: POST to vinyl-checker
-    function postToChecker(path) {
-        return new Promise(function(resolve) {
-            var opts = require('url').parse(CHECKER_URL + path);
-            opts.method = 'POST';
-            opts.headers = { 'Content-Type': 'application/json', 'Content-Length': 0 };
-            var req = http.request(opts, function(res) {
-                var body = '';
-                res.on('data', function(c){ body += c; });
-                res.on('end', function(){
-                    try { resolve(JSON.parse(body)); } catch(e) { resolve({ raw: body }); }
-                });
-            });
-            req.on('error', function(e){ resolve({ error: e.message }); });
-            req.end();
-        });
-    }
 
     if (type === 'wantlist' || type === 'both') {
         results.wantlist = await postToChecker('/api/sync-now/' + encodeURIComponent(username));
@@ -783,6 +921,8 @@ function runTool(name, input) {
         case 'compare_diggers':         return toolCompareDiggers(input);
         case 'get_discogs_marketplace': return toolGetDiscogsMarketplace(input);
         case 'trigger_sync':            return toolTriggerSync(input);
+        case 'get_optimizer_result':    return toolGetOptimizerResult(input);
+        case 'run_optimizer':           return toolRunOptimizer(input);
         default: return { error: 'Unknown tool: ' + name };
     }
 }
