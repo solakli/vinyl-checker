@@ -1801,7 +1801,7 @@ app.listen(PORT, function () {
     // or OOM kill — they show as "⏳ ..." in the admin dashboard forever otherwise.
     try {
         var stuckRows = db.getDb().prepare(
-            "SELECT id FROM scan_runs WHERE finished_at IS NULL AND started_at < datetime('now', '-10 minutes')"
+            "SELECT id FROM scan_runs WHERE finished_at IS NULL AND replace(started_at,'T',' ') < datetime('now', '-10 minutes')"
         ).all();
         if (stuckRows.length > 0) {
             var cleanStmt = db.getDb().prepare(
