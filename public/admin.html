@@ -207,6 +207,37 @@ tr:hover td { background: rgba(255,255,255,0.02); }
     <div class="section-title">Active Scans</div>
     <div class="job-card" id="activeScans"><span style="color:var(--text-muted);font-size:11px;letter-spacing:1px">No active scans</span></div>
 
+    <!-- Chrome & RAM Health -->
+    <div class="section-title">Chrome &amp; RAM Health</div>
+    <div class="stat-grid" id="chromeRamGrid"></div>
+    <div class="two-col" style="margin-top:12px">
+      <div class="job-card" id="chromeLockCard"></div>
+      <div class="job-card" id="lockContentionCard"></div>
+    </div>
+
+    <!-- Scan Run History (last 15) -->
+    <div class="section-title">Scan Run History</div>
+    <div class="stat-grid" id="scanRunStatCards"></div>
+    <div class="table-card" style="margin-top:12px">
+      <div class="card-header">Last 15 Runs</div>
+      <table><thead><tr><th>User</th><th>Type</th><th>Started</th><th>Duration</th><th>Checked</th><th>In Stock</th><th>Errors</th><th>Workers</th><th>Status</th></tr></thead>
+      <tbody id="scanRunBody"></tbody></table>
+    </div>
+
+    <!-- Scraper Errors (7d) -->
+    <div class="section-title">Scraper Errors — Last 7 Days</div>
+    <div class="table-card">
+      <table><thead><tr><th>Store</th><th>Total</th><th>Timeouts</th><th>Protocol</th><th>Nav</th><th>Selector</th><th>Last Error</th></tr></thead>
+      <tbody id="scraperErrorBody"></tbody></table>
+    </div>
+
+    <!-- Stock Availability Changes -->
+    <div class="section-title">Recent Stock Changes</div>
+    <div class="table-card">
+      <table><thead><tr><th>When</th><th>User</th><th>Artist</th><th>Title</th><th>Store</th><th>Change</th><th>Price</th></tr></thead>
+      <tbody id="stockChangesBody"></tbody></table>
+    </div>
+
     <!-- Actions -->
     <div class="actions">
       <button class="btn" onclick="refreshDashboard()">Refresh</button>
@@ -424,6 +455,130 @@ async function refreshDashboard() {
     document.getElementById('activeScans').innerHTML = sk.length > 0
       ? sk.map(function(k) { return '<div class="job-stat"><span class="jl"><span class="live-dot" style="display:inline-block;margin-right:6px"></span>' + k + '</span><span class="jv" style="color:var(--gold)">' + scans[k].type + '</span></div>'; }).join('')
       : '<span style="color:var(--text-muted);font-size:11px;letter-spacing:1px">No active scans</span>';
+
+    // ── Chrome & RAM Health ───────────────────────────────────────────────────
+    var mem = data.memoryDetail || {};
+    var lc  = data.lockContention || {};
+    var locked = data.chromeLock;
+
+    // Stat cards row
+    document.getElementById('chromeRamGrid').innerHTML =
+      statCard((mem.heapUsedMB || '?') + ' MB', 'Heap Used', locked ? 'red' : 'green') +
+      statCard((mem.heapTotalMB || '?') + ' MB', 'Heap Total', 'blue') +
+      statCard((mem.rssMB || '?') + ' MB', 'RSS (Total RAM)', 'purple') +
+      statCard(lc.waitCount || 0, 'Lock Waits', lc.waitCount > 0 ? 'red' : 'green') +
+      statCard(lc.skipCount || 0, 'Lock Skips', lc.skipCount > 0 ? 'red' : 'green') +
+      statCard(lc.avgWaitMs > 0 ? Math.round(lc.avgWaitMs / 1000) + 's' : '—', 'Avg Wait', '');
+
+    // Chrome lock card
+    var heapPct = mem.heapTotalMB > 0 ? Math.round(mem.heapUsedMB / mem.heapTotalMB * 100) : 0;
+    var rssPct  = mem.rssMB > 0 ? Math.min(100, Math.round(mem.rssMB / 512 * 100)) : 0; // 512MB = "full"
+    document.getElementById('chromeLockCard').innerHTML =
+      '<div class="job-title">Chrome Browser Lock</div>' +
+      '<div class="job-stat"><span class="jl">Status</span>' +
+        '<span class="jv" style="color:' + (locked ? 'var(--red)' : 'var(--green)') + ';font-weight:600">' +
+          (locked ? '🔒 LOCKED' : '✓ FREE') + '</span></div>' +
+      '<div class="job-stat"><span class="jl">Heap Used / Total</span>' +
+        '<span class="jv">' + (mem.heapUsedMB||0) + ' / ' + (mem.heapTotalMB||0) + ' MB (' + heapPct + '%)</span></div>' +
+      '<div style="margin:6px 0"><div class="bar-track"><div class="bar-fill ' + (heapPct > 80 ? 'bad' : 'green') + '" style="width:' + heapPct + '%;background:' + (heapPct > 80 ? 'var(--red)' : 'rgba(74,222,128,0.5)') + '"></div></div></div>' +
+      '<div class="job-stat"><span class="jl">RSS / 512 MB</span>' +
+        '<span class="jv">' + (mem.rssMB||0) + ' MB (' + rssPct + '%)</span></div>' +
+      '<div style="margin:6px 0"><div class="bar-track"><div class="bar-fill" style="width:' + rssPct + '%;background:' + (rssPct > 80 ? 'var(--red)' : 'rgba(96,165,250,0.5)') + '"></div></div></div>' +
+      '<div class="job-stat"><span class="jl">External</span><span class="jv">' + (mem.externalMB||0) + ' MB</span></div>';
+
+    // Lock contention card
+    document.getElementById('lockContentionCard').innerHTML =
+      '<div class="job-title">Lock Contention (since restart)</div>' +
+      '<div class="job-stat"><span class="jl">Waits (manual waited for lock)</span>' +
+        '<span class="jv ' + (lc.waitCount > 0 ? 'bad' : 'good') + '">' + (lc.waitCount||0) + '</span></div>' +
+      '<div class="job-stat"><span class="jl">Skips (bg/daily/validator skipped)</span>' +
+        '<span class="jv ' + (lc.skipCount > 0 ? 'bad' : 'good') + '">' + (lc.skipCount||0) + '</span></div>' +
+      '<div class="job-stat"><span class="jl">Total Wait Time</span>' +
+        '<span class="jv">' + (lc.totalWaitMs > 0 ? Math.round(lc.totalWaitMs/1000) + 's' : '—') + '</span></div>' +
+      '<div class="job-stat"><span class="jl">Avg Wait Per Event</span>' +
+        '<span class="jv">' + (lc.avgWaitMs > 0 ? Math.round(lc.avgWaitMs/1000) + 's' : '—') + '</span></div>' +
+      '<div class="job-stat"><span class="jl">Last Wait</span>' +
+        '<span class="jv">' + (lc.lastWait ? timeAgo(lc.lastWait) : 'never') + '</span></div>' +
+      '<div class="job-stat"><span class="jl">Last Skip</span>' +
+        '<span class="jv">' + (lc.lastSkip ? timeAgo(lc.lastSkip) : 'never') + '</span></div>';
+
+    // ── Scan Run Stats (aggregate per type, last 30 days) ───────────────────
+    var srs = data.scanRunStats || [];
+    var totalRuns = srs.reduce(function(s, r) { return s + (r.run_count||0); }, 0);
+    var totalFailed = srs.reduce(function(s, r) { return s + (r.failed_runs||0); }, 0);
+    var avgDuration = srs.length > 0
+      ? Math.round(srs.reduce(function(s,r) { return s + (r.avg_duration_ms||0)*r.run_count; }, 0) / Math.max(totalRuns,1) / 1000)
+      : 0;
+    document.getElementById('scanRunStatCards').innerHTML =
+      statCard(totalRuns, 'Total Runs (30d)', 'blue') +
+      statCard(totalFailed, 'Failed Runs', totalFailed > 0 ? 'red' : 'green') +
+      statCard(avgDuration + 's', 'Avg Duration', '') +
+      srs.map(function(r) {
+        var avgMin = r.avg_duration_ms ? Math.round(r.avg_duration_ms/60000) : 0;
+        return statCard(r.run_count, r.run_type.charAt(0).toUpperCase() + r.run_type.slice(1) + ' Runs', 'purple') +
+               statCard(avgMin + 'm', r.run_type + ' avg time', '');
+      }).join('');
+
+    // Recent runs table
+    document.getElementById('scanRunBody').innerHTML = (data.recentScanRuns || []).map(function(r) {
+      var dur = r.duration_ms ? (r.duration_ms > 60000 ? Math.round(r.duration_ms/60000) + 'm' : Math.round(r.duration_ms/1000) + 's') : '…';
+      var statusColor = r.error ? 'color:var(--red)' : 'color:var(--green)';
+      var statusLabel = r.error ? 'ERR' : (r.finished_at ? 'OK' : '⏳');
+      var typeColor = r.run_type === 'force' ? 'var(--gold)' : r.run_type === 'daily' ? 'var(--blue)' : r.run_type === 'background' ? 'var(--purple)' : 'var(--text-sec)';
+      var workersLabel = r.workers_used ? r.workers_used + ' worker' + (r.workers_used>1?'s':'') : '—';
+      var workersColor = r.workers_used === 2 ? 'var(--gold)' : 'var(--text-muted)';
+      return '<tr>' +
+        '<td><strong>' + esc(r.username||'?') + '</strong></td>' +
+        '<td style="color:' + typeColor + ';font-size:9px;letter-spacing:1px;text-transform:uppercase">' + esc(r.run_type) + '</td>' +
+        '<td>' + timeAgo(r.started_at) + '</td>' +
+        '<td style="color:var(--text-sec)">' + dur + '</td>' +
+        '<td>' + (r.items_checked||0) + '</td>' +
+        '<td style="color:var(--green)">' + (r.items_in_stock||0) + '</td>' +
+        '<td style="color:' + ((r.items_error||0) > 0 ? 'var(--red)' : 'var(--text-muted)') + '">' + (r.items_error||0) + '</td>' +
+        '<td style="color:' + workersColor + ';font-size:10px">' + workersLabel + '</td>' +
+        '<td style="' + statusColor + ';font-size:9px;letter-spacing:1px">' + statusLabel +
+          (r.error ? ' <span title="' + esc(r.error||'') + '" style="cursor:help">ⓘ</span>' : '') + '</td>' +
+        '</tr>';
+    }).join('');
+
+    // ── Scraper Errors (7d) ──────────────────────────────────────────────────
+    var se = data.scraperErrorStats || [];
+    document.getElementById('scraperErrorBody').innerHTML = se.length > 0
+      ? se.map(function(s) {
+          return '<tr>' +
+            '<td><strong>' + esc(s.store) + '</strong></td>' +
+            '<td style="color:' + (s.total_errors > 5 ? 'var(--red)' : 'var(--yellow)') + ';font-weight:500">' + s.total_errors + '</td>' +
+            '<td style="color:' + (s.timeouts > 0 ? 'var(--red)' : 'var(--text-muted)') + '">' + (s.timeouts||0) + '</td>' +
+            '<td style="color:' + (s.protocol_errors > 0 ? 'var(--red)' : 'var(--text-muted)') + '">' + (s.protocol_errors||0) + '</td>' +
+            '<td style="color:' + (s.nav_errors > 0 ? 'var(--yellow)' : 'var(--text-muted)') + '">' + (s.nav_errors||0) + '</td>' +
+            '<td style="color:' + (s.selector_errors > 0 ? 'var(--yellow)' : 'var(--text-muted)') + '">' + (s.selector_errors||0) + '</td>' +
+            '<td style="color:var(--text-muted)">' + (s.last_error_at ? timeAgo(s.last_error_at) : '—') + '</td>' +
+            '</tr>';
+        }).join('')
+      : '<tr><td colspan="7" style="color:var(--text-muted);padding:14px 12px;font-size:11px;letter-spacing:1px">No scraper errors in last 7 days</td></tr>';
+
+    // ── Recent Stock Changes ──────────────────────────────────────────────────
+    var changes = data.recentStockChanges || [];
+    var changeTypeColor = { now_in_stock: 'var(--green)', out_of_stock: 'var(--red)', price_drop: 'var(--blue)', price_increase: 'var(--yellow)' };
+    var changeTypeLabel = { now_in_stock: '▲ IN STOCK', out_of_stock: '▼ OUT', price_drop: '↓ PRICE DROP', price_increase: '↑ PRICE UP' };
+    document.getElementById('stockChangesBody').innerHTML = changes.length > 0
+      ? changes.map(function(c) {
+          var col  = changeTypeColor[c.change_type] || 'var(--text-muted)';
+          var lbl  = changeTypeLabel[c.change_type] || c.change_type;
+          var newV = {};
+          try { newV = JSON.parse(c.new_value || '{}'); } catch(e) {}
+          var price = newV.price || '';
+          return '<tr>' +
+            '<td style="color:var(--text-muted);white-space:nowrap">' + timeAgo(c.detected_at) + '</td>' +
+            '<td>' + esc(c.username||'') + '</td>' +
+            '<td>' + esc(c.artist||'') + '</td>' +
+            '<td>' + esc(c.title||'') + '</td>' +
+            '<td style="font-size:10px">' + esc(c.store||'') + '</td>' +
+            '<td style="color:' + col + ';font-size:9px;letter-spacing:1px;font-weight:600;white-space:nowrap">' + lbl + '</td>' +
+            '<td style="color:var(--green)">' + esc(price) + '</td>' +
+            '</tr>';
+        }).join('')
+      : '<tr><td colspan="7" style="color:var(--text-muted);padding:14px 12px;font-size:11px;letter-spacing:1px">No stock changes recorded yet</td></tr>';
 
   } catch(e) {
     document.getElementById('loading').textContent = 'Failed: ' + e.message;

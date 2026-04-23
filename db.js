@@ -347,6 +347,8 @@ function initTables() {
     // Migrations — add columns if missing
     try { db.exec('ALTER TABLE users ADD COLUMN last_daily_rescan TEXT'); } catch(e) {}
     try { db.exec('ALTER TABLE market_listings ADD COLUMN price_usd REAL'); } catch(e) {}
+    // workers_used: how many parallel Chrome workers were used for this scan run (1 or 2)
+    try { db.exec('ALTER TABLE scan_runs ADD COLUMN workers_used INTEGER'); } catch(e) {}
 
     // Collection table — mirrors user's Discogs collection (records they own)
     db.exec(`
@@ -1397,15 +1399,50 @@ function finishScanRun(runId, stats) {
         UPDATE scan_runs SET
             finished_at = ?, items_checked = ?, items_in_stock = ?,
             items_cached = ?, items_error = ?, changes_detected = ?,
-            duration_ms = ?, error = ?
+            duration_ms = ?, error = ?, workers_used = ?
         WHERE id = ?
     `).run(
         now,
         stats.itemsChecked || 0, stats.itemsInStock || 0,
         stats.itemsCached || 0, stats.itemsError || 0,
         stats.changesDetected || 0, durationMs, stats.error || null,
+        stats.workersUsed || null,
         runId
     );
+}
+
+// Per-run-type aggregate stats (last 30 days) — used by admin KPI dashboard
+function getScanRunStats() {
+    return getDb().prepare(`
+        SELECT
+            run_type,
+            COUNT(*)                                                    AS run_count,
+            ROUND(AVG(duration_ms))                                     AS avg_duration_ms,
+            MIN(duration_ms)                                            AS min_duration_ms,
+            MAX(duration_ms)                                            AS max_duration_ms,
+            ROUND(AVG(items_checked))                                   AS avg_items_checked,
+            ROUND(AVG(items_error))                                     AS avg_errors,
+            SUM(CASE WHEN workers_used = 1 THEN 1 ELSE 0 END)          AS single_worker_runs,
+            SUM(CASE WHEN workers_used >= 2 THEN 1 ELSE 0 END)         AS dual_worker_runs,
+            SUM(CASE WHEN error IS NOT NULL THEN 1 ELSE 0 END)         AS failed_runs
+        FROM scan_runs
+        WHERE started_at >= datetime('now', '-30 days')
+        GROUP BY run_type
+        ORDER BY run_count DESC
+    `).all();
+}
+
+// Last N stock-availability changes across all users (for dashboard timeline)
+function getRecentStockChanges(limit) {
+    return getDb().prepare(`
+        SELECT sc.change_type, sc.store, sc.detected_at,
+               sc.new_value, w.artist, w.title, u.username
+        FROM scan_changes sc
+        JOIN wantlist w ON w.id = sc.wantlist_id
+        JOIN users u    ON u.id = sc.user_id
+        ORDER BY sc.detected_at DESC
+        LIMIT ?
+    `).all(limit || 20);
 }
 
 // Log a single scraper error (store check returned .error field).
@@ -1788,6 +1825,8 @@ module.exports = {
     finishScanRun: finishScanRun,
     logScraperError: logScraperError,
     getRecentScanRuns: getRecentScanRuns,
+    getScanRunStats: getScanRunStats,
+    getRecentStockChanges: getRecentStockChanges,
     getScraperErrorStats: getScraperErrorStats,
     startValidatorRun: startValidatorRun,
     finishValidatorRun: finishValidatorRun,

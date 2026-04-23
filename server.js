@@ -1365,13 +1365,17 @@ app.get('/api/health', function (req, res) {
         var validationData = scanner.getValidationStats ? scanner.getValidationStats() : {};
 
         // ── Observability (persisted) ──────────────────────────────
-        // Recent scan runs (all users, last 10)
+        // Recent scan runs (all users, last 15) with username join
         var recentScanRuns = [];
         try {
             recentScanRuns = d.prepare(
-                'SELECT sr.*, u.username FROM scan_runs sr JOIN users u ON u.id = sr.user_id ORDER BY sr.started_at DESC LIMIT 10'
+                'SELECT sr.*, u.username FROM scan_runs sr JOIN users u ON u.id = sr.user_id ORDER BY sr.started_at DESC LIMIT 15'
             ).all();
         } catch(e) {}
+
+        // Per-run-type aggregate stats (last 30 days)
+        var scanRunStats = [];
+        try { scanRunStats = db.getScanRunStats(); } catch(e) {}
 
         // Error rate per store (last 7 days)
         var scraperErrorStats = db.getScraperErrorStats(7);
@@ -1382,11 +1386,36 @@ app.get('/api/health', function (req, res) {
         // Last 5 validator runs
         var validatorHistory = db.getValidatorRunHistory(5);
 
+        // Recent stock availability changes (for timeline dashboard)
+        var recentStockChanges = [];
+        try { recentStockChanges = db.getRecentStockChanges(25); } catch(e) {}
+
+        // Chrome lock & RAM health
+        var mem = process.memoryUsage();
+        var lockContention = {
+            waitCount:    jobHealthData.lockWaitCount    || 0,
+            skipCount:    jobHealthData.lockSkipCount    || 0,
+            totalWaitMs:  jobHealthData.totalLockWaitMs  || 0,
+            avgWaitMs:    jobHealthData.lockWaitCount > 0
+                              ? Math.round((jobHealthData.totalLockWaitMs || 0) / jobHealthData.lockWaitCount)
+                              : 0,
+            lastWait:     jobHealthData.lastLockWait  || null,
+            lastSkip:     jobHealthData.lastLockSkip  || null
+        };
+
         res.json({
             status: 'ok',
             timestamp: new Date().toISOString(),
             uptime: Math.round(process.uptime()) + 's',
-            memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
+            memory: Math.round(mem.heapUsed / 1024 / 1024) + 'MB',
+            memoryDetail: {
+                heapUsedMB:  Math.round(mem.heapUsed  / 1024 / 1024),
+                heapTotalMB: Math.round(mem.heapTotal / 1024 / 1024),
+                rssMB:       Math.round(mem.rss       / 1024 / 1024),
+                externalMB:  Math.round(mem.external  / 1024 / 1024)
+            },
+            chromeLock: scanner.chromeLock || false,
+            lockContention: lockContention,
             users: userSummary,
             storeStats: storeStats,
             mostSought: mostSought,
@@ -1401,9 +1430,11 @@ app.get('/api/health', function (req, res) {
             validation: validationData,
             // Persisted observability
             recentScanRuns: recentScanRuns,
+            scanRunStats: scanRunStats,
             scraperErrorStats: scraperErrorStats,
             storeAccuracy: storeAccuracy,
             validatorHistory: validatorHistory,
+            recentStockChanges: recentStockChanges,
             workers: scanner.NUM_WORKERS || 5
         });
     } catch (e) {
