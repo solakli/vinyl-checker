@@ -420,6 +420,23 @@ function initTables() {
         CREATE INDEX IF NOT EXISTS idx_streaming_activity_user
             ON user_streaming_activity(user_id, provider, activity_type);
     `);
+
+    // ── Discover cart — user's per-store shopping cart ───────────────────────
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS cart (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL,
+            wantlist_id INTEGER NOT NULL,
+            store       TEXT    NOT NULL,
+            price       TEXT,
+            price_usd   REAL,
+            added_at    TEXT    NOT NULL,
+            FOREIGN KEY (user_id)     REFERENCES users(id),
+            FOREIGN KEY (wantlist_id) REFERENCES wantlist(id),
+            UNIQUE(user_id, wantlist_id, store)
+        );
+        CREATE INDEX IF NOT EXISTS idx_cart_user ON cart(user_id);
+    `);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -996,12 +1013,20 @@ function dismissChanges(userId, ids) {
 }
 
 function getUsersDueForRescan() {
-    // Users who have any wantlist items AND haven't had a daily rescan in 20+ hours
-    // Picks up users with partial scans too (last_full_scan can be NULL)
+    // Users who have any wantlist items AND haven't had a daily rescan in 23+ hours.
+    // Also skips users who already have an unfinished scan_run (started_at exists,
+    // finished_at NULL) that began within the last 3 hours — guards against cascades
+    // where Chrome OOM-crashed before last_daily_rescan could be stamped.
     return getDb().prepare(`
         SELECT u.* FROM users u
         WHERE EXISTS (SELECT 1 FROM wantlist w WHERE w.user_id = u.id AND w.active = 1)
-        AND (u.last_daily_rescan IS NULL OR u.last_daily_rescan < datetime('now', '-23 hours'))
+          AND (u.last_daily_rescan IS NULL OR u.last_daily_rescan < datetime('now', '-23 hours'))
+          AND NOT EXISTS (
+              SELECT 1 FROM scan_runs sr
+              WHERE sr.user_id = u.id
+                AND sr.finished_at IS NULL
+                AND sr.started_at > datetime('now', '-3 hours')
+          )
     `).all();
 }
 
@@ -1756,6 +1781,77 @@ function getStreamingSyncStatus(userId) {
     return result;
 }
 
+// ═══════════════════════════════════════════════════════════
+// DISCOVER + CART
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * All in-stock, non-link-only items for a user, joined with Discogs price data.
+ * Used by the Discover tab to build per-store cards.
+ */
+function getDiscoverData(userId) {
+    return getDb().prepare(`
+        SELECT
+            sr.store,
+            sr.matches,
+            sr.search_url,
+            w.id             AS wantlist_id,
+            w.artist,
+            w.title,
+            w.year,
+            w.label,
+            w.catno,
+            w.thumb,
+            w.genres,
+            w.styles,
+            w.discogs_id,
+            dp.lowest_price  AS discogs_lowest,
+            dp.num_for_sale
+        FROM store_results sr
+        JOIN  wantlist       w  ON  w.id = sr.wantlist_id
+        LEFT JOIN discogs_prices dp ON dp.wantlist_id = w.id
+        WHERE w.user_id    = ?
+          AND w.active     = 1
+          AND sr.in_stock  = 1
+          AND sr.link_only = 0
+        ORDER BY sr.store, w.artist
+    `).all(userId);
+}
+
+function getCartItems(userId) {
+    return getDb().prepare(`
+        SELECT c.id, c.wantlist_id, c.store, c.price, c.price_usd, c.added_at,
+               w.artist, w.title, w.year, w.thumb, w.discogs_id
+        FROM cart c
+        JOIN wantlist w ON w.id = c.wantlist_id
+        WHERE c.user_id = ?
+        ORDER BY c.added_at DESC
+    `).all(userId);
+}
+
+function addToCart(userId, wantlistId, store, price, priceUsd) {
+    try {
+        return getDb().prepare(`
+            INSERT OR REPLACE INTO cart (user_id, wantlist_id, store, price, price_usd, added_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+        `).run(userId, wantlistId, store, price || null, priceUsd || null);
+    } catch(e) { return null; }
+}
+
+function removeFromCart(userId, wantlistId, store) {
+    return getDb().prepare(
+        'DELETE FROM cart WHERE user_id = ? AND wantlist_id = ? AND store = ?'
+    ).run(userId, wantlistId, store);
+}
+
+function clearCart(userId) {
+    return getDb().prepare('DELETE FROM cart WHERE user_id = ?').run(userId);
+}
+
+function getCartCount(userId) {
+    return (getDb().prepare('SELECT COUNT(*) AS c FROM cart WHERE user_id = ?').get(userId) || { c: 0 }).c;
+}
+
 module.exports = {
     getDb: getDb,
     getOrCreateUser: getOrCreateUser,
@@ -1844,4 +1940,11 @@ module.exports = {
     saveStreamingMetadata: saveStreamingMetadata,
     getStreamingMetadata: getStreamingMetadata,
     getStreamingSyncStatus: getStreamingSyncStatus,
+    // Discover + Cart
+    getDiscoverData: getDiscoverData,
+    getCartItems: getCartItems,
+    addToCart: addToCart,
+    removeFromCart: removeFromCart,
+    clearCart: clearCart,
+    getCartCount: getCartCount,
 };

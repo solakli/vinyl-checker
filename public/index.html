@@ -31,6 +31,7 @@
     <a href="#" class="nav-link active" data-view="wantlist" onclick="switchView('wantlist',this);return false;">Wantlist</a>
     <a href="#" class="nav-link" data-view="dashboard" onclick="switchView('dashboard',this);return false;">Dashboard</a>
     <a href="#" class="nav-link" data-view="collection" onclick="switchView('collection',this);return false;">My Collection</a>
+    <a href="#" class="nav-link" data-view="discover" onclick="switchView('discover',this);return false;">Discover <span class="cart-badge" id="cartBadge" style="display:none">0</span></a>
   </div>
   <div class="navbar-right">
     <div class="live-badge" id="liveBadge" style="display:none"><div class="live-dot"></div> Scanning</div>
@@ -74,6 +75,10 @@
   <button class="mobile-tab" data-view="collection" onclick="switchView('collection',null)">
     <span class="mobile-tab-icon">▦</span>
     <span class="mobile-tab-label">Collection</span>
+  </button>
+  <button class="mobile-tab" data-view="discover" onclick="switchView('discover',null)">
+    <span class="mobile-tab-icon">◎</span>
+    <span class="mobile-tab-label">Discover</span>
   </button>
 </div>
 
@@ -156,6 +161,42 @@
     <div class="coll-stats-bar" id="collStatsBar"></div>
     <!-- Grid -->
     <div class="coll-grid" id="collGrid"></div>
+  </div>
+</div>
+
+<!-- ═══ DISCOVER VIEW ═══ -->
+<div id="view-discover" class="alt-view" style="display:none">
+  <div class="disc-wrap">
+    <!-- Header -->
+    <div class="disc-header">
+      <div class="disc-title-row">
+        <span class="disc-title">Discover</span>
+        <span class="disc-subtitle" id="discSubtitle"></span>
+      </div>
+      <div class="disc-cart-row" id="discCartRow" style="display:none">
+        <span class="disc-cart-count" id="discCartCount"></span>
+        <button class="disc-clear-btn" onclick="discoverClearCart()">Clear cart</button>
+      </div>
+    </div>
+    <!-- Sort + genre filter controls -->
+    <div class="disc-controls" id="discControls" style="display:none">
+      <div class="disc-sort-row">
+        <span class="disc-sort-label">Sort by</span>
+        <button class="disc-sort-btn active" data-sort="items" onclick="setDiscoverSort('items',this)">Most Items</button>
+        <button class="disc-sort-btn" data-sort="total" onclick="setDiscoverSort('total',this)">Lowest Total</button>
+        <button class="disc-sort-btn" data-sort="alpha" onclick="setDiscoverSort('alpha',this)">A–Z</button>
+      </div>
+      <div class="disc-genre-row" id="discGenreRow"></div>
+    </div>
+    <!-- Store cards -->
+    <div class="disc-store-grid" id="discStoreGrid"></div>
+    <!-- States -->
+    <div class="disc-loading" id="discLoading" style="display:none">
+      <div class="disc-spinner"></div>Loading discover data…
+    </div>
+    <div class="disc-empty" id="discEmpty" style="display:none">
+      No in-stock items found. Run a scan first to populate your results.
+    </div>
   </div>
 </div>
 

@@ -38,6 +38,16 @@ const db = require('./db');
 const discogs = require('./lib/discogs');
 const scanner = require('./lib/scanner');
 const oauth = require('./lib/oauth');
+const shippingLib = require('./lib/shipping-rates');
+
+// Shipping origin country per store (for discover cost estimates)
+var STORE_COUNTRIES = {
+    'HHV': 'DE', 'Deejay.de': 'DE', 'Hardwax': 'DE', 'Decks.de': 'DE',
+    'Juno': 'GB', 'Phonica': 'GB',
+    'Yoyaku': 'JP',
+    'Turntable Lab': 'US', 'Underground Vinyl': 'US',
+    'Gramaphone': 'US', 'Further Records': 'US', 'Octopus Records NYC': 'US',
+};
 
 // Catalog-sync stores: registry of stores whose full inventory we mirror locally
 // (rather than scraping per-item). Add a new store by adding its module here.
@@ -1442,6 +1452,156 @@ app.get('/api/health', function (req, res) {
     }
 });
 
+// ─── Discover API ─────────────────────────────────────────────────────────────
+
+app.get('/api/discover/:username', function(req, res) {
+    try {
+        var user = db.getOrCreateUser(req.params.username);
+        var rows = db.getDiscoverData(user.id);
+        var cartItems = db.getCartItems(user.id);
+        var cartSet = {};
+        cartItems.forEach(function(c) { cartSet[String(c.wantlist_id) + ':' + c.store] = true; });
+
+        // Aggregate by store
+        var storeMap = {};
+        rows.forEach(function(row) {
+            if (!storeMap[row.store]) {
+                storeMap[row.store] = {
+                    store: row.store,
+                    country: STORE_COUNTRIES[row.store] || 'XX',
+                    items: [],
+                    genreCounts: {},
+                    styleCounts: {},
+                    totalRecordUsd: 0,
+                    itemsWithPrice: 0,
+                };
+            }
+            var s = storeMap[row.store];
+
+            var matches = [];
+            try { matches = JSON.parse(row.matches || '[]'); } catch(e) {}
+
+            // Parse store price from first match
+            var priceStr  = '';
+            var priceUsd  = null;
+            if (matches.length > 0 && matches[0].price) {
+                priceStr = matches[0].price;
+                var rawNum = parseFloat(priceStr.replace(/[^0-9.,]/g, '').replace(',', '.'));
+                if (!isNaN(rawNum) && rawNum > 0) {
+                    priceUsd = (priceStr.indexOf('\u20ac') !== -1 || priceStr.indexOf('EUR') !== -1)
+                        ? Math.round(rawNum * 1.09 * 100) / 100
+                        : Math.round(rawNum * 100) / 100;
+                    s.totalRecordUsd += priceUsd;
+                    s.itemsWithPrice++;
+                }
+            }
+
+            // Genre / style tag tallies
+            (row.genres || '').split('|').forEach(function(g) {
+                g = g.trim();
+                if (g) s.genreCounts[g] = (s.genreCounts[g] || 0) + 1;
+            });
+            (row.styles || '').split('|').forEach(function(st) {
+                st = st.trim();
+                if (st) s.styleCounts[st] = (s.styleCounts[st] || 0) + 1;
+            });
+
+            var itemUrl = (matches.length > 0 && matches[0].url) ? matches[0].url : (row.search_url || '');
+            s.items.push({
+                wantlistId:    row.wantlist_id,
+                discogsId:     row.discogs_id || null,
+                artist:        row.artist  || '',
+                title:         row.title   || '',
+                year:          row.year    || null,
+                label:         row.label   || '',
+                catno:         row.catno   || '',
+                thumb:         row.thumb   || '',
+                genres:        row.genres  || '',
+                styles:        row.styles  || '',
+                priceStr:      priceStr,
+                priceUsd:      priceUsd,
+                discogsLowest: row.discogs_lowest  || null,
+                numForSale:    row.num_for_sale    || 0,
+                url:           itemUrl,
+                inCart:        !!cartSet[String(row.wantlist_id) + ':' + row.store],
+            });
+        });
+
+        // Convert to sorted array + compute shipping
+        var stores = Object.keys(storeMap).map(function(storeName) {
+            var s = storeMap[storeName];
+            var shippingUsd = shippingLib.estimateShipping(s.country, 'US');
+            var totalWithShipping = s.itemsWithPrice > 0
+                ? Math.round((s.totalRecordUsd + shippingUsd) * 100) / 100
+                : null;
+
+            // Top genres / styles (sorted by frequency)
+            var topGenres = Object.keys(s.genreCounts).sort(function(a,b){ return s.genreCounts[b]-s.genreCounts[a]; }).slice(0,5);
+            var topStyles = Object.keys(s.styleCounts).sort(function(a,b){ return s.styleCounts[b]-s.styleCounts[a]; }).slice(0,8);
+
+            return {
+                store:             s.store,
+                country:           s.country,
+                itemCount:         s.items.length,
+                items:             s.items,
+                totalRecordUsd:    Math.round(s.totalRecordUsd * 100) / 100,
+                itemsWithPrice:    s.itemsWithPrice,
+                shippingUsd:       shippingUsd,
+                totalWithShipping: totalWithShipping,
+                topGenres:         topGenres,
+                topStyles:         topStyles,
+            };
+        }).sort(function(a,b) { return b.itemCount - a.itemCount; });
+
+        res.json({
+            username:     req.params.username,
+            stores:       stores,
+            cart:         cartItems,
+            cartSet:      cartSet,
+            totalInStock: rows.length,
+        });
+    } catch(e) {
+        console.error('[discover]', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ─── Cart API ─────────────────────────────────────────────────────────────────
+
+app.get('/api/cart/:username', function(req, res) {
+    try {
+        var user = db.getOrCreateUser(req.params.username);
+        res.json({ cart: db.getCartItems(user.id), count: db.getCartCount(user.id) });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/cart/:username', function(req, res) {
+    try {
+        var user  = db.getOrCreateUser(req.params.username);
+        var wid   = req.body.wantlistId;
+        var store = req.body.store;
+        if (!wid || !store) return res.status(400).json({ error: 'wantlistId and store required' });
+        db.addToCart(user.id, wid, store, req.body.price, req.body.priceUsd);
+        res.json({ ok: true, count: db.getCartCount(user.id) });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/cart/:username/:wantlistId/:store', function(req, res) {
+    try {
+        var user = db.getOrCreateUser(req.params.username);
+        db.removeFromCart(user.id, req.params.wantlistId, decodeURIComponent(req.params.store));
+        res.json({ ok: true, count: db.getCartCount(user.id) });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/cart/:username', function(req, res) {
+    try {
+        var user = db.getOrCreateUser(req.params.username);
+        db.clearCart(user.id);
+        res.json({ ok: true, count: 0 });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // Admin dashboard — HTML page
 app.get('/admin', function (req, res) {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
@@ -1482,6 +1642,22 @@ var NOTIFICATION_WEBHOOK = process.env.NOTIFICATION_WEBHOOK || '';
 
 app.listen(PORT, function () {
     console.log('\n\u2728 Vinyl Checker running at http://localhost:' + PORT + '\n');
+
+    // ── Startup cleanup ───────────────────────────────────────────────────────
+    // Mark any unfinished scan_runs as errored. These are left over from a crash
+    // or OOM kill — they show as "⏳ ..." in the admin dashboard forever otherwise.
+    try {
+        var stuckRows = db.getDb().prepare(
+            "SELECT id FROM scan_runs WHERE finished_at IS NULL AND started_at < datetime('now', '-10 minutes')"
+        ).all();
+        if (stuckRows.length > 0) {
+            var cleanStmt = db.getDb().prepare(
+                "UPDATE scan_runs SET finished_at = datetime('now'), error = 'Process crashed or restarted before scan completed' WHERE id = ?"
+            );
+            stuckRows.forEach(function(r) { cleanStmt.run(r.id); });
+            console.log('[startup] Cleaned up ' + stuckRows.length + ' stuck scan_run(s) from previous crash');
+        }
+    } catch(e) { console.error('[startup] scan_run cleanup error:', e.message); }
 
     // Kill any zombie Chrome processes left from a previous crash
     reapChrome();

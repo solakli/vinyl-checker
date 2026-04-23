@@ -2877,11 +2877,13 @@ function switchView(view, linkEl) {
   var isWantlist = view === 'wantlist';
   document.getElementById('view-dashboard').style.display  = view === 'dashboard'  ? 'block' : 'none';
   document.getElementById('view-collection').style.display = view === 'collection' ? 'block' : 'none';
+  document.getElementById('view-discover').style.display   = view === 'discover'   ? 'block' : 'none';
   document.getElementById('headerControls').style.display  = isWantlist ? '' : 'none';
   document.querySelector('.app-layout').style.display      = isWantlist ? '' : 'none';
 
   if (view === 'dashboard')  renderDashboard();
   if (view === 'collection') loadCollection(false);
+  if (view === 'discover')   loadDiscover();
 }
 
 function renderDashboard() {
@@ -3391,5 +3393,338 @@ document.addEventListener('DOMContentLoaded', function() {
   if (searchEl) searchEl.addEventListener('input',  function() { if (_collectionLoaded) renderCollectionGrid(); });
   if (sortEl)   sortEl.addEventListener('change', function() { if (_collectionLoaded) renderCollectionGrid(); });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// DISCOVER VIEW
+// ═══════════════════════════════════════════════════════════════
+
+var _discoverData        = null;  // full API response
+var _discoverSort        = 'items'; // 'items' | 'total' | 'alpha'
+var _discoverGenreFilter = null;  // active genre pill string or null
+var _activeDiscoverStore = null;  // currently expanded store name
+var _discoverCartSet     = {};    // wantlistId:store → true
+
+function loadDiscover() {
+  var username = getCurrentUsername();
+  if (!username) {
+    document.getElementById('discStoreGrid').innerHTML = '';
+    document.getElementById('discSubtitle').textContent = '';
+    document.getElementById('discEmpty').style.display = 'block';
+    document.getElementById('discEmpty').textContent = 'Connect your Discogs account to use Discover.';
+    document.getElementById('discControls').style.display = 'none';
+    document.getElementById('discLoading').style.display  = 'none';
+    return;
+  }
+
+  // Show loading, hide others
+  document.getElementById('discLoading').style.display  = 'flex';
+  document.getElementById('discEmpty').style.display    = 'none';
+  document.getElementById('discStoreGrid').innerHTML    = '';
+  document.getElementById('discControls').style.display = 'none';
+
+  fetch('api/discover/' + encodeURIComponent(username))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      document.getElementById('discLoading').style.display = 'none';
+      _discoverData    = data;
+      _discoverCartSet = data.cartSet || {};
+      renderDiscover();
+      updateCartBadge(Object.keys(_discoverCartSet).length);
+    })
+    .catch(function(e) {
+      document.getElementById('discLoading').style.display = 'none';
+      document.getElementById('discEmpty').style.display   = 'block';
+      document.getElementById('discEmpty').textContent     = 'Error loading discover data.';
+      console.error('[discover]', e);
+    });
+}
+
+function renderDiscover() {
+  if (!_discoverData) return;
+  var stores = _discoverData.stores || [];
+
+  document.getElementById('discSubtitle').textContent =
+    _discoverData.totalInStock + ' in-stock items across ' + stores.length + ' stores';
+
+  if (stores.length === 0) {
+    document.getElementById('discEmpty').style.display = 'block';
+    document.getElementById('discControls').style.display = 'none';
+    return;
+  }
+  document.getElementById('discEmpty').style.display   = 'none';
+  document.getElementById('discControls').style.display = 'flex';
+
+  // Build genre pills from all stores
+  renderDiscoverGenres(stores);
+
+  // Filter by active genre
+  var filtered = stores;
+  if (_discoverGenreFilter) {
+    filtered = stores.filter(function(s) {
+      return s.topGenres.indexOf(_discoverGenreFilter) !== -1 ||
+             s.topStyles.indexOf(_discoverGenreFilter) !== -1;
+    });
+  }
+
+  // Sort
+  var sorted = filtered.slice().sort(function(a, b) {
+    if (_discoverSort === 'total') {
+      var ta = a.totalWithShipping !== null ? a.totalWithShipping : 9999;
+      var tb = b.totalWithShipping !== null ? b.totalWithShipping : 9999;
+      return ta - tb;
+    }
+    if (_discoverSort === 'alpha') return a.store.localeCompare(b.store);
+    return b.itemCount - a.itemCount; // 'items' default
+  });
+
+  document.getElementById('discStoreGrid').innerHTML = sorted.map(renderStoreCard).join('');
+
+  // Re-expand active store if still in results
+  if (_activeDiscoverStore) {
+    var card = document.querySelector('.disc-store-card[data-store="' + CSS.escape(_activeDiscoverStore) + '"]');
+    if (card) card.classList.add('expanded');
+  }
+
+  // Update cart row
+  var cartCount = Object.keys(_discoverCartSet).length;
+  var cartRow = document.getElementById('discCartRow');
+  if (cartCount > 0) {
+    cartRow.style.display = 'flex';
+    document.getElementById('discCartCount').textContent = cartCount + ' item' + (cartCount !== 1 ? 's' : '') + ' in cart';
+  } else {
+    cartRow.style.display = 'none';
+  }
+}
+
+function renderDiscoverGenres(stores) {
+  // Aggregate all genres+styles across stores
+  var counts = {};
+  stores.forEach(function(s) {
+    s.topGenres.forEach(function(g) { counts[g] = (counts[g] || 0) + s.itemCount; });
+  });
+  var genres = Object.keys(counts).sort(function(a,b){ return counts[b]-counts[a]; }).slice(0, 12);
+
+  var el = document.getElementById('discGenreRow');
+  if (genres.length === 0) { el.innerHTML = ''; return; }
+
+  el.innerHTML = '<button class="disc-genre-pill' + (!_discoverGenreFilter ? ' active' : '') +
+    '" onclick="setDiscoverGenre(null,this)">All</button>' +
+    genres.map(function(g) {
+      var isActive = _discoverGenreFilter === g;
+      return '<button class="disc-genre-pill' + (isActive ? ' active' : '') +
+        '" onclick="setDiscoverGenre(\'' + escapeHtml(g) + '\',this)">' +
+        escapeHtml(g) + ' <span class="pill-count">' + counts[g] + '</span></button>';
+    }).join('');
+}
+
+function renderStoreCard(s) {
+  var logo = storeLogoMap[s.store] || '';
+  var logoImg = logo
+    ? '<img class="disc-card-logo" src="img/' + logo + '" alt="" onerror="this.style.display=\'none\'">'
+    : '<div class="disc-card-logo" style="background:#222;border-radius:3px"></div>';
+
+  // Cost line
+  var costHtml = '';
+  if (s.itemsWithPrice > 0) {
+    costHtml = '<div class="disc-cost-records">~$' + s.totalRecordUsd.toFixed(0) + ' records</div>' +
+      '<span class="disc-cost-sep">+</span>' +
+      '<div class="disc-cost-ship">~$' + s.shippingUsd.toFixed(0) + ' ship</div>' +
+      '<div class="disc-cost-total">~$' + (s.totalWithShipping || 0).toFixed(0) + '</div>';
+  } else {
+    costHtml = '<div class="disc-cost-ship" style="color:#555">' + s.itemCount + ' item' + (s.itemCount !== 1 ? 's' : '') + ' — prices not available</div>';
+  }
+
+  // Tags (genres + styles)
+  var tagHtml = s.topGenres.slice(0,3).map(function(g) {
+    return '<span class="disc-tag genre">' + escapeHtml(g) + '</span>';
+  }).join('') + s.topStyles.slice(0,5).map(function(st) {
+    return '<span class="disc-tag">' + escapeHtml(st) + '</span>';
+  }).join('');
+
+  // Item rows
+  var itemsHtml = renderDiscoverItems(s);
+
+  return '<div class="disc-store-card" data-store="' + escapeHtml(s.store) + '">' +
+    '<div class="disc-card-header" onclick="toggleDiscoverStore(\'' + escapeHtml(s.store) + '\')">' +
+      logoImg +
+      '<span class="disc-card-store-name">' + escapeHtml(s.store) + '</span>' +
+      '<span class="disc-card-count">' + s.itemCount + ' item' + (s.itemCount !== 1 ? 's' : '') + '</span>' +
+      '<span class="disc-card-expand-btn">▾</span>' +
+    '</div>' +
+    '<div class="disc-card-cost">' + costHtml + '</div>' +
+    (tagHtml ? '<div class="disc-card-tags">' + tagHtml + '</div>' : '') +
+    '<div class="disc-item-list">' +
+      '<div class="disc-item-list-header">' +
+        '<span></span><span>Record</span><span style="text-align:right">Store</span><span style="text-align:right">Discogs</span><span></span>' +
+      '</div>' +
+      itemsHtml +
+    '</div>' +
+  '</div>';
+}
+
+function renderDiscoverItems(s) {
+  return s.items.map(function(item) {
+    // Thumb
+    var thumbHtml = item.thumb
+      ? '<img class="disc-item-thumb" src="' + escapeHtml(item.thumb) + '" loading="lazy" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">' +
+        '<div class="disc-item-thumb-placeholder" style="display:none">♪</div>'
+      : '<div class="disc-item-thumb-placeholder">♪</div>';
+
+    // Store price
+    var priceHtml = item.priceStr
+      ? '<div class="disc-item-price">' + escapeHtml(item.priceStr) + '</div>'
+      : '<div class="disc-item-price-na">—</div>';
+
+    // Discogs price
+    var discogsHtml = '';
+    if (item.discogsLowest) {
+      discogsHtml = '<div class="disc-item-discogs-price">$' + item.discogsLowest.toFixed(2) + '</div>' +
+        (item.numForSale ? '<div class="disc-item-discogs-forsale">' + item.numForSale + ' for sale</div>' : '');
+    } else {
+      discogsHtml = '<div class="disc-item-discogs-forsale" style="color:#444">—</div>';
+    }
+
+    // Cart state
+    var cartKey  = String(item.wantlistId) + ':' + s.store;
+    var inCart   = !!_discoverCartSet[cartKey];
+    var cartLabel = inCart ? '✓ In Cart' : '+ Cart';
+    var cartCls   = 'disc-cart-btn' + (inCart ? ' in-cart' : '');
+    var cartClick = 'toggleCart(' + item.wantlistId + ',\'' + escapeAttr(s.store) + '\',' +
+      '\'' + escapeAttr(item.priceStr) + '\',' +
+      (item.priceUsd !== null ? item.priceUsd : 'null') + ')';
+
+    // Store link
+    var linkHtml = item.url
+      ? '<a class="disc-item-link" href="' + escapeHtml(item.url) + '" target="_blank" rel="noopener">View ↗</a>'
+      : '';
+
+    // Meta: label catno year
+    var meta = [item.label, item.catno, item.year].filter(Boolean).join(' · ');
+
+    return '<div class="disc-item-row">' +
+      '<div>' + thumbHtml + '</div>' +
+      '<div class="disc-item-info">' +
+        '<div class="disc-item-artist">' + escapeHtml(item.artist || '') + '</div>' +
+        '<div class="disc-item-title">'  + escapeHtml(item.title  || '') + '</div>' +
+        (meta ? '<div class="disc-item-meta">' + escapeHtml(meta) + '</div>' : '') +
+      '</div>' +
+      '<div class="disc-item-price-col">' + priceHtml + '</div>' +
+      '<div class="disc-item-discogs">'   + discogsHtml + '</div>' +
+      '<div class="disc-item-actions">' + linkHtml +
+        '<button class="' + cartCls + '" data-key="' + escapeAttr(cartKey) + '" onclick="' + cartClick + '">' + cartLabel + '</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function toggleDiscoverStore(storeName) {
+  var card = document.querySelector('.disc-store-card[data-store="' + CSS.escape(storeName) + '"]');
+  if (!card) return;
+  var isExpanded = card.classList.contains('expanded');
+  // Collapse all first
+  document.querySelectorAll('.disc-store-card.expanded').forEach(function(c) { c.classList.remove('expanded'); });
+  if (!isExpanded) {
+    card.classList.add('expanded');
+    _activeDiscoverStore = storeName;
+  } else {
+    _activeDiscoverStore = null;
+  }
+}
+
+function setDiscoverSort(sort, btn) {
+  _discoverSort = sort;
+  document.querySelectorAll('.disc-sort-btn').forEach(function(b) { b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  renderDiscover();
+}
+
+function setDiscoverGenre(genre, btn) {
+  _discoverGenreFilter = genre;
+  document.querySelectorAll('.disc-genre-pill').forEach(function(p) { p.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  renderDiscover();
+}
+
+function toggleCart(wantlistId, store, priceStr, priceUsd) {
+  var username = getCurrentUsername();
+  if (!username) return;
+  var cartKey = String(wantlistId) + ':' + store;
+  var inCart  = !!_discoverCartSet[cartKey];
+
+  if (inCart) {
+    // Remove from cart
+    fetch('api/cart/' + encodeURIComponent(username) + '/' + wantlistId + '/' + encodeURIComponent(store), {
+      method: 'DELETE'
+    }).then(function(r) { return r.json(); }).then(function(data) {
+      delete _discoverCartSet[cartKey];
+      updateCartBadge(data.count || 0);
+      updateCartButtons(cartKey, false);
+      updateDiscCartRow();
+    }).catch(function(e) { console.error('[cart]', e); });
+  } else {
+    // Add to cart
+    fetch('api/cart/' + encodeURIComponent(username), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wantlistId: wantlistId, store: store, price: priceStr, priceUsd: priceUsd })
+    }).then(function(r) { return r.json(); }).then(function(data) {
+      _discoverCartSet[cartKey] = true;
+      updateCartBadge(data.count || 0);
+      updateCartButtons(cartKey, true);
+      updateDiscCartRow();
+    }).catch(function(e) { console.error('[cart]', e); });
+  }
+}
+
+function updateCartButtons(cartKey, inCart) {
+  document.querySelectorAll('[data-key="' + CSS.escape(cartKey) + '"]').forEach(function(btn) {
+    btn.textContent = inCart ? '✓ In Cart' : '+ Cart';
+    if (inCart) btn.classList.add('in-cart'); else btn.classList.remove('in-cart');
+  });
+}
+
+function updateDiscCartRow() {
+  var count = Object.keys(_discoverCartSet).length;
+  var row = document.getElementById('discCartRow');
+  if (row) {
+    if (count > 0) {
+      row.style.display = 'flex';
+      document.getElementById('discCartCount').textContent = count + ' item' + (count !== 1 ? 's' : '') + ' in cart';
+    } else {
+      row.style.display = 'none';
+    }
+  }
+}
+
+function discoverClearCart() {
+  var username = getCurrentUsername();
+  if (!username) return;
+  if (!confirm('Clear your entire cart?')) return;
+  fetch('api/cart/' + encodeURIComponent(username), { method: 'DELETE' })
+    .then(function(r) { return r.json(); })
+    .then(function() {
+      _discoverCartSet = {};
+      updateCartBadge(0);
+      updateDiscCartRow();
+      // Re-render to reset all cart buttons
+      renderDiscover();
+    }).catch(function(e) { console.error('[cart clear]', e); });
+}
+
+function updateCartBadge(count) {
+  var badge = document.getElementById('cartBadge');
+  if (!badge) return;
+  if (count > 0) {
+    badge.textContent = count;
+    badge.style.display = 'inline-flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// Helper: escape for use in HTML attribute onclick= strings
+function escapeAttr(s) {
+  return String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
 
 

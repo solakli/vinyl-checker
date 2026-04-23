@@ -4273,4 +4273,467 @@ body.light .mobile-tab.active { color: #C9A227; }
   .coll-sort { flex: 1; min-width: 0; }
   .coll-title { font-size: 18px; }
   .coll-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+
+  /* ── Discover ── */
+  .disc-wrap { padding: 16px 12px 80px; }
+  .disc-header { flex-direction: column; gap: 10px; }
+  .disc-store-grid { grid-template-columns: 1fr; }
+  .disc-store-card { padding: 14px; }
+  .disc-item-row { flex-wrap: wrap; }
+  .disc-item-thumb { width: 40px; height: 40px; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   DISCOVER VIEW
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Cart badge on Discover nav link */
+.cart-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #C9A227;
+  color: #000;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  padding: 0 4px;
+  margin-left: 5px;
+  vertical-align: middle;
+  line-height: 1;
+}
+
+.disc-wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 24px 60px;
+}
+
+/* ─── Header ─── */
+.disc-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.disc-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.disc-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 22px;
+  font-weight: 600;
+  color: #C9A227;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.disc-subtitle {
+  font-size: 12px;
+  color: #666;
+  letter-spacing: 0.5px;
+}
+
+.disc-cart-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(201,162,39,0.08);
+  border: 1px solid rgba(201,162,39,0.25);
+  border-radius: 6px;
+  padding: 7px 12px;
+}
+
+.disc-cart-count {
+  font-size: 12px;
+  color: #C9A227;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.disc-clear-btn {
+  background: none;
+  border: 1px solid #444;
+  color: #888;
+  font-size: 11px;
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.disc-clear-btn:hover { border-color: #888; color: #ccc; }
+
+/* ─── Controls (sort + genre filter) ─── */
+.disc-controls {
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.disc-sort-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.disc-sort-label {
+  font-size: 11px;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-right: 4px;
+}
+
+.disc-sort-btn {
+  background: none;
+  border: 1px solid #2a2a2a;
+  color: #888;
+  font-family: 'Oswald', sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.5px;
+  padding: 5px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.disc-sort-btn:hover { border-color: #555; color: #ccc; }
+.disc-sort-btn.active { border-color: #C9A227; color: #C9A227; }
+
+.disc-genre-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.disc-genre-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid #2a2a2a;
+  border-radius: 20px;
+  font-size: 11px;
+  color: #888;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  background: none;
+  font-family: 'Oswald', sans-serif;
+  letter-spacing: 0.5px;
+}
+.disc-genre-pill:hover { border-color: #555; color: #ccc; }
+.disc-genre-pill.active { border-color: #C9A227; color: #C9A227; background: rgba(201,162,39,0.06); }
+.disc-genre-pill .pill-count {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+/* ─── Store grid ─── */
+.disc-store-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+/* ─── Store card ─── */
+.disc-store-card {
+  background: #111;
+  border: 1px solid #1e1e1e;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.disc-store-card:hover { border-color: #333; }
+
+.disc-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 14px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.disc-card-logo {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  border-radius: 3px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.disc-card-store-name {
+  font-family: 'Oswald', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: #ddd;
+  letter-spacing: 0.5px;
+  flex: 1;
+}
+
+.disc-card-count {
+  font-size: 11px;
+  color: #888;
+  white-space: nowrap;
+}
+
+.disc-card-expand-btn {
+  font-size: 12px;
+  color: #555;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.disc-store-card.expanded .disc-card-expand-btn { transform: rotate(180deg); }
+
+.disc-card-cost {
+  padding: 0 14px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.disc-cost-records {
+  font-size: 13px;
+  color: #bbb;
+}
+.disc-cost-ship {
+  font-size: 11px;
+  color: #666;
+}
+.disc-cost-total {
+  font-size: 14px;
+  color: #C9A227;
+  font-weight: 600;
+  margin-left: auto;
+}
+.disc-cost-sep { color: #333; font-size: 12px; }
+
+.disc-card-tags {
+  padding: 0 14px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.disc-tag {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: #1a1a1a;
+  color: #666;
+  border: 1px solid #242424;
+  font-family: 'Oswald', sans-serif;
+  letter-spacing: 0.3px;
+}
+.disc-tag.genre { color: #888; border-color: #2a2a2a; }
+
+/* ─── Expanded item list ─── */
+.disc-item-list {
+  display: none;
+  border-top: 1px solid #1e1e1e;
+}
+.disc-store-card.expanded .disc-item-list { display: block; }
+
+.disc-item-list-header {
+  display: grid;
+  grid-template-columns: 48px 1fr 80px 80px 90px;
+  gap: 8px;
+  padding: 8px 14px;
+  background: #0d0d0d;
+  font-size: 10px;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  border-bottom: 1px solid #1a1a1a;
+}
+
+.disc-item-row {
+  display: grid;
+  grid-template-columns: 48px 1fr 80px 80px 90px;
+  gap: 8px;
+  align-items: center;
+  padding: 9px 14px;
+  border-bottom: 1px solid #161616;
+  transition: background 0.12s;
+}
+.disc-item-row:last-child { border-bottom: none; }
+.disc-item-row:hover { background: #161616; }
+
+.disc-item-thumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 3px;
+  background: #1a1a1a;
+  flex-shrink: 0;
+}
+
+.disc-item-thumb-placeholder {
+  width: 48px;
+  height: 48px;
+  border-radius: 3px;
+  background: #1a1a1a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #333;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.disc-item-info { overflow: hidden; }
+.disc-item-artist {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ccc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.disc-item-title {
+  font-size: 11px;
+  color: #777;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+.disc-item-meta {
+  font-size: 10px;
+  color: #444;
+  margin-top: 2px;
+}
+
+.disc-item-price {
+  font-size: 13px;
+  color: #C9A227;
+  font-weight: 600;
+  text-align: right;
+}
+.disc-item-price-na {
+  font-size: 11px;
+  color: #444;
+  text-align: right;
+}
+
+.disc-item-discogs {
+  text-align: right;
+}
+.disc-item-discogs-price {
+  font-size: 12px;
+  color: #888;
+}
+.disc-item-discogs-forsale {
+  font-size: 10px;
+  color: #555;
+  margin-top: 1px;
+}
+
+.disc-item-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.disc-item-link {
+  font-size: 11px;
+  color: #555;
+  text-decoration: none;
+  border: 1px solid #242424;
+  border-radius: 3px;
+  padding: 3px 7px;
+  transition: color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+.disc-item-link:hover { color: #aaa; border-color: #555; }
+
+.disc-cart-btn {
+  font-size: 11px;
+  border: 1px solid #2a2a2a;
+  border-radius: 3px;
+  padding: 3px 7px;
+  cursor: pointer;
+  transition: all 0.12s;
+  background: none;
+  color: #666;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.disc-cart-btn:hover { border-color: #C9A227; color: #C9A227; }
+.disc-cart-btn.in-cart { border-color: #C9A227; color: #C9A227; background: rgba(201,162,39,0.08); }
+.disc-cart-btn.in-cart:hover { border-color: #e55; color: #e55; background: rgba(220,50,50,0.06); }
+
+/* ─── Loading / empty states ─── */
+.disc-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 0;
+  color: #555;
+  font-size: 13px;
+}
+
+.disc-spinner {
+  width: 18px; height: 18px;
+  border: 2px solid #2a2a2a;
+  border-top-color: #C9A227;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.disc-empty {
+  padding: 48px 0;
+  text-align: center;
+  color: #444;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ─── Light mode ─── */
+body.light .disc-store-card { background: #fff; border-color: #e8e8e8; }
+body.light .disc-store-card:hover { border-color: #ccc; }
+body.light .disc-card-store-name { color: #222; }
+body.light .disc-card-count { color: #999; }
+body.light .disc-card-expand-btn { color: #aaa; }
+body.light .disc-cost-records { color: #444; }
+body.light .disc-cost-ship { color: #999; }
+body.light .disc-tag { background: #f0f0f0; color: #888; border-color: #e0e0e0; }
+body.light .disc-item-list { border-top-color: #eee; }
+body.light .disc-item-list-header { background: #f8f8f8; color: #bbb; border-bottom-color: #eee; }
+body.light .disc-item-row { border-bottom-color: #f0f0f0; }
+body.light .disc-item-row:hover { background: #f8f8f8; }
+body.light .disc-item-thumb-placeholder { background: #f0f0f0; color: #ccc; }
+body.light .disc-item-artist { color: #222; }
+body.light .disc-item-title { color: #666; }
+body.light .disc-item-meta { color: #aaa; }
+body.light .disc-item-link { color: #aaa; border-color: #e0e0e0; }
+body.light .disc-item-link:hover { color: #444; border-color: #999; }
+body.light .disc-cart-btn { color: #bbb; border-color: #e0e0e0; }
+body.light .disc-sort-btn { border-color: #e0e0e0; color: #aaa; }
+body.light .disc-sort-btn:hover { border-color: #aaa; color: #444; }
+body.light .disc-genre-pill { border-color: #e0e0e0; color: #aaa; }
+body.light .disc-genre-pill:hover { border-color: #aaa; color: #444; }
+body.light .disc-cart-row { background: rgba(201,162,39,0.06); border-color: rgba(201,162,39,0.2); }
+body.light .disc-clear-btn { border-color: #ddd; color: #bbb; }
+body.light .disc-clear-btn:hover { border-color: #999; color: #444; }
+body.light .disc-subtitle { color: #bbb; }
+body.light .disc-sort-label { color: #bbb; }
+body.light .disc-spinner { border-color: #eee; border-top-color: #C9A227; }
+body.light .disc-empty { color: #bbb; }
+body.light .disc-item-discogs-price { color: #666; }
+body.light .disc-item-discogs-forsale { color: #aaa; }
