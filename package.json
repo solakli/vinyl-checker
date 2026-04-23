@@ -6,6 +6,8 @@
   "scripts": {
     "check": "node vinyl-checker-puppeteer.js",
     "install-deps": "npm install",
+    "goldie": "node goldie.js",
+    "goldie:mcp": "node goldie.js --mcp",
     "sync-store": "node sync-store.js",
     "test": "node test/gramaphone.test.js && node test/further.test.js && node test/octopus.test.js && node test/matcher.test.js && node test/optimizer.test.js",
     "test:gramaphone": "node test/gramaphone.test.js",
@@ -15,13 +17,16 @@
     "test:optimizer": "node test/optimizer.test.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.90.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.8.0",
     "discogs-marketplace-api-nodejs": "^1.16.7",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "puppeteer": "^21.0.0",
     "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "zod": "^4.3.6"
   },
   "bin": {
     "vinyl-check": "./vinyl-checker-puppeteer.js"

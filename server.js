@@ -1300,7 +1300,10 @@ app.get('/api/diggers', function (req, res) {
         if (forUser) {
             var fu = d.prepare('SELECT id FROM users WHERE username=?').get(forUser);
             if (fu) {
-                forUserItems = d.prepare('SELECT genres, styles, artist FROM wantlist WHERE user_id=? AND active=1').all(fu.id);
+                // Combine wantlist + collection for taste match
+                var fuWant = d.prepare('SELECT genres, styles, artist FROM wantlist WHERE user_id=? AND active=1').all(fu.id);
+                var fuColl = d.prepare('SELECT genres, styles, artist FROM collection WHERE user_id=?').all(fu.id);
+                forUserItems = fuWant.concat(fuColl);
             }
         }
         var users = d.prepare('SELECT id, username, last_full_scan FROM users ORDER BY username').all();
@@ -1308,8 +1311,10 @@ app.get('/api/diggers', function (req, res) {
             var wantlist  = d.prepare('SELECT COUNT(*) as c FROM wantlist WHERE user_id=? AND active=1').get(u.id).c;
             var inStock   = d.prepare('SELECT COUNT(DISTINCT w.id) as c FROM wantlist w JOIN store_results sr ON sr.wantlist_id=w.id WHERE w.user_id=? AND w.active=1 AND sr.in_stock=1').get(u.id).c;
             var scanCount = d.prepare('SELECT COUNT(*) as c FROM scan_runs WHERE user_id=? AND finished_at IS NOT NULL AND error IS NULL').get(u.id).c;
-            // Top 3 genres from wantlist
-            var items = d.prepare('SELECT genres, styles, artist FROM wantlist WHERE user_id=? AND active=1').all(u.id);
+            // Combine wantlist + collection for taste signal
+            var wantItems = d.prepare('SELECT genres, styles, artist FROM wantlist WHERE user_id=? AND active=1').all(u.id);
+            var collItems = d.prepare('SELECT genres, styles, artist FROM collection WHERE user_id=?').all(u.id);
+            var items = wantItems.concat(collItems);
             var genres = {};
             items.forEach(function(w) {
                 (w.genres||'').split('|').forEach(function(g){ g=g.trim(); if(g) genres[g]=(genres[g]||0)+1; });
@@ -1350,15 +1355,26 @@ app.get('/api/profile/:username', function (req, res) {
             'SELECT COUNT(DISTINCT w.id) as c FROM wantlist w JOIN store_results sr ON sr.wantlist_id = w.id WHERE w.user_id = ? AND w.active = 1 AND sr.in_stock = 1'
         ).get(user.id).c;
 
-        // ── Taste profile (genres/styles from active wantlist) ──
-        var wantlistItems = d.prepare('SELECT genres, styles, artist FROM wantlist WHERE user_id = ? AND active = 1').all(user.id);
+        // ── Taste profile (genres/styles from wantlist + collection combined) ──
+        var wantlistItems    = d.prepare('SELECT genres, styles, artist FROM wantlist WHERE user_id = ? AND active = 1').all(user.id);
+        var collectionItems  = d.prepare('SELECT genres, styles, artist FROM collection WHERE user_id = ?').all(user.id);
+        var collectionSize   = collectionItems.length;
         var genreCounts = {}, styleCounts = {}, artistCounts = {};
+        // Wantlist items — full weight (want but don't own)
         wantlistItems.forEach(function(w) {
             (w.genres || '').split('|').forEach(function(g) { g = g.trim(); if (g) genreCounts[g] = (genreCounts[g] || 0) + 1; });
             (w.styles || '').split('|').forEach(function(s) { s = s.trim(); if (s) styleCounts[s] = (styleCounts[s] || 0) + 1; });
             var a = (w.artist || '').trim();
             if (a && a !== 'Various' && a !== 'Various Artists') artistCounts[a] = (artistCounts[a] || 0) + 1;
         });
+        // Collection items — full weight (already own = proven taste signal)
+        collectionItems.forEach(function(w) {
+            (w.genres || '').split('|').forEach(function(g) { g = g.trim(); if (g) genreCounts[g] = (genreCounts[g] || 0) + 1; });
+            (w.styles || '').split('|').forEach(function(s) { s = s.trim(); if (s) styleCounts[s] = (styleCounts[s] || 0) + 1; });
+            var a = (w.artist || '').trim();
+            if (a && a !== 'Various' && a !== 'Various Artists') artistCounts[a] = (artistCounts[a] || 0) + 1;
+        });
+        var totalTasteItems = wantlistItems.length + collectionItems.length;
         var topGenres = Object.keys(genreCounts).sort(function(a,b){ return genreCounts[b]-genreCounts[a]; }).slice(0,8)
             .map(function(g){ return { name: g, count: genreCounts[g] }; });
         var topStyles = Object.keys(styleCounts).sort(function(a,b){ return styleCounts[b]-styleCounts[a]; }).slice(0,12)
@@ -1442,7 +1458,7 @@ app.get('/api/profile/:username', function (req, res) {
 
         // ── Personality tags (rule-based; LLM slot ready) ──
         var avgHave = metaStats && metaStats.synced > 0 ? metaStats.avgHave : null;
-        var personalityTags = computePersonalityTags(genreCounts, styleCounts, wantlistItems.length, avgHave, topDecade);
+        var personalityTags = computePersonalityTags(genreCounts, styleCounts, totalTasteItems, avgHave, topDecade);
 
         // ── Rarity score: proportion of items with community_have < 200 ──
         var rarityRow = d.prepare(`
@@ -1458,6 +1474,7 @@ app.get('/api/profile/:username', function (req, res) {
 
         res.json({
             username:        user.username,
+            collectionSize:  collectionSize,
             memberSince:     memberSince,
             lastScan:        user.last_full_scan,
             lastSync:        user.last_sync,
@@ -1491,6 +1508,37 @@ app.get('/api/profile/:username', function (req, res) {
         res.status(500).json({ error: e.message });
     }
 });
+
+// ─── GOLDIE proxy — forward to goldie.js process on port 5053 ────────────
+var GOLDIE_URL = 'http://127.0.0.1:' + (process.env.GOLDIE_PORT || '5053');
+var https_mod  = require('https');
+var http_mod   = require('http');
+
+function proxyToGoldie(req, res, extraPath) {
+    var targetUrl = GOLDIE_URL + (extraPath || req.path.replace(/^\/api\/goldie/, ''));
+    var parsed    = require('url').parse(targetUrl);
+    var options   = {
+        hostname: parsed.hostname, port: parsed.port, path: parsed.path,
+        method: req.method,
+        headers: Object.assign({}, req.headers, { host: parsed.host })
+    };
+    var proxyReq = http_mod.request(options, function(proxyRes) {
+        res.writeHead(proxyRes.statusCode, proxyRes.headers);
+        proxyRes.pipe(res, { end: true });
+    });
+    proxyReq.on('error', function() { res.status(502).json({ error: 'GOLDIE offline' }); });
+    if (req.body && typeof req.body === 'object') {
+        var bodyStr = JSON.stringify(req.body);
+        proxyReq.setHeader('Content-Type', 'application/json');
+        proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyStr));
+        proxyReq.write(bodyStr);
+    } else if (req.rawBody) {
+        proxyReq.write(req.rawBody);
+    }
+    proxyReq.end();
+}
+
+app.all('/api/goldie/*', function(req, res) { proxyToGoldie(req, res); });
 
 // Serve the app
 app.get('/', function (req, res) {

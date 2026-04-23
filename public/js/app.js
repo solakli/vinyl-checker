@@ -4247,10 +4247,10 @@ function renderProfile(p) {
 
   // ── Stat cards ──
   var stats = [
+    { label: 'Collection', value: p.collectionSize || 0, sub: 'records owned' },
     { label: 'Wantlist',   value: p.wantlistSize || 0,  sub: '' },
     { label: 'In Stock',   value: p.inStockCount || 0,  sub: p.wantlistSize ? Math.round((p.inStockCount/p.wantlistSize)*100)+'% of wantlist' : '' },
     { label: 'Scans Run',  value: p.totalScans || 0,    sub: p.avgScanMinutes ? 'avg ' + p.avgScanMinutes + 'm' : '' },
-    { label: 'Never Found',value: p.neverFound || 0,    sub: 'items with no hits ever' },
   ];
   var statsHtml = stats.map(function(s) {
     return '<div class="prof-stat-card">' +
@@ -4644,3 +4644,176 @@ function formatRelativeTime(isoStr) {
   if (d < 30)    return d + 'd ago';
   return Math.floor(d / 30) + 'mo ago';
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GOLDIE CHAT
+// ═══════════════════════════════════════════════════════════════════════════
+
+var _goldieSessionId = null;
+var _goldieOpen = false;
+var _goldieStreaming = false;
+
+function goldieToggle() {
+  _goldieOpen = !_goldieOpen;
+  var panel = document.getElementById('goldiePanel');
+  var btn   = document.getElementById('goldieNavBtn');
+  if (panel) panel.style.display = _goldieOpen ? 'flex' : 'none';
+  if (btn)   btn.classList.toggle('active', _goldieOpen);
+  if (_goldieOpen) {
+    var input = document.getElementById('goldieInput');
+    if (input) input.focus();
+  }
+}
+
+function goldieNewChat() {
+  _goldieSessionId = null;
+  var msgs = document.getElementById('goldieMessages');
+  if (msgs) msgs.innerHTML =
+    '<div class="goldie-welcome">' +
+      '<div class="goldie-welcome-icon">✦</div>' +
+      '<div class="goldie-welcome-text"><strong>New conversation started.</strong><br>What do you want to know?</div>' +
+      '<div class="goldie-starters">' +
+        '<button onclick="goldieSend(\'What\\\'s in stock for me right now?\')">What\'s in stock?</button>' +
+        '<button onclick="goldieSend(\'Suggest a cart for this month\')">Suggest a cart</button>' +
+        '<button onclick="goldieSend(\'What are my rarest in-stock finds?\')">Rarest finds</button>' +
+        '<button onclick="goldieSend(\'Explain my taste profile\')">My taste profile</button>' +
+      '</div>' +
+    '</div>';
+}
+
+function goldieSendFromInput() {
+  var input = document.getElementById('goldieInput');
+  if (!input) return;
+  var msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  input.style.height = '';
+  goldieSend(msg);
+}
+
+function goldieSend(message) {
+  if (_goldieStreaming) return;
+  if (!message) return;
+
+  var msgs = document.getElementById('goldieMessages');
+  if (!msgs) return;
+
+  // Remove welcome block on first real message
+  var welcome = msgs.querySelector('.goldie-welcome');
+  if (welcome) welcome.remove();
+
+  // Append user bubble
+  var userBubble = document.createElement('div');
+  userBubble.className = 'goldie-msg goldie-msg-user';
+  userBubble.textContent = message;
+  msgs.appendChild(userBubble);
+
+  // Create assistant bubble (will stream into it)
+  var asstBubble = document.createElement('div');
+  asstBubble.className = 'goldie-msg goldie-msg-asst';
+  asstBubble.innerHTML = '<span class="goldie-thinking">✦ thinking…</span>';
+  msgs.appendChild(asstBubble);
+  msgs.scrollTop = msgs.scrollHeight;
+
+  _goldieStreaming = true;
+  var sendBtn = document.getElementById('goldieSendBtn');
+  if (sendBtn) sendBtn.disabled = true;
+
+  var username = getCurrentUsername() || '';
+  var body = JSON.stringify({ sessionId: _goldieSessionId, username: username, message: message });
+
+  fetch('api/goldie/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body
+  }).then(function(res) {
+    var reader = res.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = '';
+    var textSoFar = '';
+    var thinkingRemoved = false;
+
+    function read() {
+      reader.read().then(function(result) {
+        if (result.done) {
+          _goldieStreaming = false;
+          if (sendBtn) sendBtn.disabled = false;
+          msgs.scrollTop = msgs.scrollHeight;
+          return;
+        }
+        buffer += decoder.decode(result.value, { stream: true });
+        var lines = buffer.split('\n');
+        buffer = lines.pop();
+        lines.forEach(function(line) {
+          if (!line.startsWith('data:')) return;
+          var json = line.slice(5).trim();
+          if (!json) return;
+          try {
+            var ev = JSON.parse(json);
+            if (ev.type === 'session') { _goldieSessionId = ev.sessionId; }
+            else if (ev.type === 'text') {
+              if (!thinkingRemoved) {
+                asstBubble.innerHTML = '';
+                thinkingRemoved = true;
+              }
+              textSoFar += ev.text;
+              asstBubble.innerHTML = goldieFormatText(textSoFar);
+              msgs.scrollTop = msgs.scrollHeight;
+            } else if (ev.type === 'tool_call') {
+              if (!thinkingRemoved) {
+                asstBubble.innerHTML = '';
+                thinkingRemoved = true;
+              }
+              // Show tool call indicator
+              var tc = document.createElement('div');
+              tc.className = 'goldie-tool-call';
+              tc.innerHTML = '<span class="goldie-tool-icon">⚙</span> ' + escapeHtml(ev.name.replace(/_/g,' '));
+              tc.id = 'goldie-tc-' + ev.name;
+              asstBubble.appendChild(tc);
+              msgs.scrollTop = msgs.scrollHeight;
+            } else if (ev.type === 'tool_result') {
+              var tcEl = document.getElementById('goldie-tc-' + ev.name);
+              if (tcEl) tcEl.classList.add('done');
+            } else if (ev.type === 'done') {
+              _goldieStreaming = false;
+              if (sendBtn) sendBtn.disabled = false;
+            } else if (ev.type === 'error') {
+              asstBubble.innerHTML = '<span class="goldie-error">Error: ' + escapeHtml(ev.message) + '</span>';
+              _goldieStreaming = false;
+              if (sendBtn) sendBtn.disabled = false;
+            }
+          } catch(e) {}
+        });
+        read();
+      }).catch(function() {
+        _goldieStreaming = false;
+        if (sendBtn) sendBtn.disabled = false;
+      });
+    }
+    read();
+  }).catch(function(e) {
+    asstBubble.innerHTML = '<span class="goldie-error">Could not reach GOLDIE. Is it running?</span>';
+    _goldieStreaming = false;
+    if (sendBtn) sendBtn.disabled = false;
+  });
+}
+
+function goldieFormatText(text) {
+  // Minimal markdown: bold, bullets, line breaks
+  return escapeHtml(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
+    .replace(/\n\n/g, '<br><br>')
+    .replace(/\n/g, '<br>');
+}
+
+// Auto-resize textarea
+document.addEventListener('DOMContentLoaded', function() {
+  var inp = document.getElementById('goldieInput');
+  if (inp) inp.addEventListener('input', function() {
+    this.style.height = '';
+    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+  });
+});

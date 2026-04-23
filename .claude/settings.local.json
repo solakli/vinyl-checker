@@ -371,7 +371,10 @@
       "Bash(sshpass -p 'Caswell123@' ssh -o StrictHostKeyChecking=no root@89.117.16.160 \"free -m; echo '---'; ps aux --sort=-%mem | head -20; echo '---CHROME---'; ps aux | grep -i chrom | grep -v grep | wc -l; echo '---PM2---'; pm2 list 2>/dev/null\")",
       "Bash(curl -s -X POST https://stream.ronautradio.la/vinyl/api/deploy -H 'Content-Type: application/json' -H 'X-Hub-Signature-256: sha256=__CMDSUB_OUTPUT__')",
       "Bash(openssl dgst *)",
-      "Bash(ssh root@89.117.16.160 \"tail -20 /root/vinyl-checker/vinyl.log\")"
+      "Bash(ssh root@89.117.16.160 \"tail -20 /root/vinyl-checker/vinyl.log\")",
+      "Bash(ssh root@89.117.16.160 'cd /root/vinyl-checker && git pull && pm2 restart vinyl-checker && sleep 3 && pm2 logs vinyl-checker --lines 20 --nostream')",
+      "Bash(ssh root@89.117.16.160 'cd /root/vinyl-checker && git pull origin master 2>&1 && echo \"--- restarting ---\" && pkill -f \"node server.js\" 2>/dev/null; sleep 1 && PORT=5052 nohup node server.js > vinyl.log 2>&1 & echo \"started PID $!\"')",
+      "Bash(ssh root@89.117.16.160 \"sqlite3 /root/vinyl-checker/vinyl.db '.schema scraper_errors'\")"
     ]
   }
 }

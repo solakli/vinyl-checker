@@ -456,13 +456,22 @@ function initTables() {
     `);
 
     // ── AI-generated taste profile cache ─────────────────────────────────────
-    // GOLDIE (or any LLM) populates this from the mined release_meta + wantlist.
-    // Refreshed monthly or on-demand. personality_tags is JSON array of {label,icon,color}.
-    try { db.exec(`
-        ALTER TABLE users ADD COLUMN taste_tags TEXT;
-        ALTER TABLE users ADD COLUMN taste_summary TEXT;
-        ALTER TABLE users ADD COLUMN taste_computed_at TEXT;
-    `); } catch(e) {}
+    try { db.exec(`ALTER TABLE users ADD COLUMN taste_tags TEXT`); } catch(e) {}
+    try { db.exec(`ALTER TABLE users ADD COLUMN taste_summary TEXT`); } catch(e) {}
+    try { db.exec(`ALTER TABLE users ADD COLUMN taste_computed_at TEXT`); } catch(e) {}
+
+    // ── GOLDIE chat sessions ──────────────────────────────────────────────────
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS goldie_sessions (
+            id          TEXT PRIMARY KEY,
+            username    TEXT,
+            title       TEXT,
+            messages    TEXT NOT NULL DEFAULT '[]',
+            created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+            last_active TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_goldie_sessions_user ON goldie_sessions(username, last_active);
+    `);
 }
 
 // ═══════════════════════════════════════════════════════════
