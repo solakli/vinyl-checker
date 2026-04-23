@@ -1669,6 +1669,38 @@ app.post('/api/discogs-listings/:username', function (req, res) {
     }
 });
 
+// ─── GOLDIE internal sync trigger ─────────────────────────────────────────────
+// Simple non-SSE endpoint GOLDIE can call to kick off a wantlist + collection sync
+app.post('/api/sync-now/:username', async function (req, res) {
+    var username = req.params.username;
+    var user = db.getOrCreateUser(username);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Kick off background wantlist refresh (same as the 15-min cron) without SSE
+    setImmediate(async function() {
+        try {
+            var oauthToken = db.getOAuthToken(user.id, 'discogs');
+            var headersFn = null;
+            if (oauthToken && oauthToken.access_token) {
+                var oauthLib = require('./lib/oauth');
+                headersFn = function(method, url) {
+                    return { 'Authorization': oauthLib.discogsAuthHeader(method, url, oauthToken.access_token, oauthToken.access_secret) };
+                };
+            }
+            var discogsLib = require('./lib/discogs');
+            var wantlist = await discogsLib.fetchWantlist(username, headersFn ? function(method, url) { return headersFn(method, url)['Authorization']; } : null);
+            if (wantlist && wantlist.length > 0) {
+                db.syncWantlist(user.id, wantlist);
+                console.log('[sync-now] Synced', wantlist.length, 'wantlist items for', username);
+            }
+        } catch(e) {
+            console.error('[sync-now] error for', username, ':', e.message);
+        }
+    });
+
+    res.json({ started: true, username: username, message: 'Wantlist sync started in background' });
+});
+
 // ─── Discogs Marketplace Sync ─────────────────────────────────────────────────
 
 // In-memory sync state per username

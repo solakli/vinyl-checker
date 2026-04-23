@@ -4677,6 +4677,7 @@ function goldieNewChat() {
         '<button onclick="goldieSend(\'Suggest a cart for this month\')">Suggest a cart</button>' +
         '<button onclick="goldieSend(\'What are my rarest in-stock finds?\')">Rarest finds</button>' +
         '<button onclick="goldieSend(\'Explain my taste profile\')">My taste profile</button>' +
+        '<button onclick="goldieSend(\'Sync my Discogs marketplace data\')">⟳ Sync Discogs</button>' +
       '</div>' +
     '</div>';
 }
@@ -4798,15 +4799,108 @@ function goldieSend(message) {
   });
 }
 
-function goldieFormatText(text) {
-  // Minimal markdown: bold, bullets, line breaks
-  return escapeHtml(text)
+// ── GOLDIE markdown → HTML ────────────────────────────────────────────────
+
+function goldieInlineFormat(raw) {
+  // Escape HTML, then apply inline markdown
+  return escapeHtml(raw)
+    .replace(/`([^`]+)`/g, '<code class="goldie-code">$1</code>')
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/^- (.+)$/gm, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
-    .replace(/\n\n/g, '<br><br>')
-    .replace(/\n/g, '<br>');
+    .replace(/\*([^*\n]+?)\*/g, '<em>$1</em>');
+}
+
+function goldieFormatText(text) {
+  var lines = text.split('\n');
+  var html = '';
+  var i = 0;
+  var listType = null;   // 'ul' | 'ol' | null
+
+  function flushList() {
+    if (listType) { html += '</' + listType + '>'; listType = null; }
+  }
+
+  while (i < lines.length) {
+    var line = lines[i];
+    var raw  = line.trim();
+
+    // ── Horizontal rule ──────────────────────────────────────────────
+    if (/^-{3,}$/.test(raw) || /^\*{3,}$/.test(raw)) {
+      flushList();
+      html += '<hr class="goldie-hr">';
+      i++; continue;
+    }
+
+    // ── Headings ─────────────────────────────────────────────────────
+    var hMatch = raw.match(/^(#{1,3})\s+(.+)$/);
+    if (hMatch) {
+      flushList();
+      var lvl = hMatch[1].length;
+      html += '<h' + lvl + ' class="goldie-h' + lvl + '">' + goldieInlineFormat(hMatch[2]) + '</h' + lvl + '>';
+      i++; continue;
+    }
+
+    // ── Table (detect header row followed by separator row) ───────────
+    if (raw.startsWith('|') && i + 1 < lines.length) {
+      var sepRaw = lines[i + 1].trim();
+      if (/^\|[\s|:-]+\|/.test(sepRaw)) {
+        flushList();
+        html += '<div class="goldie-table-wrap"><table class="goldie-table">';
+
+        // Header
+        html += '<thead><tr>';
+        raw.replace(/^\||\|$/g, '').split('|').forEach(function(h) {
+          html += '<th>' + goldieInlineFormat(h.trim()) + '</th>';
+        });
+        html += '</tr></thead><tbody>';
+        i += 2; // skip header + separator
+
+        // Body rows
+        while (i < lines.length && lines[i].trim().startsWith('|')) {
+          var rowRaw = lines[i].trim().replace(/^\||\|$/g, '');
+          html += '<tr>';
+          rowRaw.split('|').forEach(function(c) {
+            html += '<td>' + goldieInlineFormat(c.trim()) + '</td>';
+          });
+          html += '</tr>';
+          i++;
+        }
+        html += '</tbody></table></div>';
+        continue;
+      }
+    }
+
+    // ── Bullet list ───────────────────────────────────────────────────
+    var ulMatch = raw.match(/^[-*]\s+(.+)$/);
+    if (ulMatch) {
+      if (listType !== 'ul') { flushList(); html += '<ul>'; listType = 'ul'; }
+      html += '<li>' + goldieInlineFormat(ulMatch[1]) + '</li>';
+      i++; continue;
+    }
+
+    // ── Numbered list ─────────────────────────────────────────────────
+    var olMatch = raw.match(/^\d+\.\s+(.+)$/);
+    if (olMatch) {
+      if (listType !== 'ol') { flushList(); html += '<ol>'; listType = 'ol'; }
+      html += '<li>' + goldieInlineFormat(olMatch[1]) + '</li>';
+      i++; continue;
+    }
+
+    // ── Blank line ────────────────────────────────────────────────────
+    if (!raw) {
+      flushList();
+      html += '<div class="goldie-spacer"></div>';
+      i++; continue;
+    }
+
+    // ── Regular text ──────────────────────────────────────────────────
+    flushList();
+    html += '<p class="goldie-p">' + goldieInlineFormat(raw) + '</p>';
+    i++;
+  }
+
+  flushList();
+  return html;
 }
 
 // Auto-resize textarea

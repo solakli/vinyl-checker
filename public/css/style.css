@@ -6108,7 +6108,7 @@ body.light .prof-meta-sync-bar-wrap { background: #eee; }
 
 /* Nav button */
 .goldie-nav-btn {
-  display: inline-flex; align-items: center; gap: 5px;
+  display: inline-flex; align-items: center; gap: 6px;
   padding: 5px 12px; border-radius: 20px;
   background: rgba(201,162,39,0.12); border: 1px solid rgba(201,162,39,0.35);
   color: #C9A227; font-family: 'Oswald',sans-serif; font-size: 13px; font-weight: 600;
@@ -6118,7 +6118,23 @@ body.light .prof-meta-sync-bar-wrap { background: #eee; }
 .goldie-nav-btn:hover, .goldie-nav-btn.active {
   background: rgba(201,162,39,0.22); border-color: rgba(201,162,39,0.65);
 }
-.goldie-nav-icon { font-size: 14px; }
+/* Animated AI sparkle icon */
+.goldie-ai-icon {
+  width: 15px; height: 15px; flex-shrink: 0;
+  animation: goldieAiPulse 2.4s ease-in-out infinite;
+  transform-origin: center;
+}
+.goldie-nav-btn.active .goldie-ai-icon {
+  animation: goldieAiSpin 4s linear infinite;
+}
+@keyframes goldieAiPulse {
+  0%, 100% { opacity: 1;   transform: scale(1);    filter: drop-shadow(0 0 0px #C9A227); }
+  50%       { opacity: 0.75; transform: scale(1.18); filter: drop-shadow(0 0 4px #C9A227); }
+}
+@keyframes goldieAiSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
 
 /* Panel */
 .goldie-panel {
@@ -6192,10 +6208,57 @@ body.light .goldie-starters button { background: #f5f5f5; border-color: #ddd; co
   border-radius: 2px 12px 12px 12px; max-width: 100%;
 }
 body.light .goldie-msg-asst { background: #f5f5f5; border-color: #e5e5e5; color: #333; }
-.goldie-msg-asst ul { margin: 6px 0 6px 16px; padding: 0; }
+.goldie-msg-asst ul, .goldie-msg-asst ol { margin: 4px 0 4px 18px; padding: 0; }
 .goldie-msg-asst li { margin: 3px 0; }
 .goldie-msg-asst strong { color: #eee; }
 body.light .goldie-msg-asst strong { color: #111; }
+
+/* Markdown rendered inside GOLDIE messages */
+.goldie-p { margin: 0 0 4px 0; }
+.goldie-spacer { height: 6px; }
+.goldie-hr { border: none; border-top: 1px solid #2a2a2a; margin: 8px 0; }
+body.light .goldie-hr { border-color: #ddd; }
+
+.goldie-h1, .goldie-h2, .goldie-h3 {
+  font-family: 'Oswald', sans-serif; letter-spacing: 0.5px;
+  color: #eee; margin: 10px 0 4px 0; line-height: 1.2;
+}
+.goldie-h1 { font-size: 16px; color: #C9A227; border-bottom: 1px solid #2a2a2a; padding-bottom: 4px; }
+.goldie-h2 { font-size: 14px; color: #ddd; }
+.goldie-h3 { font-size: 13px; color: #bbb; text-transform: uppercase; letter-spacing: 1px; }
+body.light .goldie-h1 { color: #7a5e00; border-color: #eee; }
+body.light .goldie-h2 { color: #333; }
+body.light .goldie-h3 { color: #555; }
+
+.goldie-code {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 11.5px; padding: 1px 5px; border-radius: 4px;
+  background: rgba(201,162,39,0.12); color: #C9A227;
+  border: 1px solid rgba(201,162,39,0.2);
+}
+body.light .goldie-code { background: #fef9e7; color: #7a5e00; border-color: #f0d080; }
+
+/* Tables */
+.goldie-table-wrap { overflow-x: auto; margin: 6px 0; border-radius: 6px; }
+.goldie-table {
+  width: 100%; border-collapse: collapse; font-size: 12px;
+  border: 1px solid #2a2a2a; border-radius: 6px; overflow: hidden;
+}
+.goldie-table th {
+  background: #1a1a1a; color: #C9A227; font-family: 'Oswald', sans-serif;
+  font-size: 11px; letter-spacing: 0.5px; text-align: left;
+  padding: 6px 10px; border-bottom: 1px solid #2a2a2a; white-space: nowrap;
+}
+.goldie-table td {
+  padding: 5px 10px; border-bottom: 1px solid #1e1e1e; color: #ccc;
+  vertical-align: middle;
+}
+.goldie-table tr:last-child td { border-bottom: none; }
+.goldie-table tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+.goldie-table tr:hover td { background: rgba(201,162,39,0.05); }
+body.light .goldie-table { border-color: #e5e5e5; }
+body.light .goldie-table th { background: #f5f5f5; color: #7a5e00; border-color: #e5e5e5; }
+body.light .goldie-table td { color: #333; border-color: #eee; }
 
 .goldie-thinking { color: #555; font-style: italic; animation: goldieThink 1.2s infinite; }
 @keyframes goldieThink { 0%,100%{opacity:.4} 50%{opacity:1} }

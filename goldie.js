@@ -218,6 +218,18 @@ const TOOLS = [
             },
             required: ['username']
         }
+    },
+    {
+        name: 'trigger_sync',
+        description: 'Trigger a Discogs data sync for a user. Can sync the wantlist (pulls latest wantlist from Discogs API) and/or the marketplace (scrapes current seller listings for all wantlist items). Use this when the user asks to sync, refresh, or update their Discogs data. Returns sync status.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                username: { type: 'string', description: 'Discogs username' },
+                type:     { type: 'string', enum: ['wantlist', 'marketplace', 'both'], description: 'What to sync: wantlist (pull from Discogs API), marketplace (scrape seller listings), or both (default: both)' }
+            },
+            required: ['username']
+        }
     }
 ];
 
@@ -646,6 +658,58 @@ function toolGetDiscogsMarketplace({ username, query, min_condition, ships_from,
     };
 }
 
+// GOLDIE's internal vinyl-checker URL (same machine, different port)
+var CHECKER_URL = 'http://127.0.0.1:' + (process.env.PORT || '5052');
+
+async function toolTriggerSync({ username, type }) {
+    type = type || 'both';
+    var results = {};
+
+    // Helper: POST to vinyl-checker
+    function postToChecker(path) {
+        return new Promise(function(resolve) {
+            var opts = require('url').parse(CHECKER_URL + path);
+            opts.method = 'POST';
+            opts.headers = { 'Content-Type': 'application/json', 'Content-Length': 0 };
+            var req = http.request(opts, function(res) {
+                var body = '';
+                res.on('data', function(c){ body += c; });
+                res.on('end', function(){
+                    try { resolve(JSON.parse(body)); } catch(e) { resolve({ raw: body }); }
+                });
+            });
+            req.on('error', function(e){ resolve({ error: e.message }); });
+            req.end();
+        });
+    }
+
+    if (type === 'wantlist' || type === 'both') {
+        results.wantlist = await postToChecker('/api/sync-now/' + encodeURIComponent(username));
+    }
+    if (type === 'marketplace' || type === 'both') {
+        results.marketplace = await postToChecker('/api/marketplace-sync/' + encodeURIComponent(username));
+    }
+
+    // Summarise for GOLDIE
+    var wMsg = results.wantlist
+        ? (results.wantlist.started ? 'Wantlist sync started.' : results.wantlist.message || 'Wantlist: ' + JSON.stringify(results.wantlist))
+        : null;
+    var mMsg = results.marketplace
+        ? (results.marketplace.started
+            ? 'Marketplace sync started for ' + (results.marketplace.total || '?') + ' items.'
+            : results.marketplace.message || 'Marketplace: already running or error.')
+        : null;
+
+    return {
+        status: 'triggered',
+        username: username,
+        type: type,
+        wantlist:    wMsg,
+        marketplace: mMsg,
+        note: 'Syncs run in the background. Check back in a minute or two for fresh data.'
+    };
+}
+
 // Tool dispatch
 function runTool(name, input) {
     switch(name) {
@@ -658,6 +722,7 @@ function runTool(name, input) {
         case 'get_rare_finds':          return toolGetRareFinds(input);
         case 'compare_diggers':         return toolCompareDiggers(input);
         case 'get_discogs_marketplace': return toolGetDiscogsMarketplace(input);
+        case 'trigger_sync':            return toolTriggerSync(input);
         default: return { error: 'Unknown tool: ' + name };
     }
 }
