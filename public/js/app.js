@@ -301,7 +301,14 @@ var maxSseReconnects = 3;
 
 function startScan(force, resume) {
   var username = document.getElementById('usernameInput').value.trim();
-  if (!username || isScanning) return;
+  if (!username) return;
+  if (isScanning && !resume) {
+    // Already scanning — flash the progress bar instead of silently ignoring
+    var prog = document.getElementById('progressSection');
+    if (prog) { prog.style.outline = '2px solid var(--gold)'; setTimeout(function(){ prog.style.outline=''; }, 800); }
+    return;
+  }
+  if (isScanning) return;
 
   localStorage.setItem('gold-digger-username', username);
 
@@ -2205,10 +2212,16 @@ window.addEventListener('golddigger:ready', function () {
   _extInstalled = true;
 });
 
-// When extension reports sync progress, update the Discogs sync row
+// When extension reports sync progress — update optimizer overlay AND discover Discogs UI
 window.addEventListener('golddigger:syncstate', function (e) {
   var state = e.detail;
   if (!state) return;
+
+  // ── 1. Store state for discover rendering ──
+  var prev = _discogsSyncState || {};
+  _discogsSyncState = state;
+
+  // ── 2. Optimizer overlay elements (pre-existing) ──
   var hint     = document.getElementById('discogsExtHint');
   var doneEl   = document.getElementById('discogsSyncDone');
   var runBtn   = document.getElementById('optimizeRunBtn');
@@ -2227,7 +2240,6 @@ window.addEventListener('golddigger:syncstate', function (e) {
     // Stamp sync time so we skip re-syncing for 30 min
     var syncUser = getCurrentUsername();
     if (syncUser) _lastDiscogsSyncTime[syncUser] = Date.now();
-
     if (hint)   hint.style.display   = 'none';
     if (doneEl) {
       doneEl.style.display = 'block';
@@ -2242,6 +2254,44 @@ window.addEventListener('golddigger:syncstate', function (e) {
       doneEl.textContent   = '⚠ Sync error: ' + state.error;
     }
     if (runBtn) runBtn.disabled = false;
+  }
+
+  // ── 3. Live discover Discogs tab update ──
+  var discInStock = document.getElementById('discInStockBody');
+  if (discInStock && _inStockVendor === 'discogs') {
+    // Patch inline banner instead of full re-render so scroll position is preserved
+    var banner = document.getElementById('dgSyncBanner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'dgSyncBanner';
+      banner.className = 'dg-sync-banner';
+      discInStock.insertBefore(banner, discInStock.firstChild);
+    }
+    if (state.running) {
+      var p = state.total > 0 ? Math.round((state.done / state.total) * 100) : 0;
+      banner.innerHTML = '<span class="dg-sync-spin">⛏</span> Syncing Discogs marketplace… ' +
+        state.done + ' / ' + state.total + ' releases · ' + (state.found || 0) + ' listings (' + p + '%)';
+      banner.className = 'dg-sync-banner running';
+    } else if (state.completedAt) {
+      banner.innerHTML = '✓ Sync complete — ' + (state.found || 0) + ' listings saved';
+      banner.className = 'dg-sync-banner done';
+      // Auto-hide banner and reload discover data after a short delay
+      setTimeout(function() {
+        if (banner.parentNode) banner.parentNode.removeChild(banner);
+        loadDiscover();
+      }, 2000);
+    } else if (state.error) {
+      banner.innerHTML = '⚠ Sync error: ' + escapeHtml(state.error);
+      banner.className = 'dg-sync-banner error';
+    }
+  }
+
+  // ── 4. If sync just completed and discover is open, schedule a reload ──
+  if (state.completedAt && !prev.completedAt && _discoverData && _discoverTab !== null) {
+    // Reload in background even if not on discogs tab, so data is fresh when user switches
+    if (_inStockVendor !== 'discogs') {
+      setTimeout(function() { loadDiscover(); }, 2500);
+    }
   }
 });
 
@@ -2281,6 +2331,39 @@ function _showOptimizerPrefsPanel(username) {
 
 // Tracks when we last triggered a Discogs sync per username
 var _lastDiscogsSyncTime = {};
+
+/**
+ * Trigger a Discogs marketplace sync via the Chrome extension.
+ * Called from the Discover Discogs tab — separate from openOptimizer().
+ */
+function triggerDiscogsSync() {
+  var username = getCurrentUsername();
+  if (!username) return;
+
+  if (!_extInstalled) {
+    // Show install prompt in the Discogs section
+    var el = document.getElementById('discInStockBody');
+    if (el) {
+      var banner = document.getElementById('dgSyncBanner') || document.createElement('div');
+      banner.id = 'dgSyncBanner';
+      banner.className = 'dg-sync-banner error';
+      banner.innerHTML = '⚠ Gold Digger Chrome Extension is not installed. ' +
+        '<a href="https://github.com/solakli/vinyl-checker#extension" target="_blank" style="color:var(--gold)">Install it here</a> to sync Discogs prices.';
+      el.insertBefore(banner, el.firstChild);
+    }
+    return;
+  }
+
+  // Dispatch to content script → background → sync-window
+  var serverUrl = (window.location.origin + window.location.pathname).replace(/\/+$/, '');
+  window.dispatchEvent(new CustomEvent('golddigger:startsync', {
+    detail: { username: username, serverUrl: serverUrl }
+  }));
+
+  // Optimistically show running state in discover
+  _discogsSyncState = { running: true, done: 0, total: 0, found: 0 };
+  if (_inStockVendor === 'discogs') renderInStockBody();
+}
 
 /**
  * Open optimizer modal.
@@ -3405,7 +3488,10 @@ var _discoverGenreFilter = null;
 var _activeDiscoverStore = null;
 var _discoverCartSet     = {};
 var _forYouFilter        = 'all';      // 'all' | 'artist' | 'style'
+var _forYouStoreFilter   = 'all';      // 'all' | storeName
 var _inStockVendor       = 'all';      // 'all' | storeName | 'discogs'
+var _discogsSyncState    = null;       // live state from extension: {running, done, total, found, completedAt, error}
+var _dgPriceMap          = {};         // wantlistId → cheapestUsd from discogsListings
 
 function loadDiscover() {
   var username = getCurrentUsername();
@@ -3420,8 +3506,10 @@ function loadDiscover() {
   fetch('api/discover/' + encodeURIComponent(username))
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      _discoverData    = data;
-      _discoverCartSet = data.cartSet || {};
+      _discoverData        = data;
+      _discoverCartSet     = data.cartSet || {};
+      _forYouStoreFilter   = 'all';   // reset store filter on fresh load
+      _discoverGenreFilter = null;
       renderDiscover();
       updateCartBadge(Object.keys(_discoverCartSet).length);
     })
@@ -3482,12 +3570,33 @@ function renderDiscoverBody() {
 
 // ─── FOR YOU TAB ─────────────────────────────────────────────────────────────
 
+function setForYouStoreFilter(store, btn) {
+  _forYouStoreFilter = store;
+  document.querySelectorAll('.disc-store-filter-pill').forEach(function(p) { p.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  renderForYouTab();
+}
+
 function renderForYouTab() {
   var forYou = _discoverData.forYou || [];
   var tp     = _discoverData.tasteProfile || {};
 
-  // Filter by match type
+  // Build Discogs price lookup map (wantlistId → cheapest listing)
+  _dgPriceMap = {};
+  (_discoverData.discogsListings || []).forEach(function(dl) {
+    if (dl.wantlistId && dl.cheapestUsd) _dgPriceMap[dl.wantlistId] = dl;
+  });
+
+  // Collect unique stores present in forYou (with counts)
+  var storeCounts = {};
+  forYou.forEach(function(item) {
+    if (item.store) storeCounts[item.store] = (storeCounts[item.store] || 0) + 1;
+  });
+  var storesPresent = Object.keys(storeCounts).sort(function(a,b){ return storeCounts[b]-storeCounts[a]; });
+
+  // Filter by match type + store
   var filtered = forYou.filter(function(item) {
+    if (_forYouStoreFilter !== 'all' && item.store !== _forYouStoreFilter) return false;
     if (_discoverGenreFilter) {
       var g = (item.genres + '|' + item.styles).toLowerCase();
       if (g.indexOf(_discoverGenreFilter.toLowerCase()) === -1) return false;
@@ -3511,20 +3620,42 @@ function renderForYouTab() {
   });
   var topGenres = Object.keys(genreCounts).sort(function(a,b){ return genreCounts[b]-genreCounts[a]; }).slice(0,8);
 
+  // Discogs price count for stat line
+  var dgCount = Object.keys(_dgPriceMap).length;
+  var wantlistInForYou = forYou.filter(function(i) { return i.source === 'wantlist'; }).length;
+  var statLine = filtered.length + ' records';
+  if (wantlistInForYou > 0) statLine += ' · ' + wantlistInForYou + ' on your wantlist';
+  if (dgCount > 0) statLine += ' · ' + dgCount + ' Discogs prices';
+
   var html =
+    '<div class="disc-fy-statline">' + statLine + '</div>' +
     '<div class="disc-foryou-controls">' +
+      // Match type filters
       '<div class="disc-foryou-filters">' +
         '<button class="disc-filter-btn' + (_forYouFilter === 'all' ? ' active' : '') + '" onclick="setForYouFilter(\'all\',this)">All</button>' +
         '<button class="disc-filter-btn' + (_forYouFilter === 'artist' ? ' active' : '') + '" onclick="setForYouFilter(\'artist\',this)">Artist Match</button>' +
         '<button class="disc-filter-btn' + (_forYouFilter === 'style' ? ' active' : '') + '" onclick="setForYouFilter(\'style\',this)">Style Match</button>' +
         (tasteTagsHtml ? '<div class="disc-taste-tags">' + tasteTagsHtml + '</div>' : '') +
       '</div>' +
+      // Genre pills
       (topGenres.length ?
         '<div class="disc-genre-row">' +
           '<button class="disc-genre-pill' + (!_discoverGenreFilter ? ' active' : '') + '" onclick="setDiscoverGenre(null,this)">All</button>' +
           topGenres.map(function(g) {
             return '<button class="disc-genre-pill' + (_discoverGenreFilter === g ? ' active' : '') +
               '" onclick="setDiscoverGenre(\'' + escapeAttr(g) + '\',this)">' + escapeHtml(g) + '</button>';
+          }).join('') +
+        '</div>' : '') +
+      // Store filter pills (compact row — only when >1 store)
+      (storesPresent.length > 1 ?
+        '<div class="disc-store-filter-row">' +
+          '<button class="disc-store-filter-pill' + (_forYouStoreFilter === 'all' ? ' active' : '') +
+            '" onclick="setForYouStoreFilter(\'all\',this)">All stores</button>' +
+          storesPresent.map(function(s) {
+            var cls = storeClassMap[s] || '';
+            return '<button class="disc-store-filter-pill ' + cls + (_forYouStoreFilter === s ? ' active' : '') +
+              '" onclick="setForYouStoreFilter(\'' + escapeAttr(s) + '\',this)">' +
+              escapeHtml(storeDisplayName[s] || s) + ' <span class="disc-vendor-count">' + storeCounts[s] + '</span></button>';
           }).join('') +
         '</div>' : '') +
     '</div>';
@@ -3561,10 +3692,22 @@ function renderForYouCard(item) {
     ? '<span class="disc-card-store-badge ' + storeCls + '">' + escapeHtml(storeDisplayName[item.store] || item.store) + '</span>'
     : '';
 
-  // Price
+  // Store price
   var priceHtml = item.priceStr
     ? '<span class="disc-card-price">' + escapeHtml(item.priceStr) + '</span>'
     : (item.priceUsd ? '<span class="disc-card-price">$' + item.priceUsd.toFixed(2) + '</span>' : '');
+
+  // Discogs cheapest listing badge (cross-reference by wantlistId)
+  var dgBadge = '';
+  if (item.wantlistId && _dgPriceMap[item.wantlistId]) {
+    var dl = _dgPriceMap[item.wantlistId];
+    var dgLabel = dl.cheapestStr || ('$' + dl.cheapestUsd.toFixed(2));
+    var condAbbr = dl.condition ? ' · ' + dl.condition.charAt(0) : '';
+    dgBadge = '<span class="disc-card-dg-price" title="Cheapest on Discogs: ' + escapeAttr(dl.condition || '') + ' from ' + escapeAttr(dl.seller || '') + '">' +
+      '<img src="img/discogs.png" style="width:9px;height:9px;opacity:0.6;vertical-align:middle;margin-right:2px">' +
+      escapeHtml(dgLabel) + escapeHtml(condAbbr) +
+      '</span>';
+  }
 
   // Cart button (only for wantlist items that have wantlistId)
   var cartBtn = '';
@@ -3589,7 +3732,7 @@ function renderForYouCard(item) {
       '<div class="disc-card-artist">' + escapeHtml(item.artist || '') + '</div>' +
       '<div class="disc-card-title">'  + escapeHtml(item.title  || '') + '</div>' +
       '<div class="disc-card-footer">' +
-        genreChip + storeBadge + priceHtml + cartBtn +
+        genreChip + storeBadge + priceHtml + dgBadge + cartBtn +
       '</div>' +
     '</div>' +
   '</div>';
@@ -3679,24 +3822,48 @@ function renderInStockBody() {
 
 function renderDiscogsSection() {
   var items = _discoverData.discogsListings || [];
+  var syncing = _discogsSyncState && _discogsSyncState.running;
 
-  if (items.length === 0) {
-    return '<div class="disc-discogs-empty">' +
-      '<img src="img/discogs.png" style="width:20px;height:20px;opacity:0.5;margin-bottom:10px">' +
-      '<div class="disc-discogs-empty-title">No Discogs listings synced yet</div>' +
-      '<div class="disc-discogs-empty-hint">Use the Gold Digger Chrome Extension to sync seller listings from your Discogs session.</div>' +
-      '<button class="disc-discogs-ext-btn" onclick="openOptimizer()">Open Extension Sync</button>' +
-    '</div>';
+  // Sync-in-progress banner (shown at top regardless of items)
+  var syncBannerHtml = '';
+  if (syncing) {
+    var p = _discogsSyncState.total > 0
+      ? Math.round((_discogsSyncState.done / _discogsSyncState.total) * 100) : 0;
+    syncBannerHtml = '<div id="dgSyncBanner" class="dg-sync-banner running">' +
+      '<span class="dg-sync-spin">⛏</span> Syncing Discogs marketplace… ' +
+      _discogsSyncState.done + ' / ' + _discogsSyncState.total + ' releases · ' +
+      (_discogsSyncState.found || 0) + ' listings (' + p + '%)' +
+      '</div>';
   }
+
+  if (items.length === 0 && !syncing) {
+    var extBtn = _extInstalled
+      ? '<button class="disc-discogs-ext-btn" onclick="triggerDiscogsSync()">⛏ Sync Discogs Prices</button>'
+      : '<div class="disc-discogs-ext-hint">Install the Gold Digger Chrome Extension to sync seller prices from your Discogs account.</div>';
+    return syncBannerHtml +
+      '<div class="disc-discogs-empty">' +
+        '<img src="img/discogs.png" style="width:20px;height:20px;opacity:0.5;margin-bottom:10px">' +
+        '<div class="disc-discogs-empty-title">No Discogs listings synced yet</div>' +
+        '<div class="disc-discogs-empty-hint">Syncing scrapes your Discogs wantlist marketplace pages to find cheapest seller prices.</div>' +
+        extBtn +
+      '</div>';
+  }
+
+  if (items.length === 0) return syncBannerHtml; // syncing, no items yet — just show progress
 
   var totalUsd = items.reduce(function(n, i) { return n + (i.cheapestUsd || 0); }, 0);
   var withPrice = items.filter(function(i) { return i.cheapestUsd > 0; }).length;
+  var syncAgeMs = _lastDiscogsSyncTime[getCurrentUsername()] ? Date.now() - _lastDiscogsSyncTime[getCurrentUsername()] : null;
+  var syncAgeLabel = syncAgeMs ? (syncAgeMs < 3600000 ? Math.round(syncAgeMs / 60000) + 'm ago' : Math.round(syncAgeMs / 3600000) + 'h ago') : '';
 
   var summaryHtml =
     '<div class="disc-discogs-summary">' +
       '<span>' + items.length + ' release' + (items.length !== 1 ? 's' : '') + ' with listings</span>' +
       (withPrice > 0 ? '<span class="disc-discogs-total">~$' + totalUsd.toFixed(0) + ' cheapest total</span>' : '') +
-      '<button class="disc-discogs-resync-btn" onclick="openOptimizer()">↻ Re-sync via Extension</button>' +
+      (syncAgeLabel ? '<span class="disc-discogs-age">synced ' + syncAgeLabel + '</span>' : '') +
+      (!syncing
+        ? '<button class="disc-discogs-resync-btn" onclick="triggerDiscogsSync()">↻ Re-sync</button>'
+        : '<span class="disc-discogs-syncing">⛏ syncing…</span>') +
     '</div>';
 
   var gridHtml = '<div class="disc-discogs-grid">' +
