@@ -1924,15 +1924,20 @@ async function checkAuthStatus() {
         playlistBtn.style.display = 'none';
       }
     }
-  // Handle ?profile= URL param — open that user's profile after auth resolves
-  if (_profileParam) {
-    var pUser = _profileParam;
-    _profileParam = null;
-    // Show profile nav regardless of auth state (public profiles)
+  // Handle ?view= URL param (and legacy ?profile=) — restore view after auth
+  var _startView = _initialView || (_profileParam ? 'profile' : null);
+  var _startUser = _initialUser || _profileParam || null;
+  _profileParam = null; _initialView = null; _initialUser = null;
+  if (_startView) {
     var profNav = document.getElementById('profileNavLink');
     if (profNav) profNav.style.display = '';
-    // Small delay so the UI finishes rendering
-    setTimeout(function() { profLoadPublic(pUser); }, 300);
+    setTimeout(function() {
+      if (_startView === 'profile' && _startUser) {
+        profLoadPublic(_startUser, { noPush: true }); // URL already set by IIFE
+      } else {
+        switchView(_startView, null, { noPush: true });
+      }
+    }, 300);
   }
 
   } catch(e) {}
@@ -2144,14 +2149,18 @@ if (autoScanAfterAuth && autoScanUsername) {
 }
 
 // Shared/read-only mode: detect ?share=username param
-// Also detect ?profile=username for public profile links
+// Also detect ?profile=username (legacy) and ?view=X[&user=Y] (new) for deep-links
 var sharedMode = false;
 var sharedUsername = '';
 var _profileParam = null;
+var _initialView  = null;  // restored from ?view= on load
+var _initialUser  = null;  // restored from ?user= on load (public profile)
 (function() {
   var params = new URLSearchParams(window.location.search);
-  var share = params.get('share');
-  var profile = params.get('profile');
+  var share   = params.get('share');
+  var profile = params.get('profile');   // legacy
+  var view    = params.get('view');
+  var user    = params.get('user');
   if (share) {
     sharedMode = true;
     sharedUsername = share;
@@ -2162,11 +2171,37 @@ var _profileParam = null;
   }
   if (profile) {
     _profileParam = profile;
-    // Clean URL
+    // Upgrade legacy ?profile= to new scheme immediately
     params.delete('profile');
-    window.history.replaceState({}, '', params.toString() ? '?' + params.toString() : window.location.pathname);
+    params.set('view', 'profile');
+    params.set('user', profile);
+    window.history.replaceState({ view: 'profile', profileUser: profile }, '', '?' + params.toString());
+  } else if (view && view !== 'wantlist') {
+    _initialView = view;
+    _initialUser = user || null;
+    // Replace state so popstate baseline is clean
+    window.history.replaceState({ view: view, profileUser: _initialUser }, '', window.location.search);
   }
 })();
+
+// ─── SPA URL routing ──────────────────────────────────────────────────────────
+function buildViewUrl(view, profileUser) {
+  if (!view || view === 'wantlist') return window.location.pathname;
+  var q = '?view=' + encodeURIComponent(view);
+  if (view === 'profile' && profileUser) q += '&user=' + encodeURIComponent(profileUser);
+  return q;
+}
+
+window.addEventListener('popstate', function(e) {
+  var state = e.state || {};
+  var v = state.view || 'wantlist';
+  if (v === 'profile' && state.profileUser) {
+    // Public profile — skip pushing state again
+    profLoadPublic(state.profileUser, { noPush: true });
+  } else {
+    switchView(v, null, { noPush: true });
+  }
+});
 
 if (sharedMode) {
   // Read-only shared view — hide all auth/scan controls
@@ -2968,7 +3003,8 @@ function statBlock(value, label) {
 // VIEW SWITCHING — Wantlist / Dashboard / Collection
 // ═══════════════════════════════════════════════════════════════
 
-function switchView(view, linkEl) {
+function switchView(view, linkEl, opts) {
+  opts = opts || {};
   // Update active desktop nav link
   document.querySelectorAll('.nav-link').forEach(function(a) { a.classList.remove('active'); });
   if (linkEl) {
@@ -2991,10 +3027,23 @@ function switchView(view, linkEl) {
   document.getElementById('headerControls').style.display  = isWantlist ? '' : 'none';
   document.querySelector('.app-layout').style.display      = isWantlist ? '' : 'none';
 
-  if (view === 'dashboard')  renderDashboard();
-  if (view === 'collection') loadCollection(false);
-  if (view === 'discover')   loadDiscover();
-  if (view === 'profile')    loadProfile();
+  // Push URL state (unless caller is restoring from popstate)
+  if (!opts.noPush) {
+    // For profile view: include user= param only if viewing someone else
+    var loggedIn = getCurrentUsername() || '';
+    var profileForUrl = (view === 'profile' && _profileUsername && _profileUsername !== loggedIn)
+      ? _profileUsername : null;
+    var url = buildViewUrl(view, profileForUrl);
+    history.pushState({ view: view, profileUser: profileForUrl }, '', url);
+  }
+
+  // Load content (unless caller handles its own loading, e.g. profLoadPublic)
+  if (!opts.noLoad) {
+    if (view === 'dashboard')  renderDashboard();
+    if (view === 'collection') loadCollection(false);
+    if (view === 'discover')   loadDiscover();
+    if (view === 'profile')    loadProfile();
+  }
 }
 
 function renderDashboard() {
@@ -4214,6 +4263,23 @@ function renderProfile(p) {
   // ── isOwnProfile (can navigate to discover) ──
   var isOwn = p.username === getCurrentUsername();
 
+  // ── Taste match (shown on public profiles when logged in) ──
+  var tasteMatchHtml = '';
+  if (!isOwn && getCurrentUsername()) {
+    // Look up from diggers cache (loaded with forUser=currentUser)
+    var matchVal = null;
+    if (_diggersCache && _diggersCacheUser === getCurrentUsername()) {
+      var dEntry = _diggersCache.filter(function(d) { return d.username === p.username; })[0];
+      if (dEntry && typeof dEntry.tasteMatch === 'number') matchVal = dEntry.tasteMatch;
+    }
+    if (matchVal !== null) {
+      var mCls = matchVal >= 70 ? 'match-high' : matchVal >= 40 ? 'match-mid' : 'match-low';
+      tasteMatchHtml = '<div class="prof-hero-match ' + mCls + '">' +
+        '<span class="prof-match-num">' + matchVal + '%</span> taste match with you' +
+      '</div>';
+    }
+  }
+
   // ── Taste DNA: genres (clickable if own profile) ──
   var maxGenreCount = p.topGenres.length > 0 ? p.topGenres[0].count : 1;
   var genreHtml = p.topGenres.map(function(g) {
@@ -4301,7 +4367,10 @@ function renderProfile(p) {
     '<div class="prof-hero">' +
       '<div class="prof-ring">' + ringHtml + '</div>' +
       '<div class="prof-hero-info">' +
-        '<div class="prof-username">' + escapeHtml(p.username) + '</div>' +
+        '<div class="prof-username-row">' +
+          '<div class="prof-username">' + escapeHtml(p.username) + '</div>' +
+          tasteMatchHtml +
+        '</div>' +
         '<div class="prof-meta-row">' +
           '<span class="prof-meta-item">🎵 Digger since ' + memberYear + '</span>' +
           '<span class="prof-meta-item">⏱ Last scan ' + lastScanLabel + '</span>' +
@@ -4358,14 +4427,22 @@ function renderProfile(p) {
   _loadDiggers(p.username);
 }
 
-var _diggersCache = null;
+var _diggersCache     = null;
+var _diggersCacheUser = null; // which user's taste-match is baked in
 
 function _loadDiggers(currentUser) {
-  if (_diggersCache) { _renderDiggers(_diggersCache, currentUser); return; }
-  fetch('api/diggers')
+  // Use cache only if the forUser matches (taste-match is per-user)
+  if (_diggersCache && _diggersCacheUser === (currentUser || null)) {
+    _renderDiggers(_diggersCache, currentUser);
+    return;
+  }
+  var url = 'api/diggers';
+  if (currentUser) url += '?forUser=' + encodeURIComponent(currentUser);
+  fetch(url)
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      _diggersCache = data;
+      _diggersCache     = data;
+      _diggersCacheUser = currentUser || null;
       _renderDiggers(data, currentUser);
     })
     .catch(function() {
@@ -4385,6 +4462,12 @@ function _renderDiggers(diggers, currentUser) {
     var genreHtml = d.topGenres.slice(0,3).map(function(g) {
       return '<span class="prof-digger-genre">' + escapeHtml(g) + '</span>';
     }).join('');
+    // Taste match badge (shown when computed)
+    var matchHtml = '';
+    if (typeof d.tasteMatch === 'number') {
+      var matchCls = d.tasteMatch >= 70 ? 'match-high' : d.tasteMatch >= 40 ? 'match-mid' : 'match-low';
+      matchHtml = '<div class="prof-taste-badge ' + matchCls + '">' + d.tasteMatch + '<span class="prof-taste-pct-sym">%</span><span class="prof-taste-label">match</span></div>';
+    }
     return '<div class="prof-digger-card" onclick="profLoadPublic(\'' + escapeAttr(d.username) + '\')">' +
       '<div class="prof-digger-avatar">' + escapeHtml(d.username.charAt(0).toUpperCase()) + '</div>' +
       '<div class="prof-digger-info">' +
@@ -4398,6 +4481,7 @@ function _renderDiggers(diggers, currentUser) {
         '</div>' +
         (genreHtml ? '<div class="prof-digger-genres">' + genreHtml + '</div>' : '') +
       '</div>' +
+      matchHtml +
       '<div class="prof-digger-pct">' + pct.toFixed(1) + '%</div>' +
     '</div>';
   }).join('');
@@ -4419,7 +4503,7 @@ function profGoToStore(store) {
 }
 
 function profShareProfile(username) {
-  var url = window.location.origin + window.location.pathname + '?profile=' + encodeURIComponent(username);
+  var url = window.location.origin + window.location.pathname + '?view=profile&user=' + encodeURIComponent(username);
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(url).then(function() {
       var btn = document.querySelector('.prof-share-btn');
@@ -4430,12 +4514,20 @@ function profShareProfile(username) {
   }
 }
 
-function profLoadPublic(username) {
+function profLoadPublic(username, opts) {
+  opts = opts || {};
   // Load another user's profile (read-only view)
   _profileCache    = null;
   _profileUsername = username;
-  switchView('profile', document.querySelector('.nav-link[data-view="profile"]'));
-  // Override: fetch their data even if not logged in
+  // Push URL first (unless restoring from popstate)
+  if (!opts.noPush) {
+    var loggedIn = getCurrentUsername() || '';
+    var isOwn = (username === loggedIn);
+    var url = buildViewUrl('profile', isOwn ? null : username);
+    history.pushState({ view: 'profile', profileUser: isOwn ? null : username }, '', url);
+  }
+  // Switch to profile view (no push, no auto-load — we load below)
+  switchView('profile', document.querySelector('.nav-link[data-view="profile"]'), { noPush: true, noLoad: true });
   document.getElementById('profileBody').innerHTML =
     '<div class="disc-loading" style="display:flex"><div class="disc-spinner"></div>Loading profile…</div>';
   fetch('api/profile/' + encodeURIComponent(username))

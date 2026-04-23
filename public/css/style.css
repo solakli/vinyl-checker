@@ -5468,6 +5468,7 @@ body.light .disc-fy-statline { color: #aaa; }
   min-width: 0;
 }
 
+.prof-username-row { margin-bottom: 8px; }
 .prof-username {
   font-family: 'Oswald', sans-serif;
   font-size: 32px;
@@ -5475,7 +5476,6 @@ body.light .disc-fy-statline { color: #aaa; }
   color: #eee;
   letter-spacing: 1px;
   text-transform: uppercase;
-  margin-bottom: 8px;
 }
 
 .prof-meta-row {
@@ -5938,3 +5938,49 @@ body.light .prof-digger-card:hover { border-color: #C9A227; background: #fffdf0;
 body.light .prof-digger-avatar   { background: #f0f0f0; border-color: #e0e0e0; }
 body.light .prof-digger-name     { color: #333; }
 body.light .prof-digger-genre    { background: #f0f0f0; border-color: #e5e5e5; color: #aaa; }
+
+/* ── Taste match badges ─────────────────────────────────────────────────── */
+.prof-taste-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  padding: 4px 8px;
+  min-width: 52px;
+  flex-shrink: 0;
+  font-family: 'Oswald', sans-serif;
+  line-height: 1;
+  border: 1px solid transparent;
+}
+.prof-taste-badge .prof-taste-pct-sym { font-size: 11px; margin-left: 1px; }
+.prof-taste-badge .prof-taste-label   { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; opacity: 0.75; }
+.prof-taste-badge > :first-child      { font-size: 15px; font-weight: 700; }
+
+.prof-taste-badge.match-high { background: rgba(201,162,39,0.15); border-color: rgba(201,162,39,0.4); color: #C9A227; }
+.prof-taste-badge.match-mid  { background: rgba(72,169,113,0.12); border-color: rgba(72,169,113,0.35); color: #48a971; }
+.prof-taste-badge.match-low  { background: rgba(100,100,100,0.12); border-color: rgba(100,100,100,0.25); color: #666; }
+
+/* Badge on public profile hero */
+.prof-username-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.prof-hero-match {
+  font-family: 'Oswald', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  margin-bottom: 6px;
+}
+.prof-hero-match .prof-match-num { font-size: 16px; font-weight: 700; margin-right: 2px; }
+.prof-hero-match.match-high { background: rgba(201,162,39,0.15); border-color: rgba(201,162,39,0.4); color: #C9A227; }
+.prof-hero-match.match-mid  { background: rgba(72,169,113,0.12); border-color: rgba(72,169,113,0.35); color: #48a971; }
+.prof-hero-match.match-low  { background: rgba(100,100,100,0.12); border-color: rgba(100,100,100,0.25); color: #888; }
+
+body.light .prof-hero-match.match-low { color: #666; }

@@ -1118,22 +1118,61 @@ app.get('/api/scan-status/:username', function (req, res) {
     res.json(scanner.getScanStatus(username));
 });
 
+// ─── Taste-match helper ────────────────────────────────────────────────────
+function computeTasteMatch(items1, items2) {
+    // Build genre + style Sets for each user
+    var g1 = new Set(), s1 = new Set(), a1 = new Set();
+    var g2 = new Set(), s2 = new Set(), a2 = new Set();
+    items1.forEach(function(w) {
+        (w.genres||'').split('|').forEach(function(x){ x=x.trim(); if(x) g1.add(x); });
+        (w.styles||'').split('|').forEach(function(x){ x=x.trim(); if(x) s1.add(x); });
+        var a = (w.artist||'').trim();
+        if (a && a !== 'Various' && a !== 'Various Artists') a1.add(a);
+    });
+    items2.forEach(function(w) {
+        (w.genres||'').split('|').forEach(function(x){ x=x.trim(); if(x) g2.add(x); });
+        (w.styles||'').split('|').forEach(function(x){ x=x.trim(); if(x) s2.add(x); });
+        var a = (w.artist||'').trim();
+        if (a && a !== 'Various' && a !== 'Various Artists') a2.add(a);
+    });
+    function jaccard(A, B) {
+        if (A.size === 0 && B.size === 0) return 0;
+        var inter = 0;
+        A.forEach(function(x) { if (B.has(x)) inter++; });
+        var union = A.size + B.size - inter;
+        return union === 0 ? 0 : inter / union;
+    }
+    // Weighted: genres 40%, styles 45%, artists 15%
+    var score = jaccard(g1, g2) * 0.40 + jaccard(s1, s2) * 0.45 + jaccard(a1, a2) * 0.15;
+    return Math.round(score * 100);
+}
+
 // ─── Community / all diggers ───────────────────────────────────────────────
 app.get('/api/diggers', function (req, res) {
     try {
         var d = db.getDb();
+        var forUser = (req.query.forUser || '').trim();
+        // Pre-load forUser's items for taste-match (if requested)
+        var forUserItems = null;
+        if (forUser) {
+            var fu = d.prepare('SELECT id FROM users WHERE username=?').get(forUser);
+            if (fu) {
+                forUserItems = d.prepare('SELECT genres, styles, artist FROM wantlist WHERE user_id=? AND active=1').all(fu.id);
+            }
+        }
         var users = d.prepare('SELECT id, username, last_full_scan FROM users ORDER BY username').all();
         var result = users.map(function(u) {
             var wantlist  = d.prepare('SELECT COUNT(*) as c FROM wantlist WHERE user_id=? AND active=1').get(u.id).c;
             var inStock   = d.prepare('SELECT COUNT(DISTINCT w.id) as c FROM wantlist w JOIN store_results sr ON sr.wantlist_id=w.id WHERE w.user_id=? AND w.active=1 AND sr.in_stock=1').get(u.id).c;
             var scanCount = d.prepare('SELECT COUNT(*) as c FROM scan_runs WHERE user_id=? AND finished_at IS NOT NULL AND error IS NULL').get(u.id).c;
             // Top 3 genres from wantlist
+            var items = d.prepare('SELECT genres, styles, artist FROM wantlist WHERE user_id=? AND active=1').all(u.id);
             var genres = {};
-            d.prepare('SELECT genres FROM wantlist WHERE user_id=? AND active=1').all(u.id).forEach(function(w) {
+            items.forEach(function(w) {
                 (w.genres||'').split('|').forEach(function(g){ g=g.trim(); if(g) genres[g]=(genres[g]||0)+1; });
             });
             var topGenres = Object.keys(genres).sort(function(a,b){return genres[b]-genres[a];}).slice(0,3);
-            return {
+            var row = {
                 username:  u.username,
                 wantlist:  wantlist,
                 inStock:   inStock,
@@ -1142,6 +1181,11 @@ app.get('/api/diggers', function (req, res) {
                 lastScan:  u.last_full_scan,
                 topGenres: topGenres
             };
+            // Taste match vs forUser
+            if (forUserItems && u.username !== forUser) {
+                row.tasteMatch = computeTasteMatch(forUserItems, items);
+            }
+            return row;
         });
         res.json(result);
     } catch(e) {
