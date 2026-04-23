@@ -1848,11 +1848,16 @@ body.light .changes-details { border-top-color: rgba(0,0,0,0.06); }
   .controls.filters-open .store-filter { display: flex !important; }
   .controls.filters-open .filter-btn:not(.filter-toggle-mobile) { display: flex !important; }
 
+  .modal-overlay { padding: 12px 12px 40px; }
   .modal-hero { flex-direction: column; align-items: center; text-align: center; }
-  .modal-art-wrap { width: 160px; }
-  .modal-album-art { width: 160px; height: 160px; }
-  .price-chart-wrap { width: 160px; }
+  .modal-art-wrap { width: 150px; }
+  .modal-album-art { width: 150px; height: 150px; }
+  .price-chart-wrap { width: 150px; }
   .modal-meta { justify-content: center; }
+
+  /* Prevent content from going behind fixed mobile tab bar */
+  .header { position: sticky; top: 56px; }
+  .welcome { padding-bottom: 80px; }
 }
 
 @media (min-width: 1400px) {
@@ -3287,9 +3292,39 @@ body.light .coming-soon-sub { color: #aaa !important; }
 }
 
 @media (max-width: 768px) {
+  /* ── Navbar ── */
   .navbar-nav { display: none; }
-  .app-layout { padding: 0 12px 32px; }
-  .grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+  .navbar { padding: 0 14px; }
+  .navbar-logo { margin-right: 0; flex: 1; font-size: 15px; }
+  .navbar-right { gap: 10px; }
+  .stats { display: none; }
+  .timestamp { display: none; }
+  .navbar-cart { display: none; }
+
+  /* Auth section: keep only username + rescan on mobile */
+  .user-bar-sep,
+  .auth-btn.youtube-auth,
+  .auth-btn.playlist-btn,
+  .share-btn,
+  #disconnectBtn { display: none !important; }
+  .user-bar { gap: 8px; }
+  .user-bar-name { font-size: 11px; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Compact rescan button inside navbar user-bar on mobile */
+  #userBarRescan { padding: 6px 12px; font-size: 10px; letter-spacing: 1px; }
+
+  /* ── Wantlist layout ── */
+  .app-layout { padding: 0 10px 80px; }
+  .grid { grid-template-columns: 1fr; gap: 10px; }
+
+  /* ── Wantlist store row + genre pills on mobile: scrollable single line ── */
+  .wl-store-row { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; scrollbar-width: none; }
+  .wl-store-row::-webkit-scrollbar { display: none; }
+  .wl-genre-row { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+  .wl-genre-row::-webkit-scrollbar { display: none; }
+  .wl-filter-pills { padding: 6px 0 0; }
+
+  /* ── Mobile tab bar visible ── */
+  .mobile-tabs { display: flex; }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -4091,3 +4126,151 @@ body.light .coll-art-placeholder { color: #ddd; }
 body.light .coll-card-title { color: #333; }
 body.light .coll-label      { color: #999; }
 body.light .coll-stats-bar  { color: #bbb; }
+
+/* ═══════════════════════════════════════════════════════════════
+   WANTLIST GENRE / STYLE PILL FILTERS
+   (same visual language as My Collection genre pills)
+   ═══════════════════════════════════════════════════════════════ */
+
+.wl-filter-pills {
+  padding: 12px 0 0;
+}
+
+/* Store badges row — lives above genre pills, always visible after scan */
+.wl-store-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #1e1e1e;
+}
+body.light .wl-store-row { border-bottom-color: #e8e8e8; }
+
+/* Genre row — identical to .coll-genre-row */
+.wl-genre-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+/* Style row — same layout, extra bottom margin before the card grid */
+.wl-style-row { margin-bottom: 20px; }
+
+/* Pill base — identical to .coll-genre-pill */
+.wl-genre-pill {
+  background: transparent;
+  border: 1px solid #2e2e2e;
+  border-radius: 20px;
+  color: #666;
+  font-family: 'Oswald', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.wl-genre-pill:hover { border-color: #C9A227; color: #C9A227; }
+.wl-genre-pill.active { border-color: #C9A227; background: #C9A227; color: #111; }
+
+/* Style pills: same size as genre pills, subtler active state so genres stay primary */
+.wl-style-pill.active { background: rgba(201,162,39,0.15); color: #C9A227; border-color: #C9A227; }
+
+.wl-pill-count { opacity: 0.65; font-size: 10px; margin-left: 1px; }
+/* In-stock count — green accent */
+.wl-pill-avail { font-size: 9px; color: #4ade80; opacity: 0.9; }
+
+/* Active pill: soften counts so gold fill reads cleanly */
+.wl-genre-pill.active .wl-pill-count { opacity: 0.7; }
+.wl-genre-pill.active .wl-pill-avail { color: rgba(0,0,0,0.6); }
+
+/* Light mode */
+body.light .wl-genre-pill { border-color: #e0e0e0; color: #aaa; }
+body.light .wl-genre-pill:hover { border-color: #C9A227; color: #a07c10; }
+body.light .wl-genre-pill.active { background: #C9A227; color: #111; }
+body.light .wl-style-pill.active { background: rgba(201,162,39,0.12); color: #a07c10; }
+
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE BOTTOM TAB BAR
+   ═══════════════════════════════════════════════════════════════ */
+
+.mobile-tabs {
+  display: none; /* shown only in mobile @media block */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 58px;
+  background: #111;
+  border-top: 1px solid #2a2a2a;
+  z-index: 300;
+  align-items: stretch;
+  /* Safe area padding for notched phones */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.mobile-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: transparent;
+  border: none;
+  color: #555;
+  font-family: 'Oswald', sans-serif;
+  cursor: pointer;
+  transition: color 0.15s;
+  padding: 8px 0 6px;
+  -webkit-tap-highlight-color: transparent;
+}
+.mobile-tab:hover { color: #999; }
+.mobile-tab.active { color: #C9A227; }
+
+.mobile-tab-icon {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.mobile-tab-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+/* Light mode */
+body.light .mobile-tabs { background: #f5f5f5; border-top-color: #ddd; }
+body.light .mobile-tab { color: #bbb; }
+body.light .mobile-tab.active { color: #C9A227; }
+
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE — Dashboard & Collection
+   (must be after base dashboard/collection CSS to override)
+   ═══════════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+  /* ── Dashboard ── */
+  .dash-wrap { padding: 16px 12px 80px; }
+  .dash-stat-row { grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .dash-stat { padding: 16px 12px; }
+  .dash-stat-value { font-size: 28px; }
+  .dash-sections { grid-template-columns: 1fr; gap: 12px; }
+  .dash-opt-summary { flex-direction: column; gap: 12px; align-items: flex-start; padding: 16px; }
+  .dash-opt-stats { flex-wrap: wrap; gap: 12px; }
+  .dash-discover-wrap { margin-top: 16px; padding: 16px 14px 14px; }
+
+  /* ── Collection ── */
+  .coll-wrap { padding: 16px 12px 80px; }
+  .coll-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .coll-header-right { width: 100%; flex-wrap: wrap; }
+  .coll-search { width: 100%; min-width: 0; }
+  .coll-sort { flex: 1; min-width: 0; }
+  .coll-title { font-size: 18px; }
+  .coll-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+}

@@ -425,8 +425,6 @@ function connectSSE(username, force) {
     var inStockCount = resultsData.filter(function(i) { return i.stores && i.stores.some(function(s) { return s.inStock; }); }).length;
     if (inStockCount > 0) {
       document.getElementById('optimizerBanner').style.display = 'flex';
-      var nb = document.getElementById('navbarCartBtn');
-      if (nb) { nb.style.display = 'inline-block'; nb.textContent = 'Dig For Gold (' + inStockCount + ')'; }
     }
     // Check for changes detected by background rescans
     fetchChanges(username);
@@ -560,6 +558,7 @@ async function loadExisting(username) {
   // Reset optimizer + discover state so a new user doesn't see the previous user's results
   if (_optimizerPollTimer) { clearInterval(_optimizerPollTimer); _optimizerPollTimer = null; }
   _lastOptimizerResult = null;
+  _activeOptimizerJobId = null;
   _discoverCache = null;
   var overlay = document.getElementById('optimizerOverlay');
   if (overlay) overlay.style.display = 'none';
@@ -597,8 +596,6 @@ async function loadResultsForUser(username) {
         var inStockCount = resultsData.filter(function(i) { return i.stores && i.stores.some(function(s) { return s.inStock; }); }).length;
         if (inStockCount > 0) {
           document.getElementById('optimizerBanner').style.display = 'flex';
-          var nb = document.getElementById('navbarCartBtn');
-          if (nb) { nb.style.display = 'inline-block'; nb.textContent = 'Dig For Gold (' + inStockCount + ')'; }
         }
         // Check for changes after loading results
         fetchChanges(username);
@@ -759,6 +756,14 @@ function getStoreCount(item) {
   return item.stores.filter(function(s) { return s.inStock; }).length;
 }
 
+// Normalise Discogs genre/style strings to title case so
+// "ELECTRONIC" renders as "Electronic", matching My Collection
+function toTitleCase(str) {
+  return (str || '').replace(/\b\w+/g, function(w) {
+    return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+  });
+}
+
 function updateStats() {
   var total = resultsData.length;
   var inStock = resultsData.filter(function(i) { return i.stores.some(function(s) { return s.inStock && !s.linkOnly; }); }).length;
@@ -822,58 +827,77 @@ function updateStats() {
     });
   });
 
-  var genreSection = document.getElementById('genreSection');
-  var styleSection = document.getElementById('styleSection');
-  var genreTagsEl = document.getElementById('genreTags');
-  var styleTagsEl = document.getElementById('styleTags');
+  var genreRowEl = document.getElementById('wlGenreRow');
+  var styleRowEl = document.getElementById('wlStyleRow');
+  var filterPillsEl = document.getElementById('wlFilterPills');
 
   // Sort genres by count descending
   var genreKeys = Object.keys(genreCounts).sort(function(a, b) { return genreCounts[b] - genreCounts[a]; });
   // Top styles by count, capped
   var styleKeys = Object.keys(styleCounts).sort(function(a, b) { return styleCounts[b] - styleCounts[a]; }).slice(0, MAX_STYLES);
 
-  genreSection.style.display = genreKeys.length > 0 ? 'flex' : 'none';
-  styleSection.style.display = styleKeys.length > 0 ? 'flex' : 'none';
+  // Show/hide the whole pill container
+  if (filterPillsEl) filterPillsEl.style.display = genreKeys.length > 0 ? '' : 'none';
 
-  // Calculate max in-stock for intensity scaling
-  var maxGenreStock = Math.max.apply(null, genreKeys.map(function(g) { return genreInStock[g] || 0; }).concat([1]));
-  var maxStyleStock = Math.max.apply(null, styleKeys.map(function(s) { return styleInStock[s] || 0; }).concat([1]));
+  // ── Genre row ─────────────────────────────────────────────────
+  if (genreRowEl) {
+    var allGenresActive = activeGenres.size === 0;
+    genreRowEl.innerHTML =
+      '<button class="wl-genre-pill' + (allGenresActive ? ' active' : '') + '" data-clear="genres">All</button>' +
+      genreKeys.map(function(g) {
+        var isActive = activeGenres.has(g);
+        var stock = genreInStock[g] || 0;
+        return '<button class="wl-genre-pill' + (isActive ? ' active' : '') + '" data-tag="' + escapeHtml(g) + '">' +
+          escapeHtml(toTitleCase(g)) +
+          ' <span class="wl-pill-count">' + genreCounts[g] + '</span>' +
+          (stock > 0 ? '<span class="wl-pill-avail"> · ' + stock + '</span>' : '') +
+          '</button>';
+      }).join('');
 
-  genreTagsEl.innerHTML = genreKeys.map(function(g) {
-    var active = activeGenres.has(g) ? ' active' : '';
-    var stock = genreInStock[g] || 0;
-    var intensity = Math.round((stock / maxGenreStock) * 100);
-    return '<div class="tag-badge' + active + '" data-tag="' + escapeHtml(g) + '" data-intensity="' + intensity + '" style="--tag-intensity:' + intensity + '%">' +
-      escapeHtml(g) + ' <span class="tag-count">' + genreCounts[g] + '</span>' +
-      (stock > 0 ? '<span class="tag-stock">' + stock + ' avail</span>' : '') + '</div>';
-  }).join('');
-
-  styleTagsEl.innerHTML = styleKeys.map(function(s) {
-    var active = activeStyles.has(s) ? ' active' : '';
-    var stock = styleInStock[s] || 0;
-    var intensity = Math.round((stock / maxStyleStock) * 100);
-    return '<div class="tag-badge' + active + '" data-tag="' + escapeHtml(s) + '" data-intensity="' + intensity + '" style="--tag-intensity:' + intensity + '%">' +
-      escapeHtml(s) + ' <span class="tag-count">' + styleCounts[s] + '</span>' +
-      (stock > 0 ? '<span class="tag-stock">' + stock + ' avail</span>' : '') + '</div>';
-  }).join('');
-
-  // Attach click handlers — update both tags + grid on click
-  genreTagsEl.querySelectorAll('.tag-badge').forEach(function(el) {
-    el.addEventListener('click', function() {
-      var tag = el.dataset.tag;
-      if (activeGenres.has(tag)) { activeGenres.delete(tag); } else { activeGenres.add(tag); }
-      updateStats();
-      render();
+    genreRowEl.querySelectorAll('.wl-genre-pill').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        if (btn.dataset.clear) {
+          activeGenres = new Set();
+        } else {
+          var tag = btn.dataset.tag;
+          if (activeGenres.has(tag)) { activeGenres.delete(tag); } else { activeGenres.add(tag); }
+        }
+        updateStats();
+        render();
+      });
     });
-  });
-  styleTagsEl.querySelectorAll('.tag-badge').forEach(function(el) {
-    el.addEventListener('click', function() {
-      var tag = el.dataset.tag;
-      if (activeStyles.has(tag)) { activeStyles.delete(tag); } else { activeStyles.add(tag); }
-      updateStats();
-      render();
+  }
+
+  // ── Style row ─────────────────────────────────────────────────
+  if (styleRowEl) {
+    styleRowEl.style.display = styleKeys.length > 0 ? '' : 'none';
+    var allStylesActive = activeStyles.size === 0;
+    styleRowEl.innerHTML = styleKeys.length > 0
+      ? '<button class="wl-genre-pill wl-style-pill' + (allStylesActive ? ' active' : '') + '" data-clear="styles">All</button>' +
+        styleKeys.map(function(s) {
+          var isActive = activeStyles.has(s);
+          var stock = styleInStock[s] || 0;
+          return '<button class="wl-genre-pill wl-style-pill' + (isActive ? ' active' : '') + '" data-tag="' + escapeHtml(s) + '">' +
+            escapeHtml(toTitleCase(s)) +
+            ' <span class="wl-pill-count">' + styleCounts[s] + '</span>' +
+            (stock > 0 ? '<span class="wl-pill-avail"> · ' + stock + '</span>' : '') +
+            '</button>';
+        }).join('')
+      : '';
+
+    styleRowEl.querySelectorAll('.wl-genre-pill').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        if (btn.dataset.clear) {
+          activeStyles = new Set();
+        } else {
+          var tag = btn.dataset.tag;
+          if (activeStyles.has(tag)) { activeStyles.delete(tag); } else { activeStyles.add(tag); }
+        }
+        updateStats();
+        render();
+      });
     });
-  });
+  }
 }
 
 function getActiveStores() {
@@ -1965,9 +1989,9 @@ async function disconnectDiscogs() {
   // Clear changes banner
   var changesBanner = document.getElementById('changesBanner');
   if (changesBanner) changesBanner.remove();
-  // Clear genre/style filters
-  document.getElementById('genreSection').style.display = 'none';
-  document.getElementById('styleSection').style.display = 'none';
+  // Clear genre/style pill filters
+  var wlPills = document.getElementById('wlFilterPills');
+  if (wlPills) wlPills.style.display = 'none';
   resultsData = [];
   activeGenres = new Set();
   activeStyles = new Set();
@@ -2268,7 +2292,7 @@ function openOptimizer() {
   document.getElementById('optimizerOverlay').style.display = 'flex';
   var username = getCurrentUsername();
 
-  // 1. In-memory cache (same session)
+  // 1. In-memory cache (same session) — show results immediately
   if (_lastOptimizerResult) {
     document.getElementById('optimizerPrefs').style.display = 'none';
     document.getElementById('optimizerProgress').style.display = 'none';
@@ -2277,7 +2301,36 @@ function openOptimizer() {
     return;
   }
 
-  // 2. Show a brief "Loading…" state while we check the server cache
+  // 2. A job is actively running — re-attach to its progress view
+  if (_activeOptimizerJobId) {
+    document.getElementById('optimizerPrefs').style.display = 'none';
+    document.getElementById('optimizerProgress').style.display = 'block';
+    document.getElementById('optimizerResults').style.display = 'none';
+    // Fetch current state and re-attach poll so user sees live progress
+    fetch('api/optimize/job/' + _activeOptimizerJobId)
+      .then(function(r) { return r.json(); })
+      .then(function(job) {
+        if (job.status === 'done') {
+          // Completed while modal was closed — show result
+          _lastOptimizerResult = job.result;
+          _activeOptimizerJobId = null;
+          document.getElementById('optimizerProgress').style.display = 'none';
+          document.getElementById('optimizerResults').style.display = 'block';
+          showOptimizerResults(job.result);
+        } else if (job.status === 'failed') {
+          _activeOptimizerJobId = null;
+          _showOptimizerPrefsPanel(username);
+        } else {
+          // Still pending/processing — re-attach poll
+          _updateOptimizerProgress(job);
+          pollOptimizerJob(_activeOptimizerJobId);
+        }
+      })
+      .catch(function() { _showOptimizerPrefsPanel(username); });
+    return;
+  }
+
+  // 3. Show a brief "Loading…" state while we check the server cache
   document.getElementById('optimizerPrefs').style.display = 'none';
   document.getElementById('optimizerProgress').style.display = 'block';
   document.getElementById('optimizerResults').style.display = 'none';
@@ -2375,6 +2428,8 @@ var _optimizerPollTimer = null;
 var _optimizerFlavorTimer = null;
 var _optimizerFlavorPhase = 'pending';
 var _optimizerFlavorIdx = 0;
+// Track the active job so re-opening the modal re-attaches to running progress
+var _activeOptimizerJobId = null;
 
 var _optimizerFlavor = {
   pending: [
@@ -2484,9 +2539,11 @@ function runOptimizer() {
   .then(function(r) { return r.json(); })
   .then(function(data) {
     if (data.error) throw new Error(data.error);
+    _activeOptimizerJobId = data.jobId;
     pollOptimizerJob(data.jobId);
   })
   .catch(function(e) {
+    _activeOptimizerJobId = null;
     document.getElementById('optimizeRunBtn').disabled = false;
     document.getElementById('optProgressText').textContent = '⚠ ' + e.message;
   });
@@ -2504,6 +2561,7 @@ function pollOptimizerJob(jobId) {
       if (job.status === 'done') {
         clearInterval(_optimizerPollTimer);
         _optimizerPollTimer = null;
+        _activeOptimizerJobId = null;
         _stopOptimizerFlavor('Your cart is ready ⛏');
         document.getElementById('optimizeRunBtn').disabled = false;
         document.getElementById('optProgressFill').style.width = '100%';
@@ -2513,6 +2571,7 @@ function pollOptimizerJob(jobId) {
       } else if (job.status === 'failed') {
         clearInterval(_optimizerPollTimer);
         _optimizerPollTimer = null;
+        _activeOptimizerJobId = null;
         _stopOptimizerFlavor('Something went wrong');
         document.getElementById('optimizeRunBtn').disabled = false;
         document.getElementById('optProgressText').textContent = '⚠ ' + (job.error || 'Optimization failed');
@@ -2801,9 +2860,18 @@ function statBlock(value, label) {
 // ═══════════════════════════════════════════════════════════════
 
 function switchView(view, linkEl) {
-  // Update active nav link
+  // Update active desktop nav link
   document.querySelectorAll('.nav-link').forEach(function(a) { a.classList.remove('active'); });
-  if (linkEl) linkEl.classList.add('active');
+  if (linkEl) {
+    linkEl.classList.add('active');
+  } else {
+    var matched = document.querySelector('.nav-link[data-view="' + view + '"]');
+    if (matched) matched.classList.add('active');
+  }
+  // Sync mobile bottom tab bar
+  document.querySelectorAll('.mobile-tab').forEach(function(t) { t.classList.remove('active'); });
+  var mTab = document.querySelector('.mobile-tab[data-view="' + view + '"]');
+  if (mTab) mTab.classList.add('active');
 
   // Show/hide views
   var isWantlist = view === 'wantlist';

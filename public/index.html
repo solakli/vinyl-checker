@@ -58,9 +58,24 @@
       <span class="auth-status" id="authStatus"></span>
     </div>
     <button class="navbar-gear" id="themeToggle" title="Toggle theme">⚙</button>
-    <button class="navbar-cart" id="navbarCartBtn" style="display:none" onclick="openOptimizer()">⛏ Dig For Gold</button>
   </div>
 </nav>
+
+<!-- ═══ MOBILE BOTTOM TAB BAR ═══ -->
+<div class="mobile-tabs" id="mobileTabs">
+  <button class="mobile-tab active" data-view="wantlist" onclick="switchView('wantlist',null)">
+    <span class="mobile-tab-icon">◈</span>
+    <span class="mobile-tab-label">Wantlist</span>
+  </button>
+  <button class="mobile-tab" data-view="dashboard" onclick="switchView('dashboard',null)">
+    <span class="mobile-tab-icon">≋</span>
+    <span class="mobile-tab-label">Dashboard</span>
+  </button>
+  <button class="mobile-tab" data-view="collection" onclick="switchView('collection',null)">
+    <span class="mobile-tab-icon">▦</span>
+    <span class="mobile-tab-label">Collection</span>
+  </button>
+</div>
 
 <!-- ═══ SCAN + FILTER HEADER ═══ -->
 <div class="header" id="headerControls">
@@ -93,28 +108,6 @@
       <option value="stores">Most Stores</option>
       <option value="discogs-low">Discogs Price Low</option>
     </select>
-    <div class="tag-filter-section" id="genreSection" style="display:none">
-      <div class="tag-filter-label">Genres</div>
-      <div class="tag-filter-tags" id="genreTags"></div>
-    </div>
-    <div class="tag-filter-section" id="styleSection" style="display:none">
-      <div class="tag-filter-label">Top Styles</div>
-      <div class="tag-filter-tags" id="styleTags"></div>
-    </div>
-    <div class="store-filter" id="storeFilter">
-      <div class="store-badge hhv active" data-store="HHV"><img class="store-logo" src="img/hhv.png" alt="">HHV <span class="count"></span></div>
-      <div class="store-badge deejay active" data-store="Deejay.de"><img class="store-logo" src="img/deejay.png" alt="">Deejay <span class="count"></span></div>
-      <div class="store-badge hardwax active" data-store="Hardwax"><img class="store-logo" src="img/hardwax.png" alt="">Hardwax <span class="count"></span></div>
-      <div class="store-badge juno active" data-store="Juno"><img class="store-logo" src="img/juno.png" alt="">Juno <span class="count"></span></div>
-      <div class="store-badge ttlab active" data-store="Turntable Lab"><img class="store-logo" src="img/ttlab.png" alt="">TT Lab <span class="count"></span></div>
-      <div class="store-badge uvs active" data-store="Underground Vinyl"><img class="store-logo" src="img/uvs.png" alt="">UVS <span class="count"></span></div>
-      <div class="store-badge decks active" data-store="Decks.de"><img class="store-logo" src="img/decks.png" alt="">Decks <span class="count"></span></div>
-      <div class="store-badge phonica active" data-store="Phonica"><img class="store-logo" src="img/phonica.png" alt="">Phonica <span class="count"></span></div>
-      <div class="store-badge yoyaku active" data-store="Yoyaku"><img class="store-logo" src="img/yoyaku.png" alt="">Yoyaku <span class="count"></span></div>
-      <div class="store-badge gramaphone active" data-store="Gramaphone"><img class="store-logo" src="img/gramaphone.png" alt="">Gramaphone <span class="count"></span></div>
-      <div class="store-badge further active" data-store="Further Records"><img class="store-logo" src="img/further.png" alt="">Further <span class="count"></span></div>
-      <div class="store-badge octopus active" data-store="Octopus Records NYC"><img class="store-logo" src="img/octopus.png" alt="">Octopus <span class="count"></span></div>
-    </div>
     <label class="filter-btn" id="inStockOnly">
       <input type="checkbox" style="display:none"> In Stock Only
     </label>
@@ -171,6 +164,26 @@
   <!-- Left: grid -->
   <div class="app-main">
     <div class="container">
+    <!-- Store badges + Genre/Style pill filters — always visible after scan -->
+    <div class="wl-filter-pills" id="wlFilterPills" style="display:none">
+      <div class="wl-store-row" id="storeFilter">
+        <div class="store-badge hhv active" data-store="HHV"><img class="store-logo" src="img/hhv.png" alt="">HHV <span class="count"></span></div>
+        <div class="store-badge deejay active" data-store="Deejay.de"><img class="store-logo" src="img/deejay.png" alt="">Deejay <span class="count"></span></div>
+        <div class="store-badge hardwax active" data-store="Hardwax"><img class="store-logo" src="img/hardwax.png" alt="">Hardwax <span class="count"></span></div>
+        <div class="store-badge juno active" data-store="Juno"><img class="store-logo" src="img/juno.png" alt="">Juno <span class="count"></span></div>
+        <div class="store-badge ttlab active" data-store="Turntable Lab"><img class="store-logo" src="img/ttlab.png" alt="">TT Lab <span class="count"></span></div>
+        <div class="store-badge uvs active" data-store="Underground Vinyl"><img class="store-logo" src="img/uvs.png" alt="">UVS <span class="count"></span></div>
+        <div class="store-badge decks active" data-store="Decks.de"><img class="store-logo" src="img/decks.png" alt="">Decks <span class="count"></span></div>
+        <div class="store-badge phonica active" data-store="Phonica"><img class="store-logo" src="img/phonica.png" alt="">Phonica <span class="count"></span></div>
+        <div class="store-badge yoyaku active" data-store="Yoyaku"><img class="store-logo" src="img/yoyaku.png" alt="">Yoyaku <span class="count"></span></div>
+        <div class="store-badge gramaphone active" data-store="Gramaphone"><img class="store-logo" src="img/gramaphone.png" alt="">Gramaphone <span class="count"></span></div>
+        <div class="store-badge further active" data-store="Further Records"><img class="store-logo" src="img/further.png" alt="">Further <span class="count"></span></div>
+        <div class="store-badge octopus active" data-store="Octopus Records NYC"><img class="store-logo" src="img/octopus.png" alt="">Octopus <span class="count"></span></div>
+      </div>
+      <div class="wl-genre-row" id="wlGenreRow"></div>
+      <div class="wl-genre-row wl-style-row" id="wlStyleRow"></div>
+    </div>
+
     <div id="welcome" class="welcome" style="display:none">
       <div class="welcome-hero">
         <h2><span>Gold</span> Digger</h2>

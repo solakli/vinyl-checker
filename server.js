@@ -377,8 +377,9 @@ app.get('/api/test-stores', async function (req, res) {
     var testItem = TEST_ITEMS[testIdx % TEST_ITEMS.length];
     var UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36';
 
+    var browser = null;
     try {
-        var browser = await puppeteerExtra.launch({
+        browser = await puppeteerExtra.launch({
             headless: 'new',
             protocolTimeout: 60000,
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
@@ -398,8 +399,9 @@ app.get('/api/test-stores', async function (req, res) {
         for (var i = 0; i < stores.length; i++) {
             var store = stores[i];
             var startTime = Date.now();
+            var page = null;
             try {
-                var page = await browser.newPage();
+                page = await browser.newPage();
                 page.setDefaultNavigationTimeout(15000);
                 page.setDefaultTimeout(15000);
                 await page.setUserAgent(UA);
@@ -418,9 +420,10 @@ app.get('/api/test-stores', async function (req, res) {
                     responseTime: elapsed + 'ms',
                     searchUrl: result.searchUrl
                 };
-                await page.close();
             } catch (e) {
                 results[store.name] = { status: 'crash', error: e.message, responseTime: (Date.now() - startTime) + 'ms' };
+            } finally {
+                try { if (page) await page.close(); } catch(e) {}
             }
         }
 
@@ -434,8 +437,6 @@ app.get('/api/test-stores', async function (req, res) {
             var link = ls.fn(testItem);
             results[ls.name] = { status: 'link_only', searchUrl: link.searchUrl, usShipping: link.usShipping };
         });
-
-        await browser.close();
 
         var scraped = Object.keys(results).filter(function (k) { return results[k].status !== 'link_only'; });
         var healthy = scraped.filter(function (k) { return results[k].status === 'found' || results[k].status === 'no_match'; });
@@ -456,6 +457,10 @@ app.get('/api/test-stores', async function (req, res) {
         });
     } catch (e) {
         res.json({ error: e.message });
+    } finally {
+        var _bpTest = browser ? browser.process() : null;
+        try { if (browser) await browser.close(); } catch(e) {}
+        if (_bpTest && _bpTest.pid) { try { process.kill(_bpTest.pid, 'SIGKILL'); } catch(e) {} }
     }
 });
 
@@ -467,8 +472,9 @@ app.get('/api/validate', async function (req, res) {
     var scrapers = require('./lib/scrapers');
     var UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36';
 
+    var browser = null;
     try {
-        var browser = await puppeteerExtra.launch({
+        browser = await puppeteerExtra.launch({
             headless: 'new',
             protocolTimeout: 60000,
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
@@ -520,10 +526,8 @@ app.get('/api/validate', async function (req, res) {
                 await new Promise(function (r) { setTimeout(r, 1000); });
             }
             report[store.name].avgResponseTime = Math.round(totalTime / TEST_ITEMS.length) + 'ms';
-            await page.close();
+            try { await page.close(); } catch(e) {}
         }
-
-        await browser.close();
 
         var storeNames = Object.keys(report);
         var healthyCount = storeNames.filter(function (n) { return report[n].healthy; }).length;
@@ -536,6 +540,10 @@ app.get('/api/validate', async function (req, res) {
         });
     } catch (e) {
         res.json({ error: e.message });
+    } finally {
+        var _bpValidate = browser ? browser.process() : null;
+        try { if (browser) await browser.close(); } catch(e) {}
+        if (_bpValidate && _bpValidate.pid) { try { process.kill(_bpValidate.pid, 'SIGKILL'); } catch(e) {} }
     }
 });
 
@@ -1111,8 +1119,31 @@ app.get('/u/:username', function (req, res) {
 });
 
 // Graceful shutdown
-process.on('SIGINT', function () { db.close(); process.exit(0); });
-process.on('SIGTERM', function () { db.close(); process.exit(0); });
+process.on('SIGINT', function () { db.close(); reapChrome(); process.exit(0); });
+process.on('SIGTERM', function () { db.close(); reapChrome(); process.exit(0); });
+
+// Kill any zombie Chrome/Chromium processes left over from a previous crash.
+// Called on startup and on shutdown. Safe to call repeatedly — only kills processes
+// that are children of THIS Node pid (Puppeteer always spawns as children), so we
+// won't accidentally kill system Chrome instances. Falls back to pkill on failure.
+function reapChrome() {
+    try {
+        var { execSync } = require('child_process');
+        // List all chromium/chrome processes that are children of this process
+        var myPid = process.pid;
+        try {
+            // pgrep with --parent finds direct children; -x for exact name match
+            var out = execSync('pgrep -P ' + myPid + ' -f "chrom" 2>/dev/null || true').toString().trim();
+            if (out) {
+                var pids = out.split('\n').filter(Boolean);
+                pids.forEach(function(pid) {
+                    try { process.kill(parseInt(pid), 'SIGKILL'); } catch(e) {}
+                });
+                if (pids.length > 0) console.log('[reaper] Killed ' + pids.length + ' zombie Chrome process(es)');
+            }
+        } catch(e) {}
+    } catch(e) {}
+}
 
 // ═══════════════════════════════════════════════════════════════
 // CHANGES API (new since last visit)
@@ -1420,6 +1451,9 @@ var NOTIFICATION_WEBHOOK = process.env.NOTIFICATION_WEBHOOK || '';
 
 app.listen(PORT, function () {
     console.log('\n\u2728 Vinyl Checker running at http://localhost:' + PORT + '\n');
+
+    // Kill any zombie Chrome processes left from a previous crash
+    reapChrome();
 
     // Cart optimizer job queue worker
     var optimizerWorker = require('./lib/optimizer-worker');
