@@ -5984,3 +5984,120 @@ body.light .prof-digger-genre    { background: #f0f0f0; border-color: #e5e5e5; c
 .prof-hero-match.match-low  { background: rgba(100,100,100,0.12); border-color: rgba(100,100,100,0.25); color: #888; }
 
 body.light .prof-hero-match.match-low { color: #666; }
+
+/* ── Personality / archetype tags ──────────────────────────────────────── */
+.prof-archetype-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 10px;
+}
+.prof-archetype-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.prof-archetype-icon { font-size: 14px; line-height: 1; }
+
+.prof-archetype-gold   { background: rgba(201,162,39,0.18); border-color: rgba(201,162,39,0.5); color: #C9A227; }
+.prof-archetype-purple { background: rgba(140,90,200,0.18); border-color: rgba(140,90,200,0.5); color: #a060dd; }
+.prof-archetype-teal   { background: rgba(40,180,150,0.15); border-color: rgba(40,180,150,0.45); color: #28b496; }
+.prof-archetype-blue   { background: rgba(60,130,220,0.15); border-color: rgba(60,130,220,0.45); color: #4882dc; }
+.prof-archetype-green  { background: rgba(72,169,113,0.15); border-color: rgba(72,169,113,0.45); color: #48a971; }
+.prof-archetype-red    { background: rgba(220,60,60,0.15);  border-color: rgba(220,60,60,0.45);  color: #dc4040; }
+.prof-archetype-orange { background: rgba(220,130,40,0.15); border-color: rgba(220,130,40,0.45); color: #dc8228; }
+.prof-archetype-pink   { background: rgba(220,80,150,0.15); border-color: rgba(220,80,150,0.45); color: #dc5096; }
+.prof-archetype-smoke  { background: rgba(120,120,120,0.15);border-color: rgba(120,120,120,0.35);color: #888; }
+
+body.light .prof-archetype-smoke { background: #f0f0f0; border-color: #ddd; color: #666; }
+
+/* ── Era decade chart ───────────────────────────────────────────────────── */
+.prof-decade-section {
+  padding: 16px 20px 12px;
+  margin-bottom: 0;
+  border-bottom: 1px solid #1a1a1a;
+}
+.prof-decade-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 64px;
+  margin-top: 10px;
+}
+.prof-decade-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+.prof-decade-bar {
+  width: 100%;
+  background: #2a2a2a;
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+  transition: background 0.2s;
+}
+.prof-decade-col.top .prof-decade-bar { background: #C9A227; }
+.prof-decade-label {
+  font-size: 10px;
+  color: #555;
+  font-family: 'Oswald', sans-serif;
+  letter-spacing: 0.3px;
+}
+.prof-decade-col.top .prof-decade-label { color: #C9A227; }
+
+body.light .prof-decade-bar { background: #e5e5e5; }
+body.light .prof-decade-col.top .prof-decade-bar { background: #C9A227; }
+body.light .prof-decade-section { border-color: #eee; }
+
+/* ── Meta-sync progress ─────────────────────────────────────────────────── */
+.prof-meta-sync-row {
+  margin: 6px 0 10px;
+}
+.prof-meta-sync-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  color: #555;
+  margin-bottom: 5px;
+}
+.prof-meta-sync-btn {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(201,162,39,0.4);
+  background: rgba(201,162,39,0.08);
+  color: #C9A227;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.prof-meta-sync-btn:hover { background: rgba(201,162,39,0.18); }
+.prof-meta-sync-btn:disabled { opacity: 0.5; cursor: default; }
+.prof-meta-sync-done { color: #48a971; font-size: 11px; }
+.prof-meta-sync-bar-wrap {
+  height: 3px;
+  background: #1e1e1e;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.prof-meta-sync-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #C9A227, #e8c547);
+  border-radius: 2px;
+  transition: width 0.4s;
+}
+body.light .prof-meta-sync-label { color: #999; }
+body.light .prof-meta-sync-bar-wrap { background: #eee; }

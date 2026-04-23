@@ -1147,6 +1147,149 @@ function computeTasteMatch(items1, items2) {
     return Math.round(score * 100);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PERSONALITY TAGS — Rule-based from mined metadata
+// Phase 3 slot: replace/supplement with LLM call using same structured input
+// ═══════════════════════════════════════════════════════════════════════════
+
+var ARCHETYPE_RULES = [
+    // label,                       icon, color,    style array,                                                    genre array, min%
+    { label:'UK Garage Head',       icon:'🏴',  color:'teal',   styles:['UK Garage','Speed Garage','2-Step'],                 genres:[],              min:5  },
+    { label:'DnB / Jungle Junkie',  icon:'🥁',  color:'purple', styles:['Drum n Bass','Jungle','Darkstep','Neurofunk'],       genres:[],              min:7  },
+    { label:'Rominimal Head',       icon:'〰️', color:'blue',   styles:['Minimal','Minimal Techno','Microhouse'],             genres:[],              min:7  },
+    { label:'Detroit Purist',       icon:'🏭', color:'smoke',  styles:['Detroit Techno','Deep Techno'],                      genres:[],              min:5  },
+    { label:'Acid Freak',           icon:'🧪', color:'green',  styles:['Acid','Acid House','Acid Jazz','Acid Techno'],       genres:[],              min:5  },
+    { label:'Italo-Cosmic Head',    icon:'🪐', color:'pink',   styles:['Cosmic','Italo-Disco','Space'],                      genres:[],              min:5  },
+    { label:'House Music Lifer',    icon:'🏠', color:'orange', styles:['Chicago House','Deep House','Soulful House','House'],genres:[],              min:9  },
+    { label:'Breaks Fiend',         icon:'💥', color:'red',    styles:['Breakbeat','Breaks','Nu-Skool Breaks','Big Beat'],   genres:[],              min:5  },
+    { label:'Dub Archaeologist',    icon:'🌿', color:'green',  styles:['Dub','Roots Reggae','Dub Techno','Lovers Rock'],     genres:['Reggae'],      min:7  },
+    { label:'Global Grooves Hunter',icon:'🌍', color:'gold',   styles:['Afrobeat','Highlife','Afro-Cuban','Cumbia','Baile Funk'], genres:[],         min:4  },
+    { label:'Ambient Explorer',     icon:'🌌', color:'blue',   styles:['Ambient','Drone','New Age','Dark Ambient'],          genres:[],              min:7  },
+    { label:'Industrial Head',      icon:'⚙️', color:'smoke',  styles:['EBM','Industrial','Dark Electro','Power Electronics'],genres:[],             min:5  },
+    { label:'80s Synth Devotee',    icon:'🎛', color:'pink',   styles:['Synth-pop','New Wave','Post-Punk','Darkwave'],       genres:[],              min:7  },
+    { label:'Jazz Archaeologist',   icon:'🎷', color:'gold',   styles:['Bop','Post Bop','Hard Bop','Cool Jazz','Free Jazz'], genres:['Jazz'],        min:8  },
+    { label:'Soul & Funk Hunter',   icon:'✊', color:'orange', styles:['Soul','Funk','Northern Soul','Neo Soul'],             genres:['Soul'],        min:10 },
+    { label:'Hip Hop Head',         icon:'🎤', color:'red',    styles:[],                                                    genres:['Hip Hop'],     min:12 },
+    { label:'Latin Grooves Collector',icon:'💃',color:'teal',  styles:['Cumbia','Salsa','Latin Jazz','Bossa Nova'],          genres:['Latin'],       min:5  },
+    { label:'Balearic Head',        icon:'🏝', color:'teal',   styles:['Balearic','Chill Out','Downtempo'],                  genres:[],              min:5  },
+    { label:'Trance Pilgrim',       icon:'🕊', color:'purple', styles:['Trance','Progressive Trance','Psy-Trance'],          genres:[],              min:7  },
+    { label:'Noise & Experimental', icon:'📡', color:'smoke',  styles:['Noise','Avant-garde','Free Improvisation'],          genres:['Non-Music'],   min:5  },
+    { label:'Classical Digger',     icon:'🎼', color:'gold',   styles:[],                                                    genres:['Classical'],   min:10 },
+];
+
+function computePersonalityTags(genreCounts, styleCounts, totalItems, avgHave, topDecade) {
+    var scored = ARCHETYPE_RULES.map(function(rule) {
+        var sum = 0;
+        rule.styles.forEach(function(s) { sum += (styleCounts[s] || 0); });
+        rule.genres.forEach(function(g) { sum += (genreCounts[g] || 0); });
+        var pct = totalItems > 0 ? (sum / totalItems) * 100 : 0;
+        return { label: rule.label, icon: rule.icon, color: rule.color, pct: pct, min: rule.min };
+    });
+
+    // Sort by pct descending, pick rules that clear their threshold
+    scored.sort(function(a, b) { return b.pct - a.pct; });
+    var tags = scored.filter(function(r) { return r.pct >= r.min; }).slice(0, 3);
+
+    // Rarity tag — only if room and we have community data
+    if (tags.length < 3 && typeof avgHave === 'number' && avgHave > 0) {
+        if      (avgHave < 50)  tags.push({ label:'Ultra Rare Digger',       icon:'💎', color:'gold' });
+        else if (avgHave < 150) tags.push({ label:'Underground Gem Hunter',  icon:'🔍', color:'gold' });
+        else if (avgHave < 400) tags.push({ label:'Deep Digger',             icon:'⛏', color:'smoke' });
+    }
+
+    // Era fallback — if nothing else fired
+    if (tags.length === 0 && topDecade) {
+        var eraMap = {
+            '60s':{ label:"60s Collector",      icon:'🎸', color:'orange' },
+            '70s':{ label:'Vintage Digger',      icon:'🕰', color:'gold'   },
+            '80s':{ label:"'80s Archaeologist",  icon:'📼', color:'purple' },
+            '90s':{ label:"'90s Head",           icon:'💿', color:'blue'   },
+            '00s':{ label:'Y2K Era Explorer',    icon:'💾', color:'teal'   },
+            '10s':{ label:'2010s Digger',        icon:'📱', color:'smoke'  },
+        };
+        if (eraMap[topDecade]) tags.push(eraMap[topDecade]);
+    }
+
+    return tags.slice(0, 3);
+}
+
+// ─── Background Discogs release-meta crawler ──────────────────────────────
+// Fetches community.have/want/rating for each wantlist item at ~24 req/min.
+// Purely background — never blocks a scan or request.
+var _metaSyncActive = {};
+
+async function runMetaSync(userId, username) {
+    if (_metaSyncActive[username]) return;
+    _metaSyncActive[username] = true;
+    console.log('[meta-sync] Starting for', username);
+    try {
+        var d = db.getDb();
+        var cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().replace('T',' ');
+        var items = d.prepare(`
+            SELECT w.discogs_id FROM wantlist w
+            LEFT JOIN release_meta rm ON rm.discogs_id = w.discogs_id
+            WHERE w.user_id = ? AND w.active = 1 AND w.discogs_id IS NOT NULL
+              AND (rm.discogs_id IS NULL OR replace(rm.fetched_at,'T',' ') < ?)
+            ORDER BY rm.fetched_at ASC NULLS FIRST
+            LIMIT 300
+        `).all(userId, cutoff);
+
+        var upsert = d.prepare(`
+            INSERT OR REPLACE INTO release_meta
+                (discogs_id, community_have, community_want, avg_rating, ratings_count, country, year, fetched_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        `);
+
+        console.log('[meta-sync]', username, '—', items.length, 'items to enrich');
+        for (var i = 0; i < items.length; i++) {
+            var id = items[i].discogs_id;
+            try {
+                var det = await discogs.fetchReleaseDetails(id);
+                var comm = det.community || {};
+                upsert.run(
+                    id,
+                    comm.have || null,
+                    comm.want || null,
+                    comm.rating ? comm.rating.average : null,
+                    comm.rating ? comm.rating.count   : null,
+                    det.country || null,
+                    det.released ? parseInt(det.released, 10) || null : null
+                );
+            } catch(e) { /* 404 or rate-limit — skip, will retry next sync */ }
+            // 2.5s gap → 24 req/min (safely under 25/min unauthenticated limit)
+            await new Promise(function(r) { setTimeout(r, 2500); });
+        }
+        console.log('[meta-sync]', username, 'done');
+    } catch(e) {
+        console.error('[meta-sync] Error:', e.message);
+    } finally {
+        _metaSyncActive[username] = false;
+    }
+}
+
+// ─── Meta-sync status + trigger endpoint ─────────────────────────────────
+app.get('/api/meta-sync/:username', function(req, res) {
+    try {
+        var username = req.params.username.trim();
+        var d = db.getDb();
+        var user = d.prepare('SELECT id FROM users WHERE username=?').get(username);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        var total  = d.prepare('SELECT COUNT(*) as c FROM wantlist WHERE user_id=? AND active=1 AND discogs_id IS NOT NULL').get(user.id).c;
+        var synced = d.prepare('SELECT COUNT(*) as c FROM wantlist w JOIN release_meta rm ON rm.discogs_id=w.discogs_id WHERE w.user_id=? AND w.active=1').get(user.id).c;
+        var running = !!_metaSyncActive[username];
+        var pct = total > 0 ? Math.round((synced / total) * 100) : 0;
+
+        if (req.query.trigger === '1' && !running && synced < total) {
+            runMetaSync(user.id, username); // fire and forget
+        }
+
+        res.json({ total: total, synced: synced, pct: pct, running: running });
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ─── Community / all diggers ───────────────────────────────────────────────
 app.get('/api/diggers', function (req, res) {
     try {
@@ -1264,6 +1407,55 @@ app.get('/api/profile/:username', function (req, res) {
             'SELECT COUNT(DISTINCT dl.wantlist_id) as c FROM discogs_listings dl JOIN wantlist w ON w.id = dl.wantlist_id WHERE w.user_id = ? AND w.active = 1'
         ).get(user.id).c;
 
+        // ── Release metadata (community have/want/rating) ──
+        var metaStats = d.prepare(`
+            SELECT
+                COUNT(rm.discogs_id)           as synced,
+                AVG(rm.community_have)         as avgHave,
+                AVG(rm.community_want)         as avgWant,
+                AVG(rm.avg_rating)             as avgRating,
+                MIN(rm.community_have)         as minHave,
+                MAX(rm.community_have)         as maxHave
+            FROM wantlist w
+            JOIN release_meta rm ON rm.discogs_id = w.discogs_id
+            WHERE w.user_id = ? AND w.active = 1
+        `).get(user.id);
+
+        // ── Era / decade distribution from release_meta + wantlist.year ──
+        var yearRows = d.prepare(`
+            SELECT COALESCE(rm.year, w.year) as yr, COUNT(*) as cnt
+            FROM wantlist w
+            LEFT JOIN release_meta rm ON rm.discogs_id = w.discogs_id
+            WHERE w.user_id = ? AND w.active = 1
+              AND COALESCE(rm.year, w.year) IS NOT NULL
+              AND COALESCE(rm.year, w.year) > 1950
+            GROUP BY yr
+        `).all(user.id);
+
+        var decadeCounts = {};
+        yearRows.forEach(function(r) {
+            var decade = Math.floor(r.yr / 10) * 10;
+            var key = (decade % 100) + 's';  // '90s', '80s' etc.
+            decadeCounts[key] = (decadeCounts[key] || 0) + r.cnt;
+        });
+        var topDecade = Object.keys(decadeCounts).sort(function(a,b){ return decadeCounts[b]-decadeCounts[a]; })[0] || null;
+
+        // ── Personality tags (rule-based; LLM slot ready) ──
+        var avgHave = metaStats && metaStats.synced > 0 ? metaStats.avgHave : null;
+        var personalityTags = computePersonalityTags(genreCounts, styleCounts, wantlistItems.length, avgHave, topDecade);
+
+        // ── Rarity score: proportion of items with community_have < 200 ──
+        var rarityRow = d.prepare(`
+            SELECT COUNT(*) as cnt
+            FROM wantlist w JOIN release_meta rm ON rm.discogs_id = w.discogs_id
+            WHERE w.user_id = ? AND w.active = 1 AND rm.community_have < 200
+        `).get(user.id);
+        var rarePct = metaStats && metaStats.synced > 0
+            ? Math.round((rarityRow.cnt / metaStats.synced) * 100) : null;
+
+        // ── Meta-sync status ──
+        var totalDiscogs = d.prepare('SELECT COUNT(*) as c FROM wantlist WHERE user_id=? AND active=1 AND discogs_id IS NOT NULL').get(user.id).c;
+
         res.json({
             username:        user.username,
             memberSince:     memberSince,
@@ -1282,7 +1474,17 @@ app.get('/api/profile/:username', function (req, res) {
             topArtists:      topArtists,
             storeBreakdown:  storeBreakdown,
             recentScans:     recentScans,
-            recentFinds:     recentFinds
+            recentFinds:     recentFinds,
+            // ── enriched ──
+            personalityTags: personalityTags,
+            decadeCounts:    decadeCounts,
+            topDecade:       topDecade,
+            metaSynced:      metaStats ? (metaStats.synced || 0) : 0,
+            metaTotal:       totalDiscogs,
+            avgHave:         avgHave ? Math.round(avgHave) : null,
+            avgWant:         metaStats && metaStats.avgWant ? Math.round(metaStats.avgWant) : null,
+            avgRating:       metaStats && metaStats.avgRating ? Math.round(metaStats.avgRating * 10) / 10 : null,
+            rarePct:         rarePct
         });
     } catch(e) {
         console.error('[profile] error:', e.message);

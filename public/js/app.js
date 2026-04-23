@@ -4280,6 +4280,60 @@ function renderProfile(p) {
     }
   }
 
+  // ── Personality tags ──
+  var tagsHtml = '';
+  if (p.personalityTags && p.personalityTags.length > 0) {
+    var tagPills = p.personalityTags.map(function(t) {
+      return '<span class="prof-archetype-tag prof-archetype-' + (t.color||'gold') + '">' +
+        (t.icon ? '<span class="prof-archetype-icon">' + t.icon + '</span>' : '') +
+        escapeHtml(t.label) +
+      '</span>';
+    }).join('');
+    tagsHtml = '<div class="prof-archetype-row">' + tagPills + '</div>';
+  }
+
+  // ── Meta-sync progress bar (own profile only) ──
+  var metaSyncHtml = '';
+  if (isOwn && typeof p.metaTotal === 'number' && p.metaTotal > 0) {
+    var syncPct = Math.round((p.metaSynced / p.metaTotal) * 100);
+    var enriched = p.metaSynced + ' / ' + p.metaTotal + ' releases enriched';
+    var enrichedSub = p.avgHave ? ' · avg ' + p.avgHave + ' collectors' : '';
+    if (p.rarePct !== null && p.rarePct !== undefined) enrichedSub += ' · ' + p.rarePct + '% rare (<200 collectors)';
+    metaSyncHtml =
+      '<div class="prof-meta-sync-row">' +
+        '<div class="prof-meta-sync-label">' +
+          '<span>' + enriched + enrichedSub + '</span>' +
+          (syncPct < 100
+            ? '<button class="prof-meta-sync-btn" onclick="profTriggerMetaSync(\'' + escapeAttr(p.username) + '\')" id="metaSyncBtn">' +
+                (syncPct === 0 ? '✨ Enrich Releases' : '↻ Continue Enrichment') +
+              '</button>'
+            : '<span class="prof-meta-sync-done">✓ Fully enriched</span>') +
+        '</div>' +
+        '<div class="prof-meta-sync-bar-wrap">' +
+          '<div class="prof-meta-sync-bar" style="width:' + syncPct + '%"></div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  // ── Decade distribution mini-chart ──
+  var decadeHtml = '';
+  if (p.decadeCounts && Object.keys(p.decadeCounts).length > 0) {
+    var decadeOrder = ['60s','70s','80s','90s','00s','10s','20s'];
+    var maxDecade = Math.max.apply(null, decadeOrder.map(function(d){ return p.decadeCounts[d]||0; }));
+    var decadeBars = decadeOrder.filter(function(d){ return p.decadeCounts[d]>0; }).map(function(d) {
+      var h = maxDecade > 0 ? Math.round((p.decadeCounts[d]/maxDecade)*48) : 0;
+      var isTop = d === p.topDecade;
+      return '<div class="prof-decade-col' + (isTop ? ' top' : '') + '">' +
+        '<div class="prof-decade-bar" style="height:' + h + 'px"></div>' +
+        '<div class="prof-decade-label">' + d + '</div>' +
+      '</div>';
+    }).join('');
+    decadeHtml = '<div class="prof-section prof-decade-section">' +
+      '<div class="prof-section-title">Era Profile</div>' +
+      '<div class="prof-decade-chart">' + decadeBars + '</div>' +
+    '</div>';
+  }
+
   // ── Taste DNA: genres (clickable if own profile) ──
   var maxGenreCount = p.topGenres.length > 0 ? p.topGenres[0].count : 1;
   var genreHtml = p.topGenres.map(function(g) {
@@ -4371,11 +4425,13 @@ function renderProfile(p) {
           '<div class="prof-username">' + escapeHtml(p.username) + '</div>' +
           tasteMatchHtml +
         '</div>' +
+        (tagsHtml) +
         '<div class="prof-meta-row">' +
           '<span class="prof-meta-item">🎵 Digger since ' + memberYear + '</span>' +
           '<span class="prof-meta-item">⏱ Last scan ' + lastScanLabel + '</span>' +
           (p.discogsCount > 0 ? '<span class="prof-meta-item">💿 ' + p.discogsCount + ' Discogs prices synced</span>' : '') +
         '</div>' +
+        metaSyncHtml +
         '<div class="prof-stat-row">' + statsHtml + '</div>' +
       '</div>' +
       '<div class="prof-hero-btns">' +
@@ -4383,6 +4439,9 @@ function renderProfile(p) {
         (isOwn ? '<button class="prof-refresh-btn" onclick="_profileCache=null;loadProfile()" title="Refresh">↻</button>' : '') +
       '</div>' +
     '</div>' +
+
+    // Decade chart (full width, below hero)
+    decadeHtml +
 
     // Two-column body
     '<div class="prof-body">' +
@@ -4500,6 +4559,37 @@ function profGoToGenre(genre) {
 function profGoToStore(store) {
   _pendingDiscoverNav = { tab: 'inStock', store: store };
   switchView('discover', document.querySelector('.nav-link[data-view="discover"]'));
+}
+
+function profTriggerMetaSync(username) {
+  var btn = document.getElementById('metaSyncBtn');
+  if (btn) { btn.textContent = '⏳ Starting…'; btn.disabled = true; }
+  fetch('api/meta-sync/' + encodeURIComponent(username) + '?trigger=1')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (btn) {
+        if (d.running) {
+          btn.textContent = '⏳ Enriching… (' + d.pct + '%)';
+          // Poll every 15s
+          var poll = setInterval(function() {
+            fetch('api/meta-sync/' + encodeURIComponent(username))
+              .then(function(r){ return r.json(); })
+              .then(function(s) {
+                if (btn) btn.textContent = '⏳ Enriching… (' + s.pct + '%)';
+                if (!s.running) {
+                  clearInterval(poll);
+                  _profileCache = null;
+                  loadProfile();
+                }
+              }).catch(function() { clearInterval(poll); });
+          }, 15000);
+        } else {
+          btn.textContent = '✓ Done';
+          setTimeout(function() { _profileCache = null; loadProfile(); }, 1000);
+        }
+      }
+    })
+    .catch(function() { if (btn) { btn.textContent = '✨ Enrich Releases'; btn.disabled = false; } });
 }
 
 function profShareProfile(username) {

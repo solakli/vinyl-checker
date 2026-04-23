@@ -437,6 +437,32 @@ function initTables() {
         );
         CREATE INDEX IF NOT EXISTS idx_cart_user ON cart(user_id);
     `);
+
+    // ── Discogs release community metadata ──────────────────────────────────
+    // Fetched from api.discogs.com/releases/{id} in the background.
+    // community_have/want + avg_rating give us rarity signal for taste profiling.
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS release_meta (
+            discogs_id      INTEGER PRIMARY KEY,
+            community_have  INTEGER,
+            community_want  INTEGER,
+            avg_rating      REAL,
+            ratings_count   INTEGER,
+            country         TEXT,
+            year            INTEGER,
+            fetched_at      TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_release_meta_fetched ON release_meta(fetched_at);
+    `);
+
+    // ── AI-generated taste profile cache ─────────────────────────────────────
+    // GOLDIE (or any LLM) populates this from the mined release_meta + wantlist.
+    // Refreshed monthly or on-demand. personality_tags is JSON array of {label,icon,color}.
+    try { db.exec(`
+        ALTER TABLE users ADD COLUMN taste_tags TEXT;
+        ALTER TABLE users ADD COLUMN taste_summary TEXT;
+        ALTER TABLE users ADD COLUMN taste_computed_at TEXT;
+    `); } catch(e) {}
 }
 
 // ═══════════════════════════════════════════════════════════
