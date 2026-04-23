@@ -32,6 +32,7 @@
     <a href="#" class="nav-link" data-view="dashboard" onclick="switchView('dashboard',this);return false;">Dashboard</a>
     <a href="#" class="nav-link" data-view="collection" onclick="switchView('collection',this);return false;">My Collection</a>
     <a href="#" class="nav-link" data-view="discover" onclick="switchView('discover',this);return false;">Discover <span class="cart-badge" id="cartBadge" style="display:none">0</span></a>
+    <a href="#" class="nav-link" data-view="profile" id="profileNavLink" onclick="switchView('profile',this);return false;" style="display:none">Profile</a>
   </div>
   <div class="navbar-right">
     <div class="live-badge" id="liveBadge" style="display:none"><div class="live-dot"></div> Scanning</div>
@@ -168,6 +169,13 @@
 <div id="view-discover" class="alt-view" style="display:none">
   <div id="discWrap" class="disc-wrap">
     <div id="discBody"></div>
+  </div>
+</div>
+
+<!-- ═══ PROFILE VIEW ═══ -->
+<div id="view-profile" class="alt-view" style="display:none">
+  <div id="profileWrap" class="profile-wrap">
+    <div id="profileBody"></div>
   </div>
 </div>
 

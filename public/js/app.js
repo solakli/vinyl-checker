@@ -1892,7 +1892,14 @@ async function checkAuthStatus() {
       isOAuthed = true;
       userBar.style.display = 'flex';
       connectHeader.style.display = 'none';
-      document.getElementById('userBarName').textContent = data.discogs.username;
+      var nameEl = document.getElementById('userBarName');
+      nameEl.textContent = data.discogs.username;
+      nameEl.style.cursor = 'pointer';
+      nameEl.title = 'View your profile';
+      nameEl.onclick = function() { switchView('profile', document.getElementById('profileNavLink')); };
+      // Show profile nav link
+      var profNav = document.getElementById('profileNavLink');
+      if (profNav) profNav.style.display = '';
       // Set username for scan functions but don't show the input
       document.getElementById('usernameInput').value = data.discogs.username;
       document.getElementById('scanSection').style.display = 'none';
@@ -2961,12 +2968,14 @@ function switchView(view, linkEl) {
   document.getElementById('view-dashboard').style.display  = view === 'dashboard'  ? 'block' : 'none';
   document.getElementById('view-collection').style.display = view === 'collection' ? 'block' : 'none';
   document.getElementById('view-discover').style.display   = view === 'discover'   ? 'block' : 'none';
+  document.getElementById('view-profile').style.display    = view === 'profile'    ? 'block' : 'none';
   document.getElementById('headerControls').style.display  = isWantlist ? '' : 'none';
   document.querySelector('.app-layout').style.display      = isWantlist ? '' : 'none';
 
   if (view === 'dashboard')  renderDashboard();
   if (view === 'collection') loadCollection(false);
   if (view === 'discover')   loadDiscover();
+  if (view === 'profile')    loadProfile();
 }
 
 function renderDashboard() {
@@ -4100,3 +4109,211 @@ function escapeAttr(s) {
 }
 
 
+
+// ═══════════════════════════════════════════════════════════════
+// PROFILE VIEW
+// ═══════════════════════════════════════════════════════════════
+
+var _profileCache = null;
+var _profileUsername = null;
+
+function loadProfile() {
+  var username = getCurrentUsername();
+  if (!username) {
+    document.getElementById('profileBody').innerHTML =
+      '<div class="prof-empty">Connect your Discogs account to view your profile.</div>';
+    return;
+  }
+  // Serve from cache if same user
+  if (_profileCache && _profileUsername === username) {
+    renderProfile(_profileCache);
+    return;
+  }
+  document.getElementById('profileBody').innerHTML =
+    '<div class="disc-loading" style="display:flex"><div class="disc-spinner"></div>Loading profile…</div>';
+
+  fetch('api/profile/' + encodeURIComponent(username))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      _profileCache    = data;
+      _profileUsername = username;
+      renderProfile(data);
+    })
+    .catch(function(e) {
+      document.getElementById('profileBody').innerHTML =
+        '<div class="prof-empty">Error loading profile.</div>';
+      console.error('[profile]', e);
+    });
+}
+
+function renderProfile(p) {
+  var memberYear = p.memberSince ? new Date(p.memberSince).getFullYear() : '—';
+  var lastScanLabel = p.lastScan ? formatRelativeTime(p.lastScan) : 'Never';
+  var inStockPct = p.inStockPct || 0;
+
+  // ── Circular progress SVG ──
+  var r = 44, circ = 2 * Math.PI * r;
+  var dash = (inStockPct / 100) * circ;
+  var ringHtml =
+    '<svg class="prof-ring-svg" viewBox="0 0 100 100">' +
+      '<circle class="prof-ring-bg" cx="50" cy="50" r="' + r + '"/>' +
+      '<circle class="prof-ring-fill" cx="50" cy="50" r="' + r + '" ' +
+        'stroke-dasharray="' + dash.toFixed(1) + ' ' + circ.toFixed(1) + '" ' +
+        'stroke-dashoffset="0" transform="rotate(-90 50 50)"/>' +
+      '<text class="prof-ring-pct" x="50" y="54" text-anchor="middle">' + inStockPct.toFixed(1) + '%</text>' +
+      '<text class="prof-ring-label" x="50" y="67" text-anchor="middle">in stock</text>' +
+    '</svg>';
+
+  // ── Stat cards ──
+  var stats = [
+    { label: 'Wantlist',   value: p.wantlistSize || 0,  sub: '' },
+    { label: 'In Stock',   value: p.inStockCount || 0,  sub: p.wantlistSize ? Math.round((p.inStockCount/p.wantlistSize)*100)+'% of wantlist' : '' },
+    { label: 'Scans Run',  value: p.totalScans || 0,    sub: p.avgScanMinutes ? 'avg ' + p.avgScanMinutes + 'm' : '' },
+    { label: 'Never Found',value: p.neverFound || 0,    sub: 'items with no hits ever' },
+  ];
+  var statsHtml = stats.map(function(s) {
+    return '<div class="prof-stat-card">' +
+      '<div class="prof-stat-value">' + s.value.toLocaleString() + '</div>' +
+      '<div class="prof-stat-label">' + s.label + '</div>' +
+      (s.sub ? '<div class="prof-stat-sub">' + escapeHtml(s.sub) + '</div>' : '') +
+    '</div>';
+  }).join('');
+
+  // ── Taste DNA: genres ──
+  var maxGenreCount = p.topGenres.length > 0 ? p.topGenres[0].count : 1;
+  var genreHtml = p.topGenres.map(function(g) {
+    var pct = Math.round((g.count / maxGenreCount) * 100);
+    return '<div class="prof-dna-row">' +
+      '<span class="prof-dna-name">' + escapeHtml(g.name) + '</span>' +
+      '<div class="prof-dna-bar-wrap"><div class="prof-dna-bar" style="width:' + pct + '%"></div></div>' +
+      '<span class="prof-dna-count">' + g.count + '</span>' +
+    '</div>';
+  }).join('');
+
+  // ── Taste DNA: styles (pill cloud) ──
+  var maxStyleCount = p.topStyles.length > 0 ? p.topStyles[0].count : 1;
+  var styleHtml = p.topStyles.map(function(s) {
+    var sz = 10 + Math.round((s.count / maxStyleCount) * 8);
+    return '<span class="prof-style-pill" style="font-size:' + sz + 'px">' + escapeHtml(s.name) + ' <span class="prof-style-count">' + s.count + '</span></span>';
+  }).join('');
+
+  // ── Store breakdown ──
+  var maxStoreCount = p.storeBreakdown.length > 0 ? p.storeBreakdown[0].count : 1;
+  var storeHtml = p.storeBreakdown.length > 0
+    ? p.storeBreakdown.map(function(s) {
+        var cls = storeClassMap[s.store] || '';
+        var pct = Math.round((s.count / maxStoreCount) * 100);
+        return '<div class="prof-store-row">' +
+          '<span class="prof-store-name ' + cls + '">' + escapeHtml(storeDisplayName[s.store] || s.store) + '</span>' +
+          '<div class="prof-store-bar-wrap"><div class="prof-store-bar ' + cls + '" style="width:' + pct + '%"></div></div>' +
+          '<span class="prof-store-count">' + s.count + ' item' + (s.count !== 1 ? 's' : '') + '</span>' +
+        '</div>';
+      }).join('')
+    : '<div class="prof-empty-small">No in-stock data yet — run a scan first.</div>';
+
+  // ── Scan history ──
+  var scanHistHtml = p.recentScans.length > 0
+    ? '<div class="prof-scan-list">' + p.recentScans.map(function(sr) {
+        var label = { full: 'Full', force: 'Force', daily: 'Daily', background: 'BG' }[sr.run_type] || sr.run_type;
+        var dur   = sr.duration_ms ? (sr.duration_ms / 60000).toFixed(1) + 'm' : '—';
+        var errCls = sr.error ? ' prof-scan-err' : (sr.items_error > 0 ? ' prof-scan-warn' : '');
+        var dateStr = sr.started_at ? new Date(sr.started_at).toLocaleDateString('en-US', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+        return '<div class="prof-scan-row' + errCls + '">' +
+          '<span class="prof-scan-type">' + label + '</span>' +
+          '<span class="prof-scan-date">' + dateStr + '</span>' +
+          '<span class="prof-scan-items">' + (sr.items_checked || 0) + ' checked</span>' +
+          '<span class="prof-scan-stock">' + (sr.items_in_stock || 0) + ' in stock</span>' +
+          '<span class="prof-scan-dur">' + dur + '</span>' +
+          (sr.items_error > 0 ? '<span class="prof-scan-errs">' + sr.items_error + ' err</span>' : '<span></span>') +
+        '</div>';
+      }).join('') + '</div>'
+    : '<div class="prof-empty-small">No completed scans yet.</div>';
+
+  // ── Recent finds ──
+  var findsHtml = p.recentFinds.length > 0
+    ? '<div class="prof-finds-grid">' + p.recentFinds.map(function(f) {
+        var artHtml = f.thumb
+          ? '<img class="prof-find-art" src="' + escapeHtml(f.thumb) + '" loading="lazy" alt="" onerror="this.style.display=\'none\'">'
+          : '<div class="prof-find-art-ph">♪</div>';
+        var storeCls = storeClassMap[f.store] || '';
+        var linkAttr = f.url ? ' onclick="window.open(\'' + escapeAttr(f.url) + '\',\'_blank\')"' : '';
+        var ageLabel = f.foundAt ? formatRelativeTime(f.foundAt) : '';
+        return '<div class="prof-find-card"' + linkAttr + '>' +
+          artHtml +
+          '<div class="prof-find-body">' +
+            '<div class="prof-find-artist">' + escapeHtml(f.artist || '') + '</div>' +
+            '<div class="prof-find-title">'  + escapeHtml(f.title  || '') + '</div>' +
+            '<div class="prof-find-meta">' +
+              '<span class="prof-find-store ' + storeCls + '">' + escapeHtml(storeDisplayName[f.store] || f.store) + '</span>' +
+              (f.price ? '<span class="prof-find-price">' + escapeHtml(f.price) + '</span>' : '') +
+              (ageLabel ? '<span class="prof-find-age">' + escapeHtml(ageLabel) + '</span>' : '') +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('') + '</div>'
+    : '<div class="prof-empty-small">No recent finds — check back after your next scan.</div>';
+
+  // ── Full layout ──
+  document.getElementById('profileBody').innerHTML =
+    // Hero
+    '<div class="prof-hero">' +
+      '<div class="prof-ring">' + ringHtml + '</div>' +
+      '<div class="prof-hero-info">' +
+        '<div class="prof-username">' + escapeHtml(p.username) + '</div>' +
+        '<div class="prof-meta-row">' +
+          '<span class="prof-meta-item">🎵 Digger since ' + memberYear + '</span>' +
+          '<span class="prof-meta-item">⏱ Last scan ' + lastScanLabel + '</span>' +
+          (p.discogsCount > 0 ? '<span class="prof-meta-item">💿 ' + p.discogsCount + ' Discogs prices synced</span>' : '') +
+        '</div>' +
+        '<div class="prof-stat-row">' + statsHtml + '</div>' +
+      '</div>' +
+      '<button class="prof-refresh-btn" onclick="_profileCache=null;loadProfile()" title="Refresh profile">↻</button>' +
+    '</div>' +
+
+    // Two-column body
+    '<div class="prof-body">' +
+
+      // Left column
+      '<div class="prof-col">' +
+        '<div class="prof-section">' +
+          '<div class="prof-section-title">Taste DNA — Genres</div>' +
+          (genreHtml || '<div class="prof-empty-small">Run a scan to build your taste profile.</div>') +
+        '</div>' +
+        '<div class="prof-section">' +
+          '<div class="prof-section-title">Style Cloud</div>' +
+          '<div class="prof-style-cloud">' + (styleHtml || '<div class="prof-empty-small">—</div>') + '</div>' +
+        '</div>' +
+        '<div class="prof-section">' +
+          '<div class="prof-section-title">Stores with your records</div>' +
+          storeHtml +
+        '</div>' +
+      '</div>' +
+
+      // Right column
+      '<div class="prof-col">' +
+        '<div class="prof-section">' +
+          '<div class="prof-section-title">Recent finds <span class="prof-section-sub">last 30 days</span></div>' +
+          findsHtml +
+        '</div>' +
+        '<div class="prof-section">' +
+          '<div class="prof-section-title">Scan history</div>' +
+          scanHistHtml +
+        '</div>' +
+      '</div>' +
+
+    '</div>';
+}
+
+function formatRelativeTime(isoStr) {
+  if (!isoStr) return '';
+  var ms = Date.now() - new Date(isoStr).getTime();
+  if (ms < 0) return 'just now';
+  var min = Math.floor(ms / 60000);
+  if (min < 1)   return 'just now';
+  if (min < 60)  return min + 'm ago';
+  var hr = Math.floor(min / 60);
+  if (hr < 24)   return hr + 'h ago';
+  var d = Math.floor(hr / 24);
+  if (d < 30)    return d + 'd ago';
+  return Math.floor(d / 30) + 'mo ago';
+}

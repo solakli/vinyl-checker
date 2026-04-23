@@ -5406,3 +5406,394 @@ body.light .disc-store-filter-pill { border-color: #ddd; color: #aaa; }
 body.light .disc-store-filter-pill:hover { border-color: #aaa; color: #444; }
 body.light .disc-card-dg-price { background: #f5f5f5; border-color: #e0e0e0; color: #999; }
 body.light .disc-fy-statline { color: #aaa; }
+
+/* ══════════════════════════════════════════════════════════
+   PROFILE VIEW
+   ══════════════════════════════════════════════════════════ */
+
+.profile-wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 28px 24px 60px;
+}
+
+/* ── Hero ── */
+.prof-hero {
+  display: flex;
+  align-items: flex-start;
+  gap: 28px;
+  background: #111;
+  border: 1px solid #1e1e1e;
+  border-radius: 10px;
+  padding: 28px;
+  margin-bottom: 24px;
+  position: relative;
+}
+
+.prof-ring {
+  flex-shrink: 0;
+}
+.prof-ring-svg {
+  width: 120px;
+  height: 120px;
+}
+.prof-ring-bg {
+  fill: none;
+  stroke: #1e1e1e;
+  stroke-width: 8;
+}
+.prof-ring-fill {
+  fill: none;
+  stroke: #C9A227;
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.6s ease;
+}
+.prof-ring-pct {
+  fill: #C9A227;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: 'Oswald', sans-serif;
+}
+.prof-ring-label {
+  fill: #555;
+  font-size: 9px;
+  font-family: 'Oswald', sans-serif;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.prof-hero-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.prof-username {
+  font-family: 'Oswald', sans-serif;
+  font-size: 32px;
+  font-weight: 700;
+  color: #eee;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.prof-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.prof-meta-item {
+  font-size: 12px;
+  color: #555;
+  font-family: 'Oswald', sans-serif;
+  letter-spacing: 0.4px;
+}
+
+.prof-stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.prof-stat-card {
+  background: #161616;
+  border: 1px solid #222;
+  border-radius: 6px;
+  padding: 12px 18px;
+  min-width: 90px;
+}
+.prof-stat-value {
+  font-family: 'Oswald', sans-serif;
+  font-size: 24px;
+  font-weight: 600;
+  color: #C9A227;
+  line-height: 1;
+}
+.prof-stat-label {
+  font-size: 10px;
+  color: #777;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-top: 4px;
+  font-family: 'Oswald', sans-serif;
+}
+.prof-stat-sub {
+  font-size: 10px;
+  color: #444;
+  margin-top: 3px;
+}
+
+.prof-refresh-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: none;
+  border: 1px solid #222;
+  color: #555;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.prof-refresh-btn:hover { color: #C9A227; border-color: #C9A227; }
+
+/* ── Two-column body ── */
+.prof-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+@media (max-width: 760px) { .prof-body { grid-template-columns: 1fr; } }
+
+.prof-col {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.prof-section {
+  background: #111;
+  border: 1px solid #1e1e1e;
+  border-radius: 8px;
+  padding: 18px 20px;
+}
+.prof-section-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #555;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.prof-section-sub {
+  font-size: 10px;
+  color: #3a3a3a;
+  text-transform: none;
+  font-family: inherit;
+  letter-spacing: 0;
+}
+
+/* ── Taste DNA bars ── */
+.prof-dna-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.prof-dna-name {
+  font-size: 11px;
+  color: #aaa;
+  width: 90px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prof-dna-bar-wrap {
+  flex: 1;
+  height: 4px;
+  background: #1e1e1e;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.prof-dna-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #C9A227, #e8c44a);
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+.prof-dna-count {
+  font-size: 10px;
+  color: #444;
+  width: 24px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ── Style cloud ── */
+.prof-style-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: baseline;
+}
+.prof-style-pill {
+  background: #161616;
+  border: 1px solid #242424;
+  border-radius: 4px;
+  padding: 3px 8px;
+  color: #888;
+  font-family: 'Oswald', sans-serif;
+  letter-spacing: 0.3px;
+  cursor: default;
+  transition: border-color 0.15s, color 0.15s;
+}
+.prof-style-pill:hover { border-color: #C9A227; color: #C9A227; }
+.prof-style-count { font-size: 9px; color: #444; }
+
+/* ── Store breakdown ── */
+.prof-store-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.prof-store-name {
+  font-size: 11px;
+  color: #777;
+  width: 80px;
+  flex-shrink: 0;
+  font-family: 'Oswald', sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Per-store color on name */
+.prof-store-name.store-hhv    { color: #3b82f6; }
+.prof-store-name.store-deejay { color: #f97316; }
+.prof-store-name.store-juno   { color: #a855f7; }
+.prof-store-name.store-hardwax{ color: #22c55e; }
+.prof-store-name.store-further{ color: #ec4899; }
+.prof-store-name.store-decks  { color: #14b8a6; }
+.prof-store-name.store-yoyaku { color: #f43f5e; }
+.prof-store-name.store-ttlab  { color: #eab308; }
+.prof-store-name.store-phonica{ color: #84cc16; }
+
+.prof-store-bar-wrap {
+  flex: 1;
+  height: 5px;
+  background: #1e1e1e;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.prof-store-bar {
+  height: 100%;
+  background: #333;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+.prof-store-bar.store-hhv     { background: #3b82f6; }
+.prof-store-bar.store-deejay  { background: #f97316; }
+.prof-store-bar.store-juno    { background: #a855f7; }
+.prof-store-bar.store-hardwax { background: #22c55e; }
+.prof-store-bar.store-further { background: #ec4899; }
+.prof-store-bar.store-decks   { background: #14b8a6; }
+.prof-store-bar.store-yoyaku  { background: #f43f5e; }
+.prof-store-bar.store-ttlab   { background: #eab308; }
+.prof-store-bar.store-phonica { background: #84cc16; }
+
+.prof-store-count {
+  font-size: 10px;
+  color: #444;
+  width: 52px;
+  text-align: right;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* ── Scan history ── */
+.prof-scan-list { display: flex; flex-direction: column; gap: 2px; }
+.prof-scan-row {
+  display: grid;
+  grid-template-columns: 44px 1fr 80px 68px 44px 48px;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: 4px;
+  background: #0e0e0e;
+  font-size: 10px;
+  color: #555;
+}
+.prof-scan-row.prof-scan-warn { background: rgba(201,162,39,0.04); }
+.prof-scan-row.prof-scan-err  { background: rgba(248,113,113,0.04); }
+.prof-scan-type {
+  font-family: 'Oswald', sans-serif;
+  font-size: 10px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.prof-scan-date  { color: #444; }
+.prof-scan-items { color: #666; }
+.prof-scan-stock { color: #C9A227; font-weight: 600; }
+.prof-scan-dur   { color: #444; text-align: right; }
+.prof-scan-errs  { color: #f87171; text-align: right; }
+
+/* ── Recent finds ── */
+.prof-finds-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.prof-find-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #0e0e0e;
+  border: 1px solid #1a1a1a;
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+.prof-find-card:hover { border-color: #C9A227; }
+.prof-find-art {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 3px;
+  flex-shrink: 0;
+  background: #1a1a1a;
+}
+.prof-find-art-ph {
+  width: 40px;
+  height: 40px;
+  border-radius: 3px;
+  background: #1a1a1a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #333;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.prof-find-body { flex: 1; min-width: 0; }
+.prof-find-artist { font-size: 11px; font-weight: 600; color: #ccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prof-find-title  { font-size: 10px; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.prof-find-meta   { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+.prof-find-store  { font-size: 9px; font-family: 'Oswald', sans-serif; color: #666; text-transform: uppercase; letter-spacing: 0.3px; }
+.prof-find-store.store-hhv    { color: #3b82f6; }
+.prof-find-store.store-deejay { color: #f97316; }
+.prof-find-store.store-juno   { color: #a855f7; }
+.prof-find-store.store-hardwax{ color: #22c55e; }
+.prof-find-store.store-further{ color: #ec4899; }
+.prof-find-price  { font-size: 10px; color: #C9A227; font-weight: 600; }
+.prof-find-age    { font-size: 9px; color: #444; margin-left: auto; }
+
+/* ── Empty states ── */
+.prof-empty {
+  padding: 48px 24px;
+  text-align: center;
+  color: #444;
+  font-family: 'Oswald', sans-serif;
+  letter-spacing: 0.5px;
+}
+.prof-empty-small { font-size: 11px; color: #444; padding: 8px 0; }
+
+/* ── Light mode ── */
+body.light .prof-hero      { background: #fff; border-color: #eee; }
+body.light .prof-section   { background: #fff; border-color: #eee; }
+body.light .prof-stat-card { background: #f8f8f8; border-color: #eee; }
+body.light .prof-scan-row  { background: #f5f5f5; }
+body.light .prof-find-card { background: #f8f8f8; border-color: #eee; }
+body.light .prof-find-art-ph { background: #eee; }
+body.light .prof-username  { color: #111; }
+body.light .prof-dna-bar-wrap  { background: #eee; }
+body.light .prof-store-bar-wrap { background: #eee; }
+body.light .prof-style-pill { background: #f5f5f5; border-color: #e5e5e5; color: #777; }

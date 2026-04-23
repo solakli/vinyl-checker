@@ -1118,6 +1118,103 @@ app.get('/api/scan-status/:username', function (req, res) {
     res.json(scanner.getScanStatus(username));
 });
 
+// ─── User Profile ─────────────────────────────────────────────────────────────
+app.get('/api/profile/:username', function (req, res) {
+    try {
+        var username = req.params.username.trim();
+        var d = db.getDb();
+        var user = d.prepare('SELECT * FROM users WHERE username = ?').get(username);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        // ── Wantlist stats ──
+        var wantlistSize = d.prepare('SELECT COUNT(*) as c FROM wantlist WHERE user_id = ? AND active = 1').get(user.id).c;
+        var inStockCount = d.prepare(
+            'SELECT COUNT(DISTINCT w.id) as c FROM wantlist w JOIN store_results sr ON sr.wantlist_id = w.id WHERE w.user_id = ? AND w.active = 1 AND sr.in_stock = 1'
+        ).get(user.id).c;
+
+        // ── Taste profile (genres/styles from active wantlist) ──
+        var wantlistItems = d.prepare('SELECT genres, styles, artist FROM wantlist WHERE user_id = ? AND active = 1').all(user.id);
+        var genreCounts = {}, styleCounts = {}, artistCounts = {};
+        wantlistItems.forEach(function(w) {
+            (w.genres || '').split('|').forEach(function(g) { g = g.trim(); if (g) genreCounts[g] = (genreCounts[g] || 0) + 1; });
+            (w.styles || '').split('|').forEach(function(s) { s = s.trim(); if (s) styleCounts[s] = (styleCounts[s] || 0) + 1; });
+            var a = (w.artist || '').trim();
+            if (a && a !== 'Various' && a !== 'Various Artists') artistCounts[a] = (artistCounts[a] || 0) + 1;
+        });
+        var topGenres = Object.keys(genreCounts).sort(function(a,b){ return genreCounts[b]-genreCounts[a]; }).slice(0,8)
+            .map(function(g){ return { name: g, count: genreCounts[g] }; });
+        var topStyles = Object.keys(styleCounts).sort(function(a,b){ return styleCounts[b]-styleCounts[a]; }).slice(0,12)
+            .map(function(s){ return { name: s, count: styleCounts[s] }; });
+        var topArtists = Object.keys(artistCounts).sort(function(a,b){ return artistCounts[b]-artistCounts[a]; }).slice(0,8)
+            .map(function(a){ return { name: a, count: artistCounts[a] }; });
+
+        // ── Store breakdown ──
+        var storeRows = d.prepare(
+            'SELECT sr.store, COUNT(DISTINCT w.id) as cnt FROM store_results sr JOIN wantlist w ON w.id = sr.wantlist_id WHERE w.user_id = ? AND sr.in_stock = 1 GROUP BY sr.store ORDER BY cnt DESC'
+        ).all(user.id);
+        var storeBreakdown = storeRows.map(function(r) {
+            return { store: r.store, count: r.cnt, pct: wantlistSize > 0 ? Math.round((r.cnt / wantlistSize) * 100) : 0 };
+        });
+
+        // ── Scan history (last 15 completed runs) ──
+        var recentScans = d.prepare(
+            "SELECT run_type, started_at, finished_at, items_checked, items_in_stock, items_error, duration_ms, workers_used, error FROM scan_runs WHERE user_id = ? AND finished_at IS NOT NULL ORDER BY started_at DESC LIMIT 15"
+        ).all(user.id);
+
+        // ── Member since (earliest scan or created) ──
+        var firstScan = d.prepare('SELECT started_at FROM scan_runs WHERE user_id = ? ORDER BY started_at ASC LIMIT 1').get(user.id);
+        var memberSince = firstScan ? firstScan.started_at : user.last_full_scan;
+
+        // ── Recent finds (scan_changes: now_in_stock in last 30 days) ──
+        var recentFinds = d.prepare(
+            "SELECT sc.detected_at, sc.store, sc.new_value, w.artist, w.title, w.thumb FROM scan_changes sc JOIN wantlist w ON w.id = sc.wantlist_id WHERE sc.user_id = ? AND sc.change_type = 'now_in_stock' AND sc.detected_at > datetime('now','-30 days') ORDER BY sc.detected_at DESC LIMIT 12"
+        ).all(user.id).map(function(r) {
+            var val = {};
+            try { val = JSON.parse(r.new_value || '{}'); } catch(e) {}
+            return { artist: r.artist, title: r.title, thumb: r.thumb, store: r.store, price: val.price || null, url: val.url || null, foundAt: r.detected_at };
+        });
+
+        // ── Total scan stats ──
+        var scanStats = d.prepare(
+            "SELECT COUNT(*) as total, AVG(duration_ms) as avgMs, AVG(items_error*1.0/NULLIF(items_checked,0))*100 as avgErrPct FROM scan_runs WHERE user_id = ? AND finished_at IS NOT NULL AND error IS NULL"
+        ).get(user.id);
+
+        // ── Items never found in any store ──
+        var neverFound = d.prepare(
+            'SELECT COUNT(*) as c FROM wantlist w WHERE w.user_id = ? AND w.active = 1 AND NOT EXISTS (SELECT 1 FROM store_results sr WHERE sr.wantlist_id = w.id AND sr.in_stock = 1)'
+        ).get(user.id).c;
+
+        // ── Discogs listings count ──
+        var discogsCount = d.prepare(
+            'SELECT COUNT(DISTINCT dl.wantlist_id) as c FROM discogs_listings dl JOIN wantlist w ON w.id = dl.wantlist_id WHERE w.user_id = ? AND w.active = 1'
+        ).get(user.id).c;
+
+        res.json({
+            username:        user.username,
+            memberSince:     memberSince,
+            lastScan:        user.last_full_scan,
+            lastSync:        user.last_sync,
+            wantlistSize:    wantlistSize,
+            inStockCount:    inStockCount,
+            inStockPct:      wantlistSize > 0 ? Math.round((inStockCount / wantlistSize) * 1000) / 10 : 0,
+            neverFound:      neverFound,
+            discogsCount:    discogsCount,
+            totalScans:      scanStats ? scanStats.total : 0,
+            avgScanMinutes:  scanStats && scanStats.avgMs ? Math.round(scanStats.avgMs / 60000 * 10) / 10 : null,
+            avgErrorPct:     scanStats && scanStats.avgErrPct ? Math.round(scanStats.avgErrPct) : 0,
+            topGenres:       topGenres,
+            topStyles:       topStyles,
+            topArtists:      topArtists,
+            storeBreakdown:  storeBreakdown,
+            recentScans:     recentScans,
+            recentFinds:     recentFinds
+        });
+    } catch(e) {
+        console.error('[profile] error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // Serve the app
 app.get('/', function (req, res) {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
