@@ -1924,6 +1924,17 @@ async function checkAuthStatus() {
         playlistBtn.style.display = 'none';
       }
     }
+  // Handle ?profile= URL param — open that user's profile after auth resolves
+  if (_profileParam) {
+    var pUser = _profileParam;
+    _profileParam = null;
+    // Show profile nav regardless of auth state (public profiles)
+    var profNav = document.getElementById('profileNavLink');
+    if (profNav) profNav.style.display = '';
+    // Small delay so the UI finishes rendering
+    setTimeout(function() { profLoadPublic(pUser); }, 300);
+  }
+
   } catch(e) {}
 }
 
@@ -2133,19 +2144,27 @@ if (autoScanAfterAuth && autoScanUsername) {
 }
 
 // Shared/read-only mode: detect ?share=username param
+// Also detect ?profile=username for public profile links
 var sharedMode = false;
 var sharedUsername = '';
+var _profileParam = null;
 (function() {
   var params = new URLSearchParams(window.location.search);
   var share = params.get('share');
+  var profile = params.get('profile');
   if (share) {
     sharedMode = true;
     sharedUsername = share;
-    // Clean URL but keep share param
     if (params.get('auth') || params.get('auth_error')) {
       params.delete('auth'); params.delete('auth_error'); params.delete('username');
       window.history.replaceState({}, '', '?' + params.toString());
     }
+  }
+  if (profile) {
+    _profileParam = profile;
+    // Clean URL
+    params.delete('profile');
+    window.history.replaceState({}, '', params.toString() ? '?' + params.toString() : window.location.pathname);
   }
 })();
 
@@ -3515,10 +3534,13 @@ function loadDiscover() {
   fetch('api/discover/' + encodeURIComponent(username))
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      _discoverData        = data;
-      _discoverCartSet     = data.cartSet || {};
-      _forYouStoreFilter   = 'all';   // reset store filter on fresh load
-      _discoverGenreFilter = null;
+      _discoverData    = data;
+      _discoverCartSet = data.cartSet || {};
+      // Only reset filters if no pending profile→discover navigation
+      if (!_pendingDiscoverNav) {
+        _forYouStoreFilter   = 'all';
+        _discoverGenreFilter = null;
+      }
       renderDiscover();
       updateCartBadge(Object.keys(_discoverCartSet).length);
     })
@@ -3539,6 +3561,16 @@ function switchDiscoverTab(tab) {
 
 function renderDiscover() {
   if (!_discoverData) return;
+
+  // Apply pending navigation from profile sections
+  if (_pendingDiscoverNav) {
+    var nav = _pendingDiscoverNav;
+    _pendingDiscoverNav = null;
+    _discoverTab = nav.tab || 'forYou';
+    if (nav.genre !== undefined) { _discoverGenreFilter = nav.genre; _forYouStoreFilter = 'all'; }
+    if (nav.store !== undefined) { _inStockVendor = nav.store; }
+  }
+
   var tp = _discoverData.tasteProfile || {};
   var forYou = _discoverData.forYou || [];
   var stores = _discoverData.stores || [];
@@ -4179,34 +4211,44 @@ function renderProfile(p) {
     '</div>';
   }).join('');
 
-  // ── Taste DNA: genres ──
+  // ── isOwnProfile (can navigate to discover) ──
+  var isOwn = p.username === getCurrentUsername();
+
+  // ── Taste DNA: genres (clickable if own profile) ──
   var maxGenreCount = p.topGenres.length > 0 ? p.topGenres[0].count : 1;
   var genreHtml = p.topGenres.map(function(g) {
     var pct = Math.round((g.count / maxGenreCount) * 100);
-    return '<div class="prof-dna-row">' +
+    var rowClick = isOwn ? ' onclick="profGoToGenre(\'' + escapeAttr(g.name) + '\')" title="See ' + escapeAttr(g.name) + ' in For You →" style="cursor:pointer"' : '';
+    return '<div class="prof-dna-row' + (isOwn ? ' prof-dna-link' : '') + '"' + rowClick + '>' +
       '<span class="prof-dna-name">' + escapeHtml(g.name) + '</span>' +
       '<div class="prof-dna-bar-wrap"><div class="prof-dna-bar" style="width:' + pct + '%"></div></div>' +
       '<span class="prof-dna-count">' + g.count + '</span>' +
+      (isOwn ? '<span class="prof-dna-arrow">→</span>' : '') +
     '</div>';
   }).join('');
 
-  // ── Taste DNA: styles (pill cloud) ──
+  // ── Taste DNA: styles (pill cloud, clickable) ──
   var maxStyleCount = p.topStyles.length > 0 ? p.topStyles[0].count : 1;
   var styleHtml = p.topStyles.map(function(s) {
     var sz = 10 + Math.round((s.count / maxStyleCount) * 8);
-    return '<span class="prof-style-pill" style="font-size:' + sz + 'px">' + escapeHtml(s.name) + ' <span class="prof-style-count">' + s.count + '</span></span>';
+    var pillClick = isOwn ? ' onclick="profGoToGenre(\'' + escapeAttr(s.name) + '\')" title="See ' + escapeAttr(s.name) + ' in For You →"' : '';
+    return '<span class="prof-style-pill' + (isOwn ? ' prof-style-link' : '') + '" style="font-size:' + sz + 'px"' + pillClick + '>' +
+      escapeHtml(s.name) + ' <span class="prof-style-count">' + s.count + '</span>' +
+    '</span>';
   }).join('');
 
-  // ── Store breakdown ──
+  // ── Store breakdown (clickable → In Stock filtered) ──
   var maxStoreCount = p.storeBreakdown.length > 0 ? p.storeBreakdown[0].count : 1;
   var storeHtml = p.storeBreakdown.length > 0
     ? p.storeBreakdown.map(function(s) {
         var cls = storeClassMap[s.store] || '';
         var pct = Math.round((s.count / maxStoreCount) * 100);
-        return '<div class="prof-store-row">' +
+        var rowClick = isOwn ? ' onclick="profGoToStore(\'' + escapeAttr(s.store) + '\')" title="See ' + escapeAttr(storeDisplayName[s.store]||s.store) + ' in In Stock →" style="cursor:pointer"' : '';
+        return '<div class="prof-store-row' + (isOwn ? ' prof-dna-link' : '') + '"' + rowClick + '>' +
           '<span class="prof-store-name ' + cls + '">' + escapeHtml(storeDisplayName[s.store] || s.store) + '</span>' +
           '<div class="prof-store-bar-wrap"><div class="prof-store-bar ' + cls + '" style="width:' + pct + '%"></div></div>' +
           '<span class="prof-store-count">' + s.count + ' item' + (s.count !== 1 ? 's' : '') + '</span>' +
+          (isOwn ? '<span class="prof-dna-arrow">→</span>' : '') +
         '</div>';
       }).join('')
     : '<div class="prof-empty-small">No in-stock data yet — run a scan first.</div>';
@@ -4267,7 +4309,10 @@ function renderProfile(p) {
         '</div>' +
         '<div class="prof-stat-row">' + statsHtml + '</div>' +
       '</div>' +
-      '<button class="prof-refresh-btn" onclick="_profileCache=null;loadProfile()" title="Refresh profile">↻</button>' +
+      '<div class="prof-hero-btns">' +
+        '<button class="prof-share-btn" onclick="profShareProfile(\'' + escapeAttr(p.username) + '\')" title="Copy shareable link">Share ↗</button>' +
+        (isOwn ? '<button class="prof-refresh-btn" onclick="_profileCache=null;loadProfile()" title="Refresh">↻</button>' : '') +
+      '</div>' +
     '</div>' +
 
     // Two-column body
@@ -4302,6 +4347,52 @@ function renderProfile(p) {
       '</div>' +
 
     '</div>';
+}
+
+// ─── Profile cross-navigation helpers ────────────────────────────────────────
+
+// Pending navigation applied after discover data loads
+var _pendingDiscoverNav = null;
+
+function profGoToGenre(genre) {
+  _pendingDiscoverNav = { tab: 'forYou', genre: genre };
+  switchView('discover', document.querySelector('.nav-link[data-view="discover"]'));
+}
+
+function profGoToStore(store) {
+  _pendingDiscoverNav = { tab: 'inStock', store: store };
+  switchView('discover', document.querySelector('.nav-link[data-view="discover"]'));
+}
+
+function profShareProfile(username) {
+  var url = window.location.origin + window.location.pathname + '?profile=' + encodeURIComponent(username);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(function() {
+      var btn = document.querySelector('.prof-share-btn');
+      if (btn) { var orig = btn.textContent; btn.textContent = 'Copied!'; setTimeout(function(){ btn.textContent = orig; }, 1800); }
+    });
+  } else {
+    window.prompt('Copy this link:', url);
+  }
+}
+
+function profLoadPublic(username) {
+  // Load another user's profile (read-only view)
+  _profileCache    = null;
+  _profileUsername = username;
+  switchView('profile', document.querySelector('.nav-link[data-view="profile"]'));
+  // Override: fetch their data even if not logged in
+  document.getElementById('profileBody').innerHTML =
+    '<div class="disc-loading" style="display:flex"><div class="disc-spinner"></div>Loading profile…</div>';
+  fetch('api/profile/' + encodeURIComponent(username))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      _profileCache = data;
+      renderProfile(data);
+    })
+    .catch(function() {
+      document.getElementById('profileBody').innerHTML = '<div class="prof-empty">Profile not found.</div>';
+    });
 }
 
 function formatRelativeTime(isoStr) {
