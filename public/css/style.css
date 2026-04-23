@@ -4616,6 +4616,8 @@ body.light .mobile-tab.active { color: #C9A227; }
   margin-top: 2px;
 }
 
+.disc-item-price-col { display: flex; align-items: center; justify-content: flex-end; }
+
 .disc-item-price {
   font-size: 13px;
   color: #C9A227;
@@ -4737,3 +4739,302 @@ body.light .disc-spinner { border-color: #eee; border-top-color: #C9A227; }
 body.light .disc-empty { color: #bbb; }
 body.light .disc-item-discogs-price { color: #666; }
 body.light .disc-item-discogs-forsale { color: #aaa; }
+
+/* ═══════════════════════════════════════════════════════════════
+   DISCOVER — FOR YOU TAB
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Tab bar ─── */
+.disc-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #222;
+  padding-bottom: 0;
+}
+
+.disc-tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #666;
+  font-family: 'Oswald', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 8px 16px 10px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+}
+.disc-tab-btn:hover { color: #bbb; }
+.disc-tab-btn.active { color: #C9A227; border-bottom-color: #C9A227; }
+
+/* ─── For You controls (filter buttons + taste tags + genre pills) ─── */
+.disc-foryou-controls {
+  margin-bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.disc-foryou-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.disc-filter-btn {
+  background: none;
+  border: 1px solid #333;
+  color: #777;
+  font-family: 'Oswald', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.disc-filter-btn:hover { border-color: #666; color: #bbb; }
+.disc-filter-btn.active { border-color: #C9A227; color: #C9A227; background: rgba(201,162,39,0.06); }
+
+/* ─── Taste tag cloud ─── */
+.disc-taste-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-left: 8px;
+}
+
+.disc-taste-tag {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(201,162,39,0.08);
+  color: #888;
+  border: 1px solid rgba(201,162,39,0.15);
+  font-family: 'Oswald', sans-serif;
+  letter-spacing: 0.3px;
+}
+
+/* ─── Card grid ─── */
+.disc-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+/* ─── Individual For You card ─── */
+.disc-fy-card {
+  background: #111;
+  border: 1px solid #1e1e1e;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.12s;
+  display: flex;
+  flex-direction: column;
+}
+.disc-fy-card:hover { border-color: #333; transform: translateY(-2px); }
+
+/* ─── Album art area ─── */
+.disc-card-art-wrap {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  background: #0d0d0d;
+  overflow: hidden;
+}
+
+.disc-card-art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.disc-card-art-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: #2a2a2a;
+}
+
+/* ─── Match badge (corner of art) ─── */
+/* Override base .disc-match-badge for wantlist/high/mid variants */
+.disc-card-art-wrap .disc-match-badge {
+  background: #555;
+  color: #fff;
+}
+.disc-card-art-wrap .disc-match-badge.wantlist {
+  background: #2d6a4f;
+  color: #80ffb8;
+}
+.disc-card-art-wrap .disc-match-badge.high {
+  background: #C9A227;
+  color: #000;
+}
+.disc-card-art-wrap .disc-match-badge.mid {
+  background: #444;
+  color: #ccc;
+}
+
+/* ─── "WANTLIST" corner stamp ─── */
+.disc-wantlist-badge {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: #80ffb8;
+  background: rgba(0,0,0,0.7);
+  border: 1px solid rgba(128,255,184,0.3);
+  border-radius: 3px;
+  padding: 2px 5px;
+  text-transform: uppercase;
+}
+
+/* ─── Card body (text area) ─── */
+.disc-card-body {
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.disc-card-artist {
+  font-size: 10px;
+  font-weight: 700;
+  color: #C9A227;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.3px;
+}
+
+.disc-card-title {
+  font-size: 11px;
+  color: #bbb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+/* ─── Card footer (genre chip + store badge + price + cart btn) ─── */
+.disc-card-footer {
+  margin-top: auto;
+  padding-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.disc-card-genre-chip {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #1a1a1a;
+  color: #666;
+  border: 1px solid #222;
+  font-family: 'Oswald', sans-serif;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 80px;
+}
+
+/* ─── Store badge on For You cards ─── */
+.disc-card-store-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #888;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  padding: 1px 6px;
+  border-radius: 8px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.disc-card-store-badge.hhv      { color: #C9A227; border-color: rgba(201,162,39,0.25); }
+.disc-card-store-badge.deejay   { color: #d0d0d0; border-color: rgba(200,200,200,0.2); }
+.disc-card-store-badge.hardwax  { color: #e07020; border-color: rgba(224,112,32,0.25); }
+.disc-card-store-badge.juno     { color: #4dabf7; border-color: rgba(77,171,247,0.25); }
+.disc-card-store-badge.decks    { color: #a0d911; border-color: rgba(160,217,17,0.25); }
+.disc-card-store-badge.ttlab    { color: #be4bdb; border-color: rgba(190,75,219,0.25); }
+.disc-card-store-badge.uvs      { color: #20c997; border-color: rgba(32,201,151,0.25); }
+.disc-card-store-badge.phonica  { color: #ff6b6b; border-color: rgba(255,107,107,0.25); }
+.disc-card-store-badge.yoyaku   { color: #ffd43b; border-color: rgba(255,212,59,0.25); }
+.disc-card-store-badge.gramaphone { color: #e0303e; border-color: rgba(200,16,46,0.25); }
+.disc-card-store-badge.further  { color: #d97706; border-color: rgba(217,119,6,0.25); }
+.disc-card-store-badge.octopus  { color: #3a9bd5; border-color: rgba(58,155,213,0.25); }
+
+.disc-card-price {
+  font-size: 11px;
+  font-weight: 700;
+  color: #C9A227;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.disc-card-cart-btn {
+  background: none;
+  border: 1px solid #2a2a2a;
+  color: #555;
+  font-size: 13px;
+  line-height: 1;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s;
+  flex-shrink: 0;
+  font-family: inherit;
+}
+.disc-card-cart-btn:hover { border-color: #C9A227; color: #C9A227; }
+.disc-card-cart-btn.in-cart { border-color: #C9A227; color: #C9A227; background: rgba(201,162,39,0.1); }
+.disc-card-cart-btn.in-cart:hover { border-color: #e55; color: #e55; background: rgba(220,50,50,0.06); }
+
+/* ─── Light mode overrides for For You ─── */
+body.light .disc-tab-btn { color: #bbb; }
+body.light .disc-tab-btn:hover { color: #444; }
+body.light .disc-tab-btn.active { color: #C9A227; }
+body.light .disc-tabs { border-bottom-color: #e0e0e0; }
+body.light .disc-filter-btn { border-color: #ddd; color: #aaa; }
+body.light .disc-filter-btn:hover { border-color: #aaa; color: #444; }
+body.light .disc-filter-btn.active { border-color: #C9A227; color: #C9A227; }
+body.light .disc-taste-tag { background: rgba(201,162,39,0.06); color: #aaa; border-color: rgba(201,162,39,0.2); }
+body.light .disc-fy-card { background: #fff; border-color: #e8e8e8; }
+body.light .disc-fy-card:hover { border-color: #ccc; }
+body.light .disc-card-art-wrap { background: #f5f5f5; }
+body.light .disc-card-art-placeholder { color: #d0d0d0; }
+body.light .disc-card-artist { color: #b8860b; }
+body.light .disc-card-title { color: #333; }
+body.light .disc-card-genre-chip { background: #f5f5f5; color: #aaa; border-color: #e8e8e8; }
+body.light .disc-card-store-badge { background: #f5f5f5; border-color: #e0e0e0; }
+body.light .disc-card-cart-btn { border-color: #e0e0e0; color: #bbb; }
+body.light .disc-wantlist-badge { color: #2d6a4f; background: rgba(255,255,255,0.9); border-color: rgba(45,106,79,0.4); }
+
+/* ─── Mobile For You ─── */
+@media (max-width: 600px) {
+  .disc-card-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+  .disc-fy-card { border-radius: 6px; }
+  .disc-card-body { padding: 6px 8px 8px; }
+  .disc-foryou-filters { gap: 4px; }
+  .disc-filter-btn { padding: 3px 9px; font-size: 10px; }
+}

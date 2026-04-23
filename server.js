@@ -1554,9 +1554,99 @@ app.get('/api/discover/:username', function(req, res) {
             };
         }).sort(function(a,b) { return b.itemCount - a.itemCount; });
 
+        // ── "For You" feed ─────────────────────────────────────────────────────
+        // 1. Wantlist in-stock items → 100% match (user already wants them)
+        var forYouItems = [];
+        rows.forEach(function(row) {
+            var matches = [];
+            try { matches = JSON.parse(row.matches || '[]'); } catch(e) {}
+            var priceStr = matches.length > 0 ? (matches[0].price || '') : '';
+            var itemUrl  = matches.length > 0 && matches[0].url ? matches[0].url : (row.search_url || '');
+            forYouItems.push({
+                wantlistId:    row.wantlist_id,
+                discogsId:     row.discogs_id || null,
+                artist:        row.artist  || '',
+                title:         row.title   || '',
+                year:          row.year    || null,
+                label:         row.label   || '',
+                catno:         row.catno   || '',
+                store:         row.store,
+                thumb:         row.thumb   || '',
+                image:         row.thumb   || '',
+                genres:        row.genres  || '',
+                styles:        row.styles  || '',
+                priceStr:      priceStr,
+                priceUsd:      null,
+                discogsLowest: row.discogs_lowest  || null,
+                numForSale:    row.num_for_sale    || 0,
+                url:           itemUrl,
+                matchPct:      100,
+                source:        'wantlist',
+                inCart:        !!cartSet[String(row.wantlist_id) + ':' + row.store],
+            });
+        });
+
+        // 2. Taste-based recs from catalog inventory (algo-scored)
+        var tasteProfile = { topGenres: [], topStyles: [], wantlistSize: 0, inventorySize: 0, computeMs: 0 };
+        try {
+            var rec = require('./lib/recommendations');
+            var recResult = rec.getRecommendations(req.params.username, 60);
+            tasteProfile = {
+                topGenres:     recResult.topGenres    || [],
+                topStyles:     recResult.topStyles    || [],
+                wantlistSize:  recResult.wantlistSize || 0,
+                inventorySize: recResult.inventorySize || 0,
+                computeMs:     recResult.computeMs   || 0,
+            };
+            // Dedup: skip if same artist+title already in wantlist in-stock
+            var wantlistKeys = new Set(forYouItems.map(function(i) {
+                return (i.artist + '|' + i.title).toLowerCase();
+            }));
+            (recResult.recommendations || []).forEach(function(r) {
+                var key = (r.artist + '|' + r.title).toLowerCase();
+                if (wantlistKeys.has(key)) return; // already shown at 100%
+                var tags = Array.isArray(r.tags) ? r.tags : [];
+                forYouItems.push({
+                    wantlistId:    null,
+                    discogsId:     null,
+                    artist:        r.artist || '',
+                    title:         r.title  || '',
+                    year:          r.year   || null,
+                    label:         r.label  || '',
+                    catno:         r.catno  || '',
+                    store:         r.store  || '',
+                    thumb:         r.image  || '',
+                    image:         r.image  || '',
+                    genres:        tags.filter(function(t){ return t.length < 20; }).slice(0,2).join('|'),
+                    styles:        tags.slice(0,4).join('|'),
+                    priceStr:      r.price  ? '$' + r.price.toFixed(2) : '',
+                    priceUsd:      r.price  || null,
+                    discogsLowest: null,
+                    numForSale:    0,
+                    url:           r.url    || '',
+                    matchPct:      r.matchPct || 0,
+                    reasons:       r.reasonTypes || [],
+                    source:        'catalog',
+                    inCart:        false,
+                });
+                wantlistKeys.add(key);
+            });
+        } catch(recErr) {
+            console.error('[discover] rec error:', recErr.message);
+        }
+
+        // Sort: wantlist (100%) first, then by matchPct desc
+        forYouItems.sort(function(a, b) {
+            if (a.source === 'wantlist' && b.source !== 'wantlist') return -1;
+            if (b.source === 'wantlist' && a.source !== 'wantlist') return  1;
+            return b.matchPct - a.matchPct;
+        });
+
         res.json({
             username:     req.params.username,
             stores:       stores,
+            forYou:       forYouItems,
+            tasteProfile: tasteProfile,
             cart:         cartItems,
             cartSet:      cartSet,
             totalInStock: rows.length,
