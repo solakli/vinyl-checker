@@ -1897,6 +1897,197 @@ app.get('/api/profile/:username', function (req, res) {
         // ── Meta-sync status ──
         var totalDiscogs = d.prepare('SELECT COUNT(*) as c FROM wantlist WHERE user_id=? AND active=1 AND discogs_id IS NOT NULL').get(user.id).c;
 
+        // ── Gem Intelligence (YouTube + Discogs taste signals) ──
+        var gemIntel = null;
+        try {
+            var gemScore = require('./lib/gem-score');
+            var scoredReleases = gemScore.scoreUserCollection(user.id, d);
+            var summary = gemScore.tasteSummary(scoredReleases);
+
+            // Gem Density: % of releases in top 2 tiers
+            var topTierCount = (summary.tierCounts.hidden_gem || 0) + (summary.tierCounts.club_weapon || 0);
+            var gemDensity = summary.total > 0 ? Math.round(topTierCount / summary.total * 100) : 0;
+
+            // Rarity Index: avg rarity signal across enriched releases (0-100)
+            var enrichedReleases = scoredReleases.filter(function(r) { return r.enriched; });
+            var rarityIndex = 0;
+            var djValidation = 0;
+            var engagementLevel = 0;
+            if (enrichedReleases.length > 0) {
+                rarityIndex = Math.round(enrichedReleases.reduce(function(sum, r) { return sum + r.signals.rarity; }, 0) / enrichedReleases.length);
+                djValidation = Math.round(enrichedReleases.reduce(function(sum, r) { return sum + r.signals.djSignal; }, 0) / enrichedReleases.length);
+                engagementLevel = Math.round(enrichedReleases.reduce(function(sum, r) { return sum + r.signals.engagement; }, 0) / enrichedReleases.length);
+            }
+
+            // Top hidden gems (highest scoring, enriched preferred)
+            var topGems = scoredReleases
+                .filter(function(r) { return r.tier === 'hidden_gem' || r.tier === 'club_weapon' || r.tier === 'deep_cut'; })
+                .slice(0, 8)
+                .map(function(r) {
+                    // Pull thumbnail from wantlist or collection
+                    var thumbRow = d.prepare('SELECT thumb FROM wantlist WHERE discogs_id=? AND user_id=? LIMIT 1').get(r.discogs_id, user.id)
+                                || d.prepare('SELECT thumb FROM collection WHERE discogs_id=? AND user_id=? LIMIT 1').get(r.discogs_id, user.id);
+                    return {
+                        discogs_id: r.discogs_id,
+                        artist: r.artist,
+                        title: r.title,
+                        gemScore: r.gemScore,
+                        tier: r.tier,
+                        viewCount: r.viewCount,
+                        videoId: r.videoId,
+                        thumb: thumbRow ? thumbRow.thumb : null,
+                    };
+                });
+
+            // Archetype determination (rule-based, 40+ archetypes)
+            var ytGenres = (summary.topGenres || []).map(function(g) { return g.toLowerCase(); });
+            var discogsStyles = Object.keys(styleCounts).sort(function(a,b){ return styleCounts[b]-styleCounts[a]; }).slice(0,20).map(function(s){ return s.toLowerCase(); });
+            var discogsGenres = Object.keys(genreCounts).sort(function(a,b){ return genreCounts[b]-genreCounts[a]; }).slice(0,10).map(function(g){ return g.toLowerCase(); });
+            var allTags = ytGenres.concat(discogsStyles).concat(discogsGenres);
+
+            function hasTag() {
+                var tags = Array.prototype.slice.call(arguments);
+                return tags.some(function(t) { return allTags.some(function(a) { return a.indexOf(t) >= 0; }); });
+            }
+
+            var archetypeCandidates = [
+                // Ultra-underground
+                { label: 'Lab Excavator',              icon: '🔬', color: 'cyan',
+                  score: summary.undergroundPct >= 85 && gemDensity >= 30 ? 100 : 0 },
+                { label: 'Acetate Hunter',             icon: '🕳️', color: 'gold',
+                  score: rarityIndex >= 80 && summary.undergroundPct >= 70 ? 98 : 0 },
+                { label: 'White Label Warrior',        icon: '⬜', color: 'smoke',
+                  score: summary.undergroundPct >= 75 && summary.avgGemScore >= 55 ? 95 : 0 },
+                { label: 'Promo-Only Hunter',          icon: '📬', color: 'smoke',
+                  score: summary.undergroundPct >= 85 ? 90 : 0 },
+                // Techno
+                { label: 'Hypnotic Techno Archaeologist', icon: '🌀', color: 'blue',
+                  score: hasTag('techno', 'minimal techno') && summary.undergroundPct >= 60 ? 92 : 0 },
+                { label: 'Detroit Techno Purist',      icon: '🏭', color: 'smoke',
+                  score: hasTag('detroit', 'techno') && (topDecade === '90s' || topDecade === '00s') ? 90 : 0 },
+                { label: 'Berlin Bunker Selector',     icon: '🏚️', color: 'dark',
+                  score: hasTag('techno', 'industrial') && summary.avgGemScore >= 60 ? 88 : 0 },
+                { label: 'Dub Techno Spacetraveller',  icon: '🌌', color: 'purple',
+                  score: hasTag('dub techno', 'dub') && hasTag('techno') ? 86 : 0 },
+                { label: 'Rominimal Purist',           icon: '🎛️', color: 'teal',
+                  score: hasTag('minimal', 'microhouse') && summary.undergroundPct >= 65 ? 84 : 0 },
+                { label: 'Hard Techno Fundamentalist', icon: '⚒️', color: 'red',
+                  score: hasTag('hard techno', 'schranz', 'industrial techno') ? 82 : 0 },
+                // House
+                { label: 'Deep House Surgeon',         icon: '🩺', color: 'blue',
+                  score: hasTag('deep house') && summary.undergroundPct >= 50 ? 88 : 0 },
+                { label: 'Chicago House Historian',    icon: '🎹', color: 'gold',
+                  score: hasTag('house', 'chicago') && (topDecade === '80s' || topDecade === '90s') ? 86 : 0 },
+                { label: 'UK Garage Head',             icon: '🚗', color: 'yellow',
+                  score: hasTag('uk garage', 'garage', 'speed garage') ? 90 : 0 },
+                { label: 'Soulful House Devotee',      icon: '🙏', color: 'orange',
+                  score: hasTag('soulful house', 'gospel house') ? 84 : 0 },
+                { label: 'Afro House Nomad',           icon: '🌍', color: 'orange',
+                  score: hasTag('afro house', 'tribal house', 'afro') ? 84 : 0 },
+                { label: 'Jackin House Fundamentalist', icon: '🎛️', color: 'gold',
+                  score: hasTag('jackin', 'jack') && hasTag('house') ? 80 : 0 },
+                { label: 'Late Night Club Weapon Carrier', icon: '🔫', color: 'red',
+                  score: djValidation >= 45 && hasTag('house', 'techno') ? 86 : 0 },
+                // Soul / Jazz / Groove
+                { label: 'Rare Groove Surgeon',        icon: '💎', color: 'gold',
+                  score: hasTag('soul', 'funk', 'rare groove') && rarityIndex >= 65 ? 92 : 0 },
+                { label: 'Jazz Fusion Excavator',      icon: '🎷', color: 'gold',
+                  score: hasTag('jazz', 'fusion') && summary.undergroundPct >= 40 ? 86 : 0 },
+                { label: 'Cosmic Disco Dealer',        icon: '🌠', color: 'purple',
+                  score: hasTag('disco', 'cosmic disco', 'italo disco') ? 84 : 0 },
+                { label: 'Soul Jazz Librarian',        icon: '📚', color: 'gold',
+                  score: hasTag('soul', 'jazz') && (topDecade === '60s' || topDecade === '70s') ? 86 : 0 },
+                { label: 'Japanese Jazz Head',         icon: '🗾', color: 'red',
+                  score: hasTag('jazz') && topDecade === '70s' && rarityIndex >= 60 ? 88 : 0 },
+                { label: 'Blue Note Purist',           icon: '🎺', color: 'blue',
+                  score: hasTag('jazz', 'bebop', 'hard bop') && (topDecade === '50s' || topDecade === '60s') ? 86 : 0 },
+                { label: 'Funk Archaeologist',         icon: '🎸', color: 'orange',
+                  score: hasTag('funk') && (topDecade === '70s' || topDecade === '80s') ? 82 : 0 },
+                // DnB / Jungle
+                { label: 'Jungle Excavator',           icon: '🌿', color: 'green',
+                  score: hasTag('jungle', 'drum and bass') && topDecade === '90s' ? 90 : 0 },
+                { label: 'Neurofunk Scientist',        icon: '🧠', color: 'blue',
+                  score: hasTag('neurofunk') ? 84 : 0 },
+                { label: 'Amen Break Archaeologist',   icon: '💥', color: 'red',
+                  score: hasTag('breakbeat', 'breaks', 'amen') && summary.undergroundPct >= 55 ? 82 : 0 },
+                { label: 'Liquid DnB Philosopher',     icon: '🌊', color: 'blue',
+                  score: hasTag('liquid', 'liquid dnb', 'liquid funk') ? 78 : 0 },
+                // Electronic / Experimental
+                { label: 'Ambient Architect',          icon: '🌙', color: 'purple',
+                  score: hasTag('ambient', 'drone', 'new age') && summary.undergroundPct >= 60 ? 84 : 0 },
+                { label: 'Electro Purist',             icon: '⚡', color: 'yellow',
+                  score: hasTag('electro') && summary.undergroundPct >= 50 ? 86 : 0 },
+                { label: 'IDM Labyrinth Explorer',     icon: '🔀', color: 'blue',
+                  score: hasTag('idm', 'intelligent dance') ? 82 : 0 },
+                { label: 'Industrial Archivist',       icon: '⚙️', color: 'smoke',
+                  score: hasTag('industrial', 'ebm', 'noise') ? 80 : 0 },
+                // Global
+                { label: 'Global Bass Nomad',          icon: '🌐', color: 'teal',
+                  score: hasTag('world', 'global bass', 'afrobeat', 'worldbeat') ? 82 : 0 },
+                { label: 'Afrobeat Archivist',         icon: '🥁', color: 'orange',
+                  score: hasTag('afrobeat', 'highlife') && (topDecade === '70s' || topDecade === '80s') ? 84 : 0 },
+                { label: 'Latin Groove Digger',        icon: '💃', color: 'orange',
+                  score: hasTag('cumbia', 'salsa', 'latin', 'bossa nova') ? 80 : 0 },
+                // UK-specific
+                { label: 'Late 90s UK Underground Head', icon: '🇬🇧', color: 'smoke',
+                  score: topDecade === '90s' && summary.undergroundPct >= 60 ? 82 : 0 },
+                { label: 'UK Bass Ambassador',         icon: '📢', color: 'blue',
+                  score: hasTag('dubstep', 'grime', 'uk bass') ? 84 : 0 },
+                { label: 'Bristol Sound Archivist',    icon: '🌉', color: 'green',
+                  score: hasTag('trip hop', 'breakbeat') && topDecade === '90s' ? 80 : 0 },
+                // Era archetypes
+                { label: 'Pre-Digital Era Purist',     icon: '📼', color: 'smoke',
+                  score: (topDecade === '70s' || topDecade === '80s') && rarityIndex >= 60 ? 80 : 0 },
+                { label: 'Golden Era Selector',        icon: '🏆', color: 'gold',
+                  score: topDecade === '90s' && summary.avgGemScore >= 50 ? 78 : 0 },
+                { label: 'Y2K Underground Survivor',   icon: '💾', color: 'teal',
+                  score: topDecade === '00s' && summary.undergroundPct >= 55 ? 76 : 0 },
+                { label: 'Second Summer of Love Veteran', icon: '☀️', color: 'gold',
+                  score: hasTag('acid', 'house') && topDecade === '80s' ? 84 : 0 },
+                // Collector archetypes
+                { label: 'Club Weapon Dealer',         icon: '🔥', color: 'red',
+                  score: (summary.tierCounts.club_weapon || 0) >= 3 && djValidation >= 40 ? 88 : 0 },
+                { label: 'Hidden Gem Hoarder',         icon: '🔮', color: 'purple',
+                  score: gemDensity >= 20 && summary.undergroundPct >= 65 ? 86 : 0 },
+                { label: 'Discogs Rabbit Hole Resident', icon: '🕳️', color: 'purple',
+                  score: (wantlistSize || 0) >= 300 && rarityIndex >= 55 ? 80 : 0 },
+                { label: 'Library Music Excavator',    icon: '🏛️', color: 'gold',
+                  score: hasTag('library music', 'production music', 'library') ? 86 : 0 },
+                { label: 'B2B Selector',               icon: '🎧', color: 'blue',
+                  score: djValidation >= 55 ? 84 : 0 },
+                // Fallbacks
+                { label: 'Underground Digger',         icon: '⛏️', color: 'smoke',
+                  score: summary.undergroundPct >= 40 ? 50 : 0 },
+                { label: 'Vinyl Purist',               icon: '🎵', color: 'gold',
+                  score: (wantlistSize || 0) >= 30 ? 30 : 0 },
+            ];
+
+            var gemArchetypes = archetypeCandidates
+                .filter(function(a) { return a.score > 0; })
+                .sort(function(a, b) { return b.score - a.score; })
+                .slice(0, 4);
+
+            gemIntel = {
+                undergroundPct:  summary.undergroundPct,
+                avgGemScore:     summary.avgGemScore,
+                gemDensity:      gemDensity,
+                rarityIndex:     rarityIndex,
+                djValidation:    djValidation,
+                engagementLevel: engagementLevel,
+                tierCounts:      summary.tierCounts,
+                total:           summary.total,
+                enriched:        summary.enriched,
+                enrichedPct:     summary.enrichedPct,
+                topGenres:       summary.topGenres.slice(0, 10),
+                topDjs:          summary.topDjs.slice(0, 6),
+                topEras:         summary.topEras.slice(0, 5),
+                topGems:         topGems,
+                archetypes:      gemArchetypes,
+            };
+        } catch(e) {
+            console.error('[profile] gemIntel error:', e.message);
+        }
+
         res.json({
             username:        user.username,
             collectionSize:  collectionSize,
@@ -1931,7 +2122,8 @@ app.get('/api/profile/:username', function (req, res) {
             hunting: { topGenres: huntingTopGenres, topStyles: huntingTopStyles, total: wantlistItems.length },
             keeping: { topGenres: keepingTopGenres, topStyles: keepingTopStyles, total: collectionSize },
             leaning: { trend: leaningTrend, genreTrend: leaningGenreTrend, recentCount: recentCollItems.length },
-            storeMatch: storeMatch
+            storeMatch: storeMatch,
+            gemIntel: gemIntel
         });
     } catch(e) {
         console.error('[profile] error:', e.message);

@@ -4352,6 +4352,210 @@ function loadProfile() {
     });
 }
 
+// ── Gem Intelligence: YouTube + Discogs taste signals ───────────────────────
+function _buildGemIntelHtml(g) {
+  if (!g || !g.total) return '';
+
+  // ── Underground Index — half-circle gauge (SVG) ──
+  var pct = g.undergroundPct || 0;
+  var gaugeAngle = pct / 100 * 180; // degrees (0–180)
+  var needleRad = (180 - gaugeAngle) * Math.PI / 180; // rotate from left
+  var nx = 50 + 38 * Math.cos(needleRad);
+  var ny = 50 - 38 * Math.sin(needleRad);
+  var gaugeColor = pct >= 70 ? '#4ade80' : pct >= 40 ? '#C9A227' : '#ff6b6b';
+  var gaugeLabel = pct >= 75 ? 'UNDERGROUND' : pct >= 50 ? 'DEEP' : pct >= 30 ? 'MIXED' : 'MAINSTREAM';
+  var gaugeSvg = '<svg viewBox="0 0 100 55" class="gi-gauge-svg">' +
+    // Background arc (grey)
+    '<path d="M 8 50 A 42 42 0 0 1 92 50" fill="none" stroke="#333" stroke-width="8" stroke-linecap="round"/>' +
+    // Colored arc segments
+    '<path d="M 8 50 A 42 42 0 0 1 50 8" fill="none" stroke="#4ade80" stroke-width="8" stroke-linecap="round" opacity="0.3"/>' +
+    '<path d="M 50 8 A 42 42 0 0 1 92 50" fill="none" stroke="#ff6b6b" stroke-width="8" stroke-linecap="round" opacity="0.2"/>' +
+    // Filled arc
+    '<path d="M 8 50 A 42 42 0 ' + (gaugeAngle > 90 ? 1 : 0) + ' 1 ' + nx.toFixed(1) + ' ' + ny.toFixed(1) + '" fill="none" stroke="' + gaugeColor + '" stroke-width="8" stroke-linecap="round"/>' +
+    // Center text
+    '<text x="50" y="47" text-anchor="middle" font-family="Oswald,sans-serif" font-size="18" font-weight="700" fill="' + gaugeColor + '">' + pct + '%</text>' +
+    '</svg>';
+
+  // ── Gem Score ring ──
+  var gs = g.avgGemScore || 0;
+  var gsR = 28, gsCirc = 2 * Math.PI * gsR;
+  var gsDash = (gs / 100) * gsCirc;
+  var gsColor = gs >= 65 ? '#C9A227' : gs >= 45 ? '#4ade80' : '#888';
+  var gemRing = '<svg viewBox="0 0 70 70" class="gi-ring-svg">' +
+    '<circle cx="35" cy="35" r="' + gsR + '" fill="none" stroke="#333" stroke-width="7"/>' +
+    '<circle cx="35" cy="35" r="' + gsR + '" fill="none" stroke="' + gsColor + '" stroke-width="7" stroke-linecap="round" ' +
+      'stroke-dasharray="' + gsDash.toFixed(1) + ' ' + gsCirc.toFixed(1) + '" transform="rotate(-90 35 35)"/>' +
+    '<text x="35" y="38" text-anchor="middle" font-family="Oswald,sans-serif" font-size="15" font-weight="700" fill="' + gsColor + '">' + gs + '</text>' +
+    '</svg>';
+
+  // ── Tier breakdown bars ──
+  var tiers = [
+    { key: 'hidden_gem',     icon: '💎', label: 'Hidden Gems',     cls: 'gi-tier-gem' },
+    { key: 'club_weapon',    icon: '🔥', label: 'Club Weapons',    cls: 'gi-tier-club' },
+    { key: 'deep_cut',       icon: '🎯', label: 'Deep Cuts',       cls: 'gi-tier-deep' },
+    { key: 'known_quantity', icon: '📣', label: 'Known Quantity',  cls: 'gi-tier-known' },
+    { key: 'unscored',       icon: '⬜', label: 'Unscored',        cls: 'gi-tier-unscore' },
+  ];
+  var maxTier = Math.max.apply(null, tiers.map(function(t) { return g.tierCounts[t.key] || 0; }));
+  var tierBarsHtml = tiers.map(function(t) {
+    var cnt = g.tierCounts[t.key] || 0;
+    var pctW = maxTier > 0 ? Math.round(cnt / maxTier * 100) : 0;
+    var relPct = g.total > 0 ? ((cnt / g.total * 100).toFixed(1)) : '0';
+    return '<div class="gi-tier-row">' +
+      '<span class="gi-tier-icon">' + t.icon + '</span>' +
+      '<span class="gi-tier-label">' + t.label + '</span>' +
+      '<div class="gi-tier-bar-wrap"><div class="gi-tier-bar ' + t.cls + '" style="width:' + pctW + '%"></div></div>' +
+      '<span class="gi-tier-count">' + cnt + '</span>' +
+      '<span class="gi-tier-pct">' + relPct + '%</span>' +
+    '</div>';
+  }).join('');
+
+  // ── Top Gem cards ──
+  var gemCardsHtml = '';
+  if (g.topGems && g.topGems.length) {
+    gemCardsHtml = '<div class="gi-gems-row">' + g.topGems.map(function(r) {
+      var tierDot = { hidden_gem:'💎', club_weapon:'🔥', deep_cut:'🎯' }[r.tier] || '';
+      var viewsLabel = r.viewCount != null
+        ? (r.viewCount >= 1000000 ? (r.viewCount/1000000).toFixed(1)+'M' :
+           r.viewCount >= 1000    ? (r.viewCount/1000).toFixed(1)+'K'    : r.viewCount) + ' views'
+        : 'underground';
+      var artHtml = r.thumb
+        ? '<img class="gi-gem-art" src="' + escapeHtml(r.thumb) + '" loading="lazy" onerror="this.style.display=\'none\'">'
+        : '<div class="gi-gem-art-ph">♪</div>';
+      var ytLink = r.videoId
+        ? ' onclick="window.open(\'https://youtube.com/watch?v=' + escapeAttr(r.videoId) + '\',\'_blank\')"'
+        : '';
+      return '<div class="gi-gem-card"' + ytLink + '>' +
+        artHtml +
+        '<div class="gi-gem-score">' + tierDot + ' ' + r.gemScore + '</div>' +
+        '<div class="gi-gem-artist">' + escapeHtml(r.artist || '') + '</div>' +
+        '<div class="gi-gem-title">' + escapeHtml(r.title || '') + '</div>' +
+        '<div class="gi-gem-views">' + viewsLabel + '</div>' +
+      '</div>';
+    }).join('') + '</div>';
+  }
+
+  // ── YouTube Comment genres ──
+  var ytGenresHtml = '';
+  if (g.topGenres && g.topGenres.length) {
+    ytGenresHtml = '<div class="gi-tags">' +
+      g.topGenres.map(function(gn) {
+        return '<span class="gi-tag gi-tag-genre">' + escapeHtml(gn) + '</span>';
+      }).join('') +
+    '</div>';
+  }
+
+  // ── Top DJs from comment data ──
+  var djHtml = '';
+  if (g.topDjs && g.topDjs.length) {
+    djHtml = '<div class="gi-tags">' +
+      g.topDjs.map(function(dj) {
+        return '<span class="gi-tag gi-tag-dj">🎧 ' + escapeHtml(dj) + '</span>';
+      }).join('') +
+    '</div>';
+  } else {
+    djHtml = '<div class="gi-empty-sm">No DJ mentions yet — more enrichment needed</div>';
+  }
+
+  // ── Archetypes ──
+  var archetypeColorMap = {
+    gold: '#C9A227', blue: '#4dabf7', green: '#4ade80', red: '#ff6b6b',
+    purple: '#be4bdb', teal: '#20c997', orange: '#f97316', yellow: '#ffd43b',
+    cyan: '#22d3ee', smoke: '#aaa', dark: '#ccc',
+  };
+  var archetypeHtml = '';
+  if (g.archetypes && g.archetypes.length) {
+    archetypeHtml = '<div class="gi-archetypes">' +
+      g.archetypes.map(function(a, i) {
+        var col = archetypeColorMap[a.color] || '#C9A227';
+        return '<div class="gi-archetype' + (i === 0 ? ' gi-archetype-primary' : '') + '" style="--arch-color:' + col + '">' +
+          '<span class="gi-arch-icon">' + (a.icon || '🎵') + '</span>' +
+          '<span class="gi-arch-label">' + escapeHtml(a.label) + '</span>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
+
+  // ── KPI pill row ──
+  var kpiHtml = '<div class="gi-kpis">' +
+    '<div class="gi-kpi">' +
+      '<div class="gi-kpi-val">' + (g.gemDensity || 0) + '%</div>' +
+      '<div class="gi-kpi-label">Gem Density</div>' +
+      '<div class="gi-kpi-sub">% in top tiers</div>' +
+    '</div>' +
+    '<div class="gi-kpi">' +
+      '<div class="gi-kpi-val ' + (g.rarityIndex >= 65 ? 'gi-kpi-hi' : '') + '">' + (g.rarityIndex || 0) + '</div>' +
+      '<div class="gi-kpi-label">Rarity Index</div>' +
+      '<div class="gi-kpi-sub">want/have signal</div>' +
+    '</div>' +
+    '<div class="gi-kpi">' +
+      '<div class="gi-kpi-val ' + (g.djValidation >= 40 ? 'gi-kpi-hi' : '') + '">' + (g.djValidation || 0) + '</div>' +
+      '<div class="gi-kpi-label">DJ Validation</div>' +
+      '<div class="gi-kpi-sub">club weapon signal</div>' +
+    '</div>' +
+    '<div class="gi-kpi">' +
+      '<div class="gi-kpi-val">' + (g.enriched || 0) + '<span style="font-size:14px;opacity:.6">/' + (g.total||0) + '</span></div>' +
+      '<div class="gi-kpi-label">Data Coverage</div>' +
+      '<div class="gi-kpi-sub">' + (g.enrichedPct || 0) + '% enriched</div>' +
+    '</div>' +
+  '</div>';
+
+  return '<div class="gi-band">' +
+
+    // Header
+    '<div class="gi-header">' +
+      '<span class="gi-header-title">✦ GEM INTELLIGENCE</span>' +
+      '<span class="gi-header-sub">powered by YouTube + Discogs signals · ' + (g.total||0) + ' releases analyzed</span>' +
+    '</div>' +
+
+    // Archetype row (top)
+    (archetypeHtml ? '<div class="gi-section gi-section-arch">' + archetypeHtml + '</div>' : '') +
+
+    // Main grid: gauge + ring + KPIs
+    '<div class="gi-main-grid">' +
+
+      // Underground gauge
+      '<div class="gi-gauge-block">' +
+        '<div class="gi-gauge-wrap">' + gaugeSvg + '</div>' +
+        '<div class="gi-gauge-label">UNDERGROUND<br>INDEX</div>' +
+        '<div class="gi-gauge-sub">' + gaugeLabel + '</div>' +
+      '</div>' +
+
+      // Gem score ring
+      '<div class="gi-ring-block">' +
+        '<div class="gi-ring-wrap">' + gemRing + '</div>' +
+        '<div class="gi-ring-label">AVG GEM<br>SCORE</div>' +
+      '</div>' +
+
+      // KPIs
+      kpiHtml +
+
+    '</div>' +
+
+    // Tier breakdown
+    '<div class="gi-section">' +
+      '<div class="gi-section-title">TIER BREAKDOWN</div>' +
+      tierBarsHtml +
+    '</div>' +
+
+    // Top Gems
+    (gemCardsHtml ? '<div class="gi-section"><div class="gi-section-title">TOP HIDDEN GEMS & CLUB WEAPONS</div>' + gemCardsHtml + '</div>' : '') +
+
+    // YouTube genres + DJs (two columns)
+    '<div class="gi-two-col">' +
+      '<div class="gi-col">' +
+        '<div class="gi-section-title">GENRES FROM YOUTUBE COMMENTS</div>' +
+        (ytGenresHtml || '<div class="gi-empty-sm">More enrichment needed</div>') +
+      '</div>' +
+      '<div class="gi-col">' +
+        '<div class="gi-section-title">DJ VALIDATION</div>' +
+        djHtml +
+      '</div>' +
+    '</div>' +
+
+  '</div>';
+}
+
 // ── Taste Intelligence: Hunting / Keeping / Leaning / Store Match ──────────
 function _buildTasteIntelHtml(p) {
   var h = p.hunting  || { topStyles: [], topGenres: [], total: 0 };
@@ -4508,6 +4712,23 @@ function renderProfile(p) {
       '</span>';
     }).join('');
     tagsHtml = '<div class="prof-archetype-row">' + tagPills + '</div>';
+  }
+
+  // ── Gem archetypes in hero (top 2, from gemIntel) ──
+  var gemArchetypeColorMap = {
+    gold: '#C9A227', blue: '#4dabf7', green: '#4ade80', red: '#ff6b6b',
+    purple: '#be4bdb', teal: '#20c997', orange: '#f97316', yellow: '#ffd43b',
+    cyan: '#22d3ee', smoke: '#aaa', dark: '#ccc',
+  };
+  if (p.gemIntel && p.gemIntel.archetypes && p.gemIntel.archetypes.length > 0) {
+    var gemPills = p.gemIntel.archetypes.slice(0, 2).map(function(a, i) {
+      var col = gemArchetypeColorMap[a.color] || '#C9A227';
+      return '<span class="prof-archetype-tag gi-hero-archetype' + (i === 0 ? ' gi-hero-archetype-primary' : '') + '" style="border-color:' + col + ';color:' + col + ';background:' + col + '14">' +
+        (a.icon ? '<span class="prof-archetype-icon">' + a.icon + '</span>' : '') +
+        escapeHtml(a.label) +
+      '</span>';
+    }).join('');
+    tagsHtml = (tagsHtml ? tagsHtml.replace('</div>', gemPills + '</div>') : '<div class="prof-archetype-row">' + gemPills + '</div>');
   }
 
   // ── Rarity tier badge ──
@@ -4696,6 +4917,7 @@ function renderProfile(p) {
 
     // Decade chart (full width, below hero)
     decadeHtml +
+    _buildGemIntelHtml(p.gemIntel || null) +
 
     // ── Taste Intelligence band (Hunting / Keeping / Leaning + Store Match) ──
     _buildTasteIntelHtml(p) +

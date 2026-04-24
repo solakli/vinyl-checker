@@ -6805,3 +6805,294 @@ body.light .goldie-input { background: #fff; border-color: #ddd; color: #333; }
 @media (max-width: 600px) {
   .goldie-panel { width: 100vw; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   GEM INTELLIGENCE BAND
+   ═══════════════════════════════════════════════════════════════ */
+
+.gi-band {
+  background: linear-gradient(180deg, #111 0%, #1a1a1a 100%);
+  border: 1px solid #333;
+  border-radius: var(--radius-lg);
+  margin: 0 0 24px;
+  overflow: hidden;
+}
+
+.gi-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 14px 20px 10px;
+  border-bottom: 1px solid #2a2a2a;
+  background: rgba(201,162,39,0.04);
+}
+.gi-header-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: var(--gold);
+}
+.gi-header-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+/* Archetype section */
+.gi-section-arch { padding: 14px 20px 0; }
+.gi-archetypes { display: flex; flex-wrap: wrap; gap: 10px; }
+
+.gi-archetype {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 40px;
+  border: 1px solid var(--arch-color, var(--gold));
+  background: color-mix(in srgb, var(--arch-color, var(--gold)) 8%, transparent);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--arch-color, var(--gold));
+  letter-spacing: 0.5px;
+  transition: background 0.2s;
+}
+.gi-archetype-primary {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 18px;
+  background: color-mix(in srgb, var(--arch-color, var(--gold)) 15%, transparent);
+}
+.gi-arch-icon { font-size: 16px; }
+
+/* Hero gem archetype pills */
+.gi-hero-archetype {
+  border: 1px solid var(--gold);
+  border-radius: 40px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+.gi-hero-archetype-primary {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Main grid */
+.gi-main-grid {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid #222;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+/* Gauge */
+.gi-gauge-block { text-align: center; min-width: 120px; }
+.gi-gauge-wrap { width: 120px; margin: 0 auto; }
+.gi-gauge-svg { width: 100%; }
+.gi-gauge-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+.gi-gauge-sub {
+  font-size: 10px;
+  color: var(--text-sec);
+  letter-spacing: 1px;
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+/* Gem Score ring */
+.gi-ring-block { text-align: center; min-width: 90px; }
+.gi-ring-wrap { width: 70px; margin: 0 auto; }
+.gi-ring-svg { width: 100%; }
+.gi-ring-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+/* KPI pills */
+.gi-kpis {
+  display: flex;
+  gap: 12px;
+  flex: 1;
+  flex-wrap: wrap;
+  min-width: 240px;
+}
+.gi-kpi {
+  flex: 1;
+  min-width: 80px;
+  padding: 10px 14px;
+  background: #222;
+  border-radius: var(--radius);
+  border: 1px solid #2f2f2f;
+}
+.gi-kpi-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+}
+.gi-kpi-val.gi-kpi-hi { color: var(--gold); }
+.gi-kpi-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  text-transform: uppercase;
+}
+.gi-kpi-sub {
+  font-size: 10px;
+  color: #555;
+  margin-top: 2px;
+}
+
+/* Sections */
+.gi-section {
+  padding: 16px 20px;
+  border-bottom: 1px solid #1f1f1f;
+}
+.gi-section:last-child { border-bottom: none; }
+.gi-section-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  text-transform: uppercase;
+}
+
+/* Tier bars */
+.gi-tier-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+.gi-tier-icon { font-size: 13px; width: 18px; }
+.gi-tier-label { font-size: 11px; color: var(--text-sec); width: 110px; flex-shrink: 0; }
+.gi-tier-bar-wrap { flex: 1; background: #2a2a2a; border-radius: 3px; height: 6px; }
+.gi-tier-bar { height: 100%; border-radius: 3px; min-width: 2px; transition: width 0.6s ease; }
+.gi-tier-gem    { background: var(--gold); }
+.gi-tier-club   { background: #ff6b6b; }
+.gi-tier-deep   { background: #4dabf7; }
+.gi-tier-known  { background: #20c997; }
+.gi-tier-unscore { background: #444; }
+.gi-tier-count { font-size: 11px; color: var(--text-sec); width: 28px; text-align: right; }
+.gi-tier-pct { font-size: 10px; color: var(--text-muted); width: 38px; text-align: right; }
+
+/* Top gems row */
+.gi-gems-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.gi-gem-card {
+  flex-shrink: 0;
+  width: 110px;
+  background: #222;
+  border: 1px solid #2f2f2f;
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.15s;
+}
+.gi-gem-card:hover { border-color: var(--gold); transform: translateY(-2px); }
+.gi-gem-art {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+}
+.gi-gem-art-ph {
+  width: 100%;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #2a2a2a;
+  color: #444;
+  font-size: 24px;
+}
+.gi-gem-score {
+  padding: 5px 7px 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold);
+}
+.gi-gem-artist {
+  padding: 0 7px;
+  font-size: 10px;
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gi-gem-title {
+  padding: 1px 7px;
+  font-size: 9px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gi-gem-views {
+  padding: 2px 7px 7px;
+  font-size: 9px;
+  color: #555;
+}
+
+/* Tags */
+.gi-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.gi-tag {
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid #333;
+}
+.gi-tag-genre { background: rgba(201,162,39,0.08); color: var(--gold); border-color: rgba(201,162,39,0.2); }
+.gi-tag-dj    { background: rgba(77,171,247,0.08); color: #4dabf7; border-color: rgba(77,171,247,0.2); }
+.gi-empty-sm { font-size: 11px; color: var(--text-muted); padding: 4px 0; }
+
+/* Two-col */
+.gi-two-col { display: grid; grid-template-columns: 1fr 1fr; padding: 16px 20px; gap: 24px; border-top: 1px solid #1f1f1f; }
+.gi-col { }
+
+/* Light theme */
+body.light .gi-band { background: linear-gradient(180deg, #f5f5f5 0%, #fff 100%); border-color: #ddd; }
+body.light .gi-header { border-color: #eee; background: rgba(201,162,39,0.04); }
+body.light .gi-kpi { background: #f5f5f5; border-color: #e5e5e5; }
+body.light .gi-kpi-val { color: #111; }
+body.light .gi-section { border-color: #eee; }
+body.light .gi-tier-bar-wrap { background: #eee; }
+body.light .gi-gem-card { background: #f5f5f5; border-color: #ddd; }
+body.light .gi-gem-art-ph { background: #eee; color: #ccc; }
+body.light .gi-two-col { border-color: #eee; }
+body.light .gi-tier-unscore { background: #ccc; }
+body.light .gi-archetype { border-color: var(--arch-color, var(--gold)); }
+
+@media (max-width: 600px) {
+  .gi-main-grid { padding: 14px; gap: 12px; }
+  .gi-gauge-wrap { width: 90px; }
+  .gi-kpis { gap: 8px; }
+  .gi-kpi { min-width: 60px; padding: 8px 10px; }
+  .gi-kpi-val { font-size: 18px; }
+  .gi-two-col { grid-template-columns: 1fr; gap: 16px; }
+  .gi-section { padding: 12px 14px; }
+  .gi-header { padding: 12px 14px; }
+  .gi-section-arch { padding: 12px 14px 0; }
+}
