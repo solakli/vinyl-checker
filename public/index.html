@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gold Digger</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="light">
@@ -18,6 +19,8 @@
   </div>
   <div class="navbar-nav">
     <a href="#" class="nav-link active" data-view="wantlist" onclick="switchView('wantlist',this);return false;">Wantlist</a>
+    <a href="#" class="nav-link" data-view="discovery" onclick="switchView('discovery',this);return false;">Discover</a>
+    <a href="#" class="nav-link" data-view="mixtocart" onclick="switchView('mixtocart',this);return false;">Mix to Cart</a>
     <a href="#" class="nav-link" data-view="dashboard" onclick="switchView('dashboard',this);return false;">Dashboard</a>
     <a href="#" class="nav-link" data-view="collection" onclick="switchView('collection',this);return false;">My Collection</a>
   </div>
@@ -131,6 +134,204 @@
     <p>Sync your Discogs collection and browse it with the same card layout — condition grades, purchase prices, and more.</p>
     <p class="coming-soon-sub">Coming soon. The same Chrome extension that syncs your wantlist will handle this too.</p>
   </div>
+</div>
+
+<!-- ═══ MIX TO CART VIEW ═══ -->
+<div id="view-mixtocart" class="alt-view" style="display:none">
+
+  <!-- STATE 1: Input -->
+  <div id="mtcInput" class="mtc-input-screen">
+    <div class="mtc-hero">
+      <div class="mtc-hero-label">MIX TO CART</div>
+      <h1 class="mtc-hero-title">Drop a mix.<br>We'll find the vinyl.</h1>
+      <p class="mtc-hero-sub">Paste a SoundCloud or YouTube mix URL and we'll pull the tracklist, then show you every record available to buy right now.</p>
+    </div>
+
+    <div class="mtc-input-area">
+      <div class="mtc-url-row">
+        <input class="mtc-url-input" id="mtcUrlInput" type="url"
+               placeholder="https://soundcloud.com/… or youtube.com/watch?v=…"
+               onkeydown="if(event.key==='Enter')mtcResolveUrl()" />
+        <button class="mtc-url-btn" onclick="mtcResolveUrl()">
+          <span id="mtcUrlBtnText">Pull Tracklist</span>
+        </button>
+      </div>
+      <div class="mtc-divider"><span>or</span></div>
+      <div class="mtc-paste-area">
+        <label class="mtc-paste-label">Paste the tracklist directly</label>
+        <textarea class="mtc-paste-input" id="mtcPasteInput"
+                  placeholder="00:00 Artist - Track&#10;01:23 Another Artist - Song&#10;…or any numbered/timestamped format"></textarea>
+        <button class="mtc-paste-btn" onclick="mtcParseText()">Parse Tracklist</button>
+      </div>
+    </div>
+
+    <div class="mtc-input-error" id="mtcInputError" style="display:none"></div>
+  </div>
+
+  <!-- STATE 2: Tracklist review -->
+  <div id="mtcReview" class="mtc-review-screen" style="display:none">
+    <div class="mtc-review-header">
+      <button class="mtc-back-btn" onclick="mtcGoToInput()">&#8592; Back</button>
+      <div class="mtc-mix-meta" id="mtcMixMeta"></div>
+      <button class="mtc-find-btn" id="mtcFindBtn" onclick="mtcSearchInventory()">Find Records in Stock</button>
+    </div>
+
+    <div class="mtc-review-body">
+      <div class="mtc-review-intro">
+        <p id="mtcReviewIntro"></p>
+        <label class="mtc-select-all">
+          <input type="checkbox" id="mtcSelectAll" onchange="mtcToggleAll(this.checked)" checked> Select all
+        </label>
+      </div>
+      <div class="mtc-tracklist" id="mtcTracklist"></div>
+    </div>
+  </div>
+
+  <!-- STATE 3: Results -->
+  <div id="mtcResults" class="mtc-results-screen" style="display:none">
+    <div class="mtc-results-header">
+      <button class="mtc-back-btn" onclick="mtcGoToReview()">&#8592; Back to Tracklist</button>
+      <div class="mtc-results-summary" id="mtcResultsSummary"></div>
+    </div>
+
+    <div class="mtc-results-loading" id="mtcResultsLoading" style="display:none">
+      <div class="mtc-spinner"></div>
+      <p>Searching across all stores&hellip;</p>
+    </div>
+
+    <div class="mtc-results-empty" id="mtcResultsEmpty" style="display:none">
+      <p>None of the artists from this mix have records in stock right now.</p>
+      <p class="mtc-results-empty-sub">Try checking back after the next store sync.</p>
+    </div>
+
+    <div class="mtc-results-grid" id="mtcResultsGrid"></div>
+  </div>
+
+</div>
+
+<!-- ═══ DISCOVERY VIEW ═══ -->
+<div id="view-discovery" class="alt-view" style="display:none">
+
+  <!-- STATE 1: Taste setup -->
+  <div id="discoverySetup" class="discovery-setup">
+    <div class="ds-hero">
+      <div class="ds-hero-label">DISCOVER</div>
+      <h1 class="ds-hero-title">Paste things you love.<br>The more you give us,<br>the better we'll find.</h1>
+      <p class="ds-hero-sub">We already know your Discogs wantlist. Add more taste signals below and we'll find records in stock that match your world.</p>
+    </div>
+
+    <div class="ds-inputs">
+
+      <!-- Spotify -->
+      <div class="ds-input-card" id="dsc-spotify">
+        <div class="ds-input-card-header">
+          <div class="ds-input-card-icon ds-icon-spotify">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+          </div>
+          <div class="ds-input-card-title-block">
+            <div class="ds-input-card-title">Spotify Playlists</div>
+            <div class="ds-input-card-desc">Paste any playlist URL — public or yours</div>
+          </div>
+        </div>
+        <div class="ds-url-list" id="spotifyUrls"></div>
+        <div class="ds-url-input-row">
+          <input class="ds-url-input" id="spotifyInput" type="url" placeholder="https://open.spotify.com/playlist/…" onkeydown="discoveryInputKeydown(event,'spotify')" />
+          <button class="ds-url-add" onclick="addTasteUrl('spotify')">Add</button>
+        </div>
+      </div>
+
+      <!-- SoundCloud -->
+      <div class="ds-input-card ds-input-card-connect" id="dsc-soundcloud">
+        <div class="ds-input-card-header">
+          <div class="ds-input-card-icon ds-icon-soundcloud">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M1.175 12.225c-.015.132.07.263.192.28l.062.005c.127 0 .234-.09.25-.214l.23-1.956-.23-2.005c-.016-.127-.123-.217-.25-.217-.14 0-.248.107-.248.24 0 .012 0 .024.003.036l-.2 1.946.2 1.885zm1.356.237c.163 0 .297-.133.297-.296l.198-2.098-.198-2.18c0-.164-.134-.297-.297-.297s-.296.133-.296.297l-.176 2.18.176 2.098c0 .163.133.296.296.296zm1.393.154c.188 0 .34-.152.34-.34l.184-2.39-.184-2.24c0-.187-.152-.34-.34-.34s-.34.153-.34.34l-.163 2.24.163 2.39c0 .188.152.34.34.34zm1.41.056c.212 0 .382-.17.382-.382l.17-2.498-.17-2.29c0-.21-.17-.38-.382-.38s-.382.17-.382.38l-.15 2.29.15 2.498c0 .212.17.382.382.382zm1.424.017c.234 0 .424-.19.424-.424l.156-2.55-.156-2.332c0-.234-.19-.424-.424-.424s-.424.19-.424.424l-.138 2.332.138 2.55c0 .234.19.424.424.424zm1.44-.004c.257 0 .466-.208.466-.465l.142-2.593-.142-2.38c0-.257-.21-.465-.466-.465-.257 0-.465.208-.465.465l-.125 2.38.125 2.593c0 .257.208.465.465.465zm1.45.027c.28 0 .507-.228.507-.508l.128-2.646-.128-2.44c0-.28-.227-.508-.507-.508-.28 0-.507.228-.507.508l-.112 2.44.112 2.646c0 .28.228.508.507.508zm1.46.023c.302 0 .548-.246.548-.548l.113-2.694-.113-2.496c0-.302-.246-.548-.548-.548-.302 0-.548.246-.548.548l-.1 2.496.1 2.694c0 .302.246.548.548.548zm3.552-5.87c-.183-.04-.372-.063-.567-.063-1.31 0-2.373 1.062-2.373 2.372v.03l-.098 2.87.098.698c.02.3.27.537.573.537s.553-.237.573-.537l.11-3.568c.002-.012.002-.025.002-.038 0-.3.245-.545.545-.545s.545.245.545.545v.04l.104 3.566c.02.302.27.537.573.537.303 0 .553-.235.573-.537l.105-3.566v-.04c0-.3.245-.545.545-.545s.545.245.545.545v.04l.1 3.566c.02.302.27.537.573.537.303 0 .553-.235.573-.537l.094-3.566v-.04c0-.876-.712-1.587-1.588-1.587-.204 0-.398.04-.577.11-.132-.64-.53-1.18-1.075-1.514z"/></svg>
+          </div>
+          <div class="ds-input-card-title-block">
+            <div class="ds-input-card-title">SoundCloud</div>
+            <div class="ds-input-card-desc">Play history, liked tracks &amp; artists you follow</div>
+          </div>
+        </div>
+        <div class="ds-connect-body" id="scConnectBody">
+          <!-- populated by JS -->
+        </div>
+      </div>
+
+      <!-- YouTube -->
+      <div class="ds-input-card ds-input-card-connect" id="dsc-youtube">
+        <div class="ds-input-card-header">
+          <div class="ds-input-card-icon ds-icon-youtube">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M23.495 6.205a3.007 3.007 0 0 0-2.088-2.088c-1.87-.501-9.396-.501-9.396-.501s-7.507-.01-9.396.501A3.007 3.007 0 0 0 .527 6.205a31.247 31.247 0 0 0-.522 5.805 31.247 31.247 0 0 0 .522 5.783 3.007 3.007 0 0 0 2.088 2.088c1.868.502 9.396.502 9.396.502s7.506 0 9.396-.502a3.007 3.007 0 0 0 2.088-2.088 31.247 31.247 0 0 0 .5-5.783 31.247 31.247 0 0 0-.5-5.805zM9.609 15.601V8.408l6.264 3.602z"/></svg>
+          </div>
+          <div class="ds-input-card-title-block">
+            <div class="ds-input-card-title">YouTube</div>
+            <div class="ds-input-card-desc">Liked videos &amp; channels you subscribe to</div>
+          </div>
+        </div>
+        <div class="ds-connect-body" id="ytConnectBody">
+          <!-- populated by JS -->
+        </div>
+      </div>
+
+      <!-- Mixes -->
+      <div class="ds-input-card" id="dsc-mixes">
+        <div class="ds-input-card-header">
+          <div class="ds-input-card-icon ds-icon-mixes">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+          </div>
+          <div class="ds-input-card-title-block">
+            <div class="ds-input-card-title">Mixes You Love</div>
+            <div class="ds-input-card-desc">YouTube, Mixcloud, Soundcloud &mdash; we'll find the tracklist</div>
+          </div>
+          <div class="ds-badge-coming">Tracklists coming soon</div>
+        </div>
+        <div class="ds-url-list" id="mixUrls"></div>
+        <div class="ds-url-input-row">
+          <input class="ds-url-input" id="mixInput" type="url" placeholder="https://www.youtube.com/watch?v=… or mixcloud.com/…" onkeydown="discoveryInputKeydown(event,'mix')" />
+          <button class="ds-url-add" onclick="addTasteUrl('mix')">Add</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Sources already saved -->
+    <div class="ds-saved-sources" id="dsSavedSources" style="display:none">
+      <div class="ds-saved-label">Saved taste sources</div>
+      <div class="ds-saved-list" id="dsSavedList"></div>
+    </div>
+
+    <div class="ds-cta-row">
+      <div class="ds-cta-note">Your Discogs wantlist is always included automatically</div>
+      <button class="ds-cta-btn" onclick="runDiscovery()">Find My Records</button>
+    </div>
+  </div>
+
+  <!-- STATE 2: Results -->
+  <div id="discoveryResults_wrap" class="discovery-wrap" style="display:none">
+    <div class="discovery-header">
+      <div class="discovery-title-block">
+        <h2>Discover</h2>
+        <p class="discovery-subtitle">DISCOVER RECORDS IN STOCK TAILORED EXACTLY TO YOUR MUSIC TASTE</p>
+      </div>
+      <button class="btn-discovery-back" onclick="showDiscoverySetup()">&#8592; Refine Taste</button>
+    </div>
+
+    <div class="discovery-seeds" id="discoverySeeds" style="display:none">
+      <span class="seeds-label">Tasting from</span>
+      <div class="seeds-list" id="seedsList"></div>
+    </div>
+
+    <div class="discovery-loading" id="discoveryLoading" style="display:none">
+      <div class="discovery-spinner"></div>
+      <p id="discoveryLoadingMsg">Analysing your taste via Last.fm&hellip;</p>
+    </div>
+
+    <div class="discovery-notice" id="discoveryNotice" style="display:none">
+      <p>Add your free <a href="https://www.last.fm/api/account/create" target="_blank">Last.fm API key</a> to <code>.env</code> as <code>LASTFM_API_KEY</code> to enable recommendations.</p>
+    </div>
+
+    <div class="discovery-results" id="discoveryResults"></div>
+  </div>
+
 </div>
 
 <div class="app-layout">

@@ -2466,10 +2466,13 @@ function switchView(view, linkEl) {
   var isWantlist = view === 'wantlist';
   document.getElementById('view-dashboard').style.display  = view === 'dashboard'  ? 'block' : 'none';
   document.getElementById('view-collection').style.display = view === 'collection' ? 'block' : 'none';
+  document.getElementById('view-discovery').style.display  = view === 'discovery'  ? 'block' : 'none';
+  document.getElementById('view-mixtocart').style.display  = view === 'mixtocart'  ? 'block' : 'none';
   document.getElementById('headerControls').style.display  = isWantlist ? '' : 'none';
   document.querySelector('.app-layout').style.display      = isWantlist ? '' : 'none';
 
   if (view === 'dashboard') renderDashboard();
+  if (view === 'discovery') onDiscoveryTabOpen();
 }
 
 function renderDashboard() {
@@ -2579,3 +2582,694 @@ function dashStat(value, label, color) {
 }
 
 
+
+// ═══════════════════════════════════════════════════════════════
+// DISCOVERY TAB — Last.fm-powered recommendations
+// ═══════════════════════════════════════════════════════════════
+
+var _discoveryLoaded = false;
+
+// ── Taste profile storage ──────────────────────────────────────
+
+function getTasteProfile() {
+  var username = document.getElementById('usernameInput').value.trim();
+  var key = 'tasteProfile_' + (username || 'guest');
+  try {
+    return JSON.parse(localStorage.getItem(key)) || { spotify: [], mixes: [] };
+  } catch(e) { return { spotify: [], mixes: [] }; }
+}
+
+function saveTasteProfile(profile) {
+  var username = document.getElementById('usernameInput').value.trim();
+  var key = 'tasteProfile_' + (username || 'guest');
+  localStorage.setItem(key, JSON.stringify(profile));
+}
+
+function addTasteUrl(type) {
+  var inputId = type === 'spotify' ? 'spotifyInput' : 'mixInput';
+  var input = document.getElementById(inputId);
+  var url = (input.value || '').trim();
+  if (!url) return;
+
+  var profile = getTasteProfile();
+  var list = type === 'spotify' ? profile.spotify : profile.mixes;
+
+  // Deduplicate
+  if (list.indexOf(url) === -1) {
+    list.push(url);
+    saveTasteProfile(profile);
+  }
+  input.value = '';
+  renderTasteInputs();
+}
+
+function removeTasteUrl(type, url) {
+  var profile = getTasteProfile();
+  if (type === 'spotify') {
+    profile.spotify = profile.spotify.filter(function(u) { return u !== url; });
+  } else {
+    profile.mixes = profile.mixes.filter(function(u) { return u !== url; });
+  }
+  saveTasteProfile(profile);
+  renderTasteInputs();
+}
+
+function renderTasteInputs() {
+  var profile = getTasteProfile();
+
+  // Spotify list
+  var spotifyEl = document.getElementById('spotifyUrls');
+  if (spotifyEl) {
+    spotifyEl.innerHTML = profile.spotify.map(function(url) {
+      var label = url.replace('https://open.spotify.com/', '').replace('https://spotify.com/', '').split('?')[0];
+      return '<div class="ds-url-pill">' +
+        '<span class="ds-url-pill-text" title="' + escapeHtml(url) + '">' + escapeHtml(label) + '</span>' +
+        '<button class="ds-url-pill-remove" onclick="removeTasteUrl(\'spotify\',\'' + escapeHtml(url).replace(/'/g, "\\'") + '\')">&#10005;</button>' +
+      '</div>';
+    }).join('');
+  }
+
+  // Mix list
+  var mixEl = document.getElementById('mixUrls');
+  if (mixEl) {
+    mixEl.innerHTML = profile.mixes.map(function(url) {
+      var label = url.replace('https://www.youtube.com/watch?v=', 'youtube.com/…').replace('https://www.mixcloud.com/', 'mixcloud.com/').replace('https://soundcloud.com/', 'soundcloud.com/').split('?')[0];
+      return '<div class="ds-url-pill">' +
+        '<span class="ds-url-pill-text" title="' + escapeHtml(url) + '">' + escapeHtml(label) + '</span>' +
+        '<button class="ds-url-pill-remove" onclick="removeTasteUrl(\'mix\',\'' + escapeHtml(url).replace(/'/g, "\\'") + '\')">&#10005;</button>' +
+      '</div>';
+    }).join('');
+  }
+
+  // Saved sources summary
+  var total = profile.spotify.length + profile.mixes.length;
+  var savedEl = document.getElementById('dsSavedSources');
+  if (savedEl) {
+    savedEl.style.display = total > 0 ? 'block' : 'none';
+  }
+}
+
+// ── Enter key support for inputs ───────────────────────────────
+
+function discoveryInputKeydown(e, type) {
+  if (e.key === 'Enter') addTasteUrl(type);
+}
+
+// ── View state ─────────────────────────────────────────────────
+
+function showDiscoverySetup() {
+  document.getElementById('discoverySetup').style.display = 'block';
+  document.getElementById('discoveryResults_wrap').style.display = 'none';
+  renderTasteInputs();
+}
+
+function showDiscoveryResults() {
+  document.getElementById('discoverySetup').style.display = 'none';
+  document.getElementById('discoveryResults_wrap').style.display = 'block';
+}
+
+// Called when switchView('discovery') fires
+function onDiscoveryTabOpen() {
+  if (!_discoveryLoaded) {
+    showDiscoverySetup();
+  }
+  renderTasteInputs();
+  renderSoundcloudStatus();
+  renderYoutubeStatus();
+}
+
+// ── SoundCloud connect card ────────────────────────────────────
+
+function renderSoundcloudStatus() {
+  var el = document.getElementById('scConnectBody');
+  if (!el) return;
+
+  fetch('/api/soundcloud/status')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.enabled) {
+        el.innerHTML = '<p class="ds-connect-hint">Add <code>SOUNDCLOUD_CLIENT_ID</code> and <code>SOUNDCLOUD_CLIENT_SECRET</code> to <code>.env</code> to enable.</p>';
+        return;
+      }
+
+      if (data.connected) {
+        var countStr = '';
+        if (data.counts) {
+          countStr = '<div class="ds-connect-counts">' +
+            scCountBadge(data.counts.history, 'plays') +
+            scCountBadge(data.counts.likes, 'likes') +
+            scCountBadge(data.counts.followings, 'following') +
+          '</div>';
+        }
+        el.innerHTML =
+          '<div class="ds-connect-connected">' +
+            '<div class="ds-connect-connected-row">' +
+              '<span class="ds-connect-tick">&#10003;</span>' +
+              '<span class="ds-connect-connected-label">Connected</span>' +
+              '<button class="ds-connect-disconnect" onclick="disconnectSoundcloud()">Disconnect</button>' +
+            '</div>' +
+            countStr +
+          '</div>';
+      } else {
+        el.innerHTML =
+          '<a class="ds-connect-btn ds-connect-btn-sc" href="/api/auth/soundcloud">' +
+            '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M1.175 12.225c-.015.132.07.263.192.28l.062.005c.127 0 .234-.09.25-.214l.23-1.956-.23-2.005c-.016-.127-.123-.217-.25-.217-.14 0-.248.107-.248.24 0 .012 0 .024.003.036l-.2 1.946.2 1.885zm1.356.237c.163 0 .297-.133.297-.296l.198-2.098-.198-2.18c0-.164-.134-.297-.297-.297s-.296.133-.296.297l-.176 2.18.176 2.098c0 .163.133.296.296.296zm1.393.154c.188 0 .34-.152.34-.34l.184-2.39-.184-2.24c0-.187-.152-.34-.34-.34s-.34.153-.34.34l-.163 2.24.163 2.39c0 .188.152.34.34.34zm1.41.056c.212 0 .382-.17.382-.382l.17-2.498-.17-2.29c0-.21-.17-.38-.382-.38s-.382.17-.382.38l-.15 2.29.15 2.498c0 .212.17.382.382.382zm1.424.017c.234 0 .424-.19.424-.424l.156-2.55-.156-2.332c0-.234-.19-.424-.424-.424s-.424.19-.424.424l-.138 2.332.138 2.55c0 .234.19.424.424.424zm1.44-.004c.257 0 .466-.208.466-.465l.142-2.593-.142-2.38c0-.257-.21-.465-.466-.465-.257 0-.465.208-.465.465l-.125 2.38.125 2.593c0 .257.208.465.465.465zm1.45.027c.28 0 .507-.228.507-.508l.128-2.646-.128-2.44c0-.28-.227-.508-.507-.508-.28 0-.507.228-.507.508l-.112 2.44.112 2.646c0 .28.228.508.507.508zm1.46.023c.302 0 .548-.246.548-.548l.113-2.694-.113-2.496c0-.302-.246-.548-.548-.548-.302 0-.548.246-.548.548l-.1 2.496.1 2.694c0 .302.246.548.548.548zm3.552-5.87c-.183-.04-.372-.063-.567-.063-1.31 0-2.373 1.062-2.373 2.372v.03l-.098 2.87.098.698c.02.3.27.537.573.537s.553-.237.573-.537l.11-3.568c.002-.012.002-.025.002-.038 0-.3.245-.545.545-.545s.545.245.545.545v.04l.104 3.566c.02.302.27.537.573.537.303 0 .553-.235.573-.537l.105-3.566v-.04c0-.3.245-.545.545-.545s.545.245.545.545v.04l.1 3.566c.02.302.27.537.573.537.303 0 .553-.235.573-.537l.094-3.566v-.04c0-.876-.712-1.587-1.588-1.587-.204 0-.398.04-.577.11-.132-.64-.53-1.18-1.075-1.514z"/></svg>' +
+            'Connect SoundCloud' +
+          '</a>' +
+          '<p class="ds-connect-hint">Grants read-only access to your play history, likes &amp; followings</p>';
+      }
+    })
+    .catch(function() {
+      if (el) el.innerHTML = '';
+    });
+}
+
+function scCountBadge(n, label) {
+  return '<div class="ds-count-badge"><span class="ds-count-badge-num">' + (n || 0) + '</span><span class="ds-count-badge-label">' + label + '</span></div>';
+}
+
+function disconnectSoundcloud() {
+  fetch('/api/auth/soundcloud/disconnect', { method: 'POST' })
+    .then(function() { renderSoundcloudStatus(); })
+    .catch(function() {});
+}
+
+// ── YouTube connect card ───────────────────────────────────────
+
+function renderYoutubeStatus() {
+  var el = document.getElementById('ytConnectBody');
+  if (!el) return;
+
+  fetch('/api/youtube/status')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.enabled) {
+        el.innerHTML = '<p class="ds-connect-hint">Add <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> to <code>.env</code> to enable.</p>';
+        return;
+      }
+
+      if (data.connected) {
+        var countStr = '';
+        if (data.counts) {
+          countStr = '<div class="ds-connect-counts">' +
+            scCountBadge(data.counts.liked, 'liked') +
+            scCountBadge(data.counts.subscriptions, 'subscribed') +
+          '</div>';
+        }
+        var refreshBtn = data.artistCount === 0
+          ? '<button class="ds-connect-disconnect" onclick="refreshYoutube()" style="color:#e8a020;border-color:#e8a020">Sync now</button>'
+          : '<button class="ds-connect-disconnect" onclick="refreshYoutube()">Refresh</button>';
+        el.innerHTML =
+          '<div class="ds-connect-connected">' +
+            '<div class="ds-connect-connected-row">' +
+              '<span class="ds-connect-tick">&#10003;</span>' +
+              '<span class="ds-connect-connected-label">Connected</span>' +
+              refreshBtn +
+              '<button class="ds-connect-disconnect" onclick="disconnectYoutube()">Disconnect</button>' +
+            '</div>' +
+            countStr +
+          '</div>';
+      } else {
+        el.innerHTML =
+          '<a class="ds-connect-btn ds-connect-btn-yt" href="/api/auth/google">' +
+            '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M23.495 6.205a3.007 3.007 0 0 0-2.088-2.088c-1.87-.501-9.396-.501-9.396-.501s-7.507-.01-9.396.501A3.007 3.007 0 0 0 .527 6.205a31.247 31.247 0 0 0-.522 5.805 31.247 31.247 0 0 0 .522 5.783 3.007 3.007 0 0 0 2.088 2.088c1.868.502 9.396.502 9.396.502s7.506 0 9.396-.502a3.007 3.007 0 0 0 2.088-2.088 31.247 31.247 0 0 0 .5-5.783 31.247 31.247 0 0 0-.5-5.805zM9.609 15.601V8.408l6.264 3.602z"/></svg>' +
+            'Connect YouTube' +
+          '</a>' +
+          '<p class="ds-connect-hint">Liked videos &amp; subscriptions — read only</p>';
+      }
+    })
+    .catch(function() { if (el) el.innerHTML = ''; });
+}
+
+function refreshYoutube() {
+  var el = document.getElementById('ytConnectBody');
+  if (el) el.innerHTML = '<p class="ds-connect-hint">Syncing&hellip;</p>';
+  fetch('/api/youtube/ingest', { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) renderYoutubeStatus();
+      else if (el) el.innerHTML = '<p class="ds-connect-hint" style="color:#e85050">' + escapeHtml(data.error || 'Error') + '</p>';
+    })
+    .catch(function() { renderYoutubeStatus(); });
+}
+
+function disconnectYoutube() {
+  fetch('/api/auth/google/disconnect', { method: 'POST' })
+    .then(function() { renderYoutubeStatus(); })
+    .catch(function() {});
+}
+
+// Handle ?auth=youtube redirect
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  if (params.get('auth') === 'youtube') {
+    history.replaceState({}, '', window.location.pathname);
+    var discoverLink = document.querySelector('[data-view="discovery"]');
+    if (discoverLink) switchView('discovery', discoverLink);
+  }
+})();
+
+// Handle ?auth=soundcloud redirect after OAuth
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  if (params.get('auth') === 'soundcloud') {
+    history.replaceState({}, '', window.location.pathname);
+    // Switch to discover tab automatically
+    var discoverLink = document.querySelector('[data-view="discovery"]');
+    if (discoverLink) switchView('discovery', discoverLink);
+  }
+})();
+
+function runDiscovery() {
+  var username = document.getElementById('usernameInput').value.trim();
+  if (!username) {
+    alert('Load your wantlist first, then open Discover.');
+    return;
+  }
+
+  showDiscoveryResults();
+  _discoveryLoaded = false;
+
+  var resultsEl = document.getElementById('discoveryResults');
+  var loadingEl = document.getElementById('discoveryLoading');
+  var noticeEl  = document.getElementById('discoveryNotice');
+  var seedsEl   = document.getElementById('discoverySeeds');
+
+  resultsEl.innerHTML = '';
+  seedsEl.style.display = 'none';
+  noticeEl.style.display = 'none';
+  loadingEl.style.display = 'flex';
+
+  fetch('/api/discovery/' + encodeURIComponent(username))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      loadingEl.style.display = 'none';
+
+      if (data.error && data.error.indexOf('LASTFM_API_KEY') !== -1) {
+        noticeEl.style.display = 'block';
+        return;
+      }
+
+      if (data.error) {
+        resultsEl.innerHTML = '<p class="discovery-empty">' + escapeHtml(data.error) + '</p>';
+        return;
+      }
+
+      if (data.seeds && data.seeds.length > 0) {
+        seedsEl.style.display = 'flex';
+        document.getElementById('seedsList').innerHTML = data.seeds.slice(0, 12).map(function(a) {
+          return '<span class="seed-chip">' + escapeHtml(a) + '</span>';
+        }).join('');
+      }
+
+      if (!data.recommendations || data.recommendations.length === 0) {
+        resultsEl.innerHTML = '<p class="discovery-empty">No matching records found in stores right now. Try syncing store inventory or add more wantlist items.</p>';
+        return;
+      }
+
+      renderDiscoveryResults(data.recommendations, data.totalMatches);
+      _discoveryLoaded = true;
+    })
+    .catch(function(err) {
+      loadingEl.style.display = 'none';
+      resultsEl.innerHTML = '<p class="discovery-empty">Error: ' + escapeHtml(err.message) + '</p>';
+    });
+}
+
+var DISC_STORE_LOGOS = {
+  further:    'further.png',
+  gramaphone: 'gramaphone.png',
+  octopus:    'octopus.png',
+  uvs:        'uvs.png'
+};
+
+var DISC_STORE_NAMES = {
+  further:    'Further Records',
+  gramaphone: 'Gramaphone',
+  octopus:    'Octopus Records',
+  uvs:        'Urban Vinyl Supply'
+};
+
+function renderDiscoveryResults(recs, totalMatches) {
+  var resultsEl = document.getElementById('discoveryResults');
+
+  var header = '<div class="disc-results-header">' +
+    '<span class="disc-count">' + recs.length + ' records found' +
+    (totalMatches > recs.length ? ' <span class="disc-count-of">of ' + totalMatches + ' matches</span>' : '') +
+    '</span>' +
+  '</div>';
+
+  var cards = recs.map(function(rec) {
+    var storeName = DISC_STORE_NAMES[rec.store] || rec.store;
+    var logoHtml = DISC_STORE_LOGOS[rec.store]
+      ? '<img class="disc-card-store-logo" src="img/' + DISC_STORE_LOGOS[rec.store] + '" alt="">'
+      : '<span class="disc-card-store-name">' + escapeHtml(storeName) + '</span>';
+
+    var imgHtml = rec.imageUrl
+      ? '<div class="disc-card-art"><img src="' + escapeHtml(rec.imageUrl) + '" alt="" loading="lazy"></div>'
+      : '<div class="disc-card-art disc-card-art-placeholder"><div class="disc-placeholder-icon">&#9679;</div></div>';
+
+    var price = rec.priceUsd ? '$' + rec.priceUsd.toFixed(2) : '';
+
+    var becauseHtml = rec.because && rec.because.length > 0
+      ? '<div class="disc-card-because">Similar to ' + rec.because.map(function(a) {
+          return '<span class="disc-because-chip">' + escapeHtml(a) + '</span>';
+        }).join(' ') + '</div>'
+      : '';
+
+    var signalDots = '';
+    for (var d = 0; d < Math.min(rec.seedCount, 5); d++) {
+      signalDots += '<span class="disc-signal-dot disc-signal-dot-on"></span>';
+    }
+    for (var e = rec.seedCount; e < 5; e++) {
+      signalDots += '<span class="disc-signal-dot"></span>';
+    }
+
+    return '<a class="disc-card" href="' + escapeHtml(rec.url) + '" target="_blank" rel="noopener">' +
+      imgHtml +
+      '<div class="disc-card-body">' +
+        '<div class="disc-card-top">' +
+          '<div class="disc-card-artist">' + escapeHtml(rec.artist) + '</div>' +
+          '<div class="disc-card-title">' + escapeHtml(rec.title) + '</div>' +
+          (rec.label ? '<div class="disc-card-label">' + escapeHtml(rec.label) + '</div>' : '') +
+        '</div>' +
+        becauseHtml +
+        '<div class="disc-card-footer">' +
+          '<div class="disc-card-store">' + logoHtml + '</div>' +
+          '<div class="disc-card-right">' +
+            '<div class="disc-signal" title="Recommended by ' + rec.seedCount + ' wantlist artist' + (rec.seedCount === 1 ? '' : 's') + '">' + signalDots + '</div>' +
+            (price ? '<div class="disc-card-price">' + price + '</div>' : '') +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</a>';
+  });
+
+  resultsEl.innerHTML = header + '<div class="disc-grid">' + cards.join('') + '</div>';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MIX TO CART
+// ═══════════════════════════════════════════════════════════════════
+
+var _mtcTracklist = [];   // current list of { artist, selected }
+var _mtcMixMeta   = null; // { title, artist, platform, artworkUrl }
+
+// ── Navigation ──────────────────────────────────────────────────────
+
+function mtcGoToInput() {
+  document.getElementById('mtcInput').style.display    = 'block';
+  document.getElementById('mtcReview').style.display   = 'none';
+  document.getElementById('mtcResults').style.display  = 'none';
+}
+
+function mtcGoToReview() {
+  document.getElementById('mtcInput').style.display    = 'none';
+  document.getElementById('mtcReview').style.display   = 'block';
+  document.getElementById('mtcResults').style.display  = 'none';
+}
+
+function mtcGoToResults() {
+  document.getElementById('mtcInput').style.display    = 'none';
+  document.getElementById('mtcReview').style.display   = 'none';
+  document.getElementById('mtcResults').style.display  = 'block';
+}
+
+// ── URL resolution ──────────────────────────────────────────────────
+
+async function mtcResolveUrl() {
+  var url = (document.getElementById('mtcUrlInput').value || '').trim();
+  if (!url) return;
+
+  var btn   = document.querySelector('.mtc-url-btn');
+  var errEl = document.getElementById('mtcInputError');
+  errEl.style.display = 'none';
+  btn.disabled = true;
+  document.getElementById('mtcUrlBtnText').textContent = 'Searching…';
+
+  // Show waterfall progress panel
+  mtcShowWaterfallProgress([
+    { name: 'Fetching mix metadata', status: 'running' }
+  ]);
+
+  try {
+    var res = await fetch('/api/mix-to-cart/resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: url })
+    });
+    var data = await res.json();
+
+    // Show final waterfall steps
+    if (data.steps && data.steps.length > 0) {
+      mtcShowWaterfallProgress(data.steps);
+    } else {
+      mtcHideWaterfallProgress();
+    }
+
+    if (data.error) {
+      errEl.textContent = data.error;
+      errEl.style.display = 'block';
+      return;
+    }
+
+    if (!data.hasTracklist || !data.tracklist || data.tracklist.length === 0) {
+      errEl.innerHTML =
+        '<strong>No tracklist found automatically.</strong> ' +
+        'Try pasting it manually below — most mixes have it in the comments or description.';
+      errEl.style.display = 'block';
+      document.getElementById('mtcPasteInput').focus();
+      return;
+    }
+
+    _mtcMixMeta = {
+      title:      data.title,
+      artist:     data.artist,
+      platform:   data.platform,
+      artworkUrl: data.artworkUrl,
+      source:     data.tracklistSource
+    };
+    mtcHideWaterfallProgress();
+    mtcShowReview(data.tracklist);
+
+  } catch (e) {
+    mtcHideWaterfallProgress();
+    errEl.textContent = 'Error: ' + e.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    document.getElementById('mtcUrlBtnText').textContent = 'Pull Tracklist';
+  }
+}
+
+// ── Waterfall progress display ──────────────────────────────────────
+
+function mtcShowWaterfallProgress(steps) {
+  var existing = document.getElementById('mtcWaterfallProgress');
+  if (!existing) {
+    var el = document.createElement('div');
+    el.id = 'mtcWaterfallProgress';
+    el.className = 'mtc-waterfall';
+    var inputArea = document.querySelector('.mtc-input-area');
+    if (inputArea) inputArea.insertAdjacentElement('afterend', el);
+  }
+  var container = document.getElementById('mtcWaterfallProgress');
+  if (!container) return;
+
+  container.innerHTML = '<div class="mtc-waterfall-title">Searching for tracklist</div>' +
+    steps.map(function(step) {
+      var icon = step.status === 'ok'      ? '✓' :
+                 step.status === 'running' ? '⟳' :
+                 step.status === 'fail'    ? '✗' :
+                 step.status === 'none'    ? '—' : '·';
+      var cls  = 'mtc-wf-step mtc-wf-' + (step.status || 'skip');
+      return '<div class="' + cls + '">' +
+        '<span class="mtc-wf-icon">' + icon + '</span>' +
+        '<span class="mtc-wf-name">' + escHtml(step.name) + '</span>' +
+        (step.detail ? '<span class="mtc-wf-detail">' + escHtml(step.detail) + '</span>' : '') +
+      '</div>';
+    }).join('');
+  container.style.display = 'block';
+}
+
+function mtcHideWaterfallProgress() {
+  var el = document.getElementById('mtcWaterfallProgress');
+  if (el) el.style.display = 'none';
+}
+
+// ── Manual text parsing ─────────────────────────────────────────────
+
+async function mtcParseText() {
+  var text = (document.getElementById('mtcPasteInput').value || '').trim();
+  if (!text) return;
+
+  var errEl = document.getElementById('mtcInputError');
+  errEl.style.display = 'none';
+
+  try {
+    var res = await fetch('/api/mix-to-cart/parse-text', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text })
+    });
+    var data = await res.json();
+
+    if (!data.artists || data.artists.length === 0) {
+      errEl.textContent = 'Could not extract any artist names. Try the format: "01. Artist - Track Title" or "00:00 Artist - Track"';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    _mtcMixMeta = null;
+    mtcShowReview(data.artists);
+  } catch (e) {
+    errEl.textContent = 'Error: ' + e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+// ── Render tracklist review ─────────────────────────────────────────
+
+function mtcShowReview(artists) {
+  _mtcTracklist = artists.map(function(a, i) { return { artist: a, selected: true, id: i }; });
+
+  // Mix meta header
+  var metaEl = document.getElementById('mtcMixMeta');
+  if (_mtcMixMeta && _mtcMixMeta.title) {
+    var sourceTag = _mtcMixMeta.source
+      ? '<span class="mtc-source-badge">via ' + escHtml(_mtcMixMeta.source) + '</span>'
+      : '';
+    metaEl.innerHTML =
+      '<div class="mtc-mix-meta-title">' + escHtml(_mtcMixMeta.title) + sourceTag + '</div>' +
+      (_mtcMixMeta.artist ? '<div class="mtc-mix-meta-artist">' + escHtml(_mtcMixMeta.artist) + '</div>' : '');
+  } else {
+    metaEl.innerHTML = '<div class="mtc-mix-meta-title">Pasted Tracklist</div>';
+  }
+
+  // Intro text
+  document.getElementById('mtcReviewIntro').innerHTML =
+    'Found <strong style="color:#c4aa7a">' + artists.length + ' artists</strong>. Deselect any you don\'t want, then search.';
+
+  // Render track entries
+  renderMtcTracklist();
+
+  mtcGoToReview();
+}
+
+function renderMtcTracklist() {
+  var container = document.getElementById('mtcTracklist');
+  container.innerHTML = _mtcTracklist.map(function(entry, i) {
+    return '<div class="mtc-track-entry' + (entry.selected ? '' : ' deselected') + '" id="mtcEntry' + i + '">' +
+      '<input type="checkbox" ' + (entry.selected ? 'checked' : '') + ' onchange="mtcToggleEntry(' + i + ', this.checked)">' +
+      '<span class="mtc-track-num">' + (i + 1) + '</span>' +
+      '<span class="mtc-track-artist" id="mtcArtist' + i + '">' + escHtml(entry.artist) + '</span>' +
+    '</div>';
+  }).join('');
+}
+
+function mtcToggleEntry(i, checked) {
+  _mtcTracklist[i].selected = checked;
+  var row = document.getElementById('mtcEntry' + i);
+  if (row) row.className = 'mtc-track-entry' + (checked ? '' : ' deselected');
+  _syncSelectAll();
+}
+
+function mtcToggleAll(checked) {
+  _mtcTracklist.forEach(function(e) { e.selected = checked; });
+  renderMtcTracklist();
+}
+
+function _syncSelectAll() {
+  var all = _mtcTracklist.every(function(e) { return e.selected; });
+  var none = _mtcTracklist.every(function(e) { return !e.selected; });
+  var cb = document.getElementById('mtcSelectAll');
+  if (cb) {
+    cb.checked = all;
+    cb.indeterminate = !all && !none;
+  }
+}
+
+// ── Inventory search ────────────────────────────────────────────────
+
+async function mtcSearchInventory() {
+  var selected = _mtcTracklist.filter(function(e) { return e.selected; }).map(function(e) { return e.artist; });
+  if (selected.length === 0) return;
+
+  var findBtn = document.getElementById('mtcFindBtn');
+  findBtn.disabled = true;
+  findBtn.textContent = 'Searching…';
+
+  mtcGoToResults();
+  document.getElementById('mtcResultsLoading').style.display = 'block';
+  document.getElementById('mtcResultsEmpty').style.display   = 'none';
+  document.getElementById('mtcResultsGrid').innerHTML        = '';
+  document.getElementById('mtcResultsSummary').textContent   = '';
+
+  try {
+    var res = await fetch('/api/mix-to-cart/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ artists: selected })
+    });
+    var data = await res.json();
+
+    document.getElementById('mtcResultsLoading').style.display = 'none';
+
+    if (!data.results || data.results.length === 0) {
+      document.getElementById('mtcResultsEmpty').style.display = 'block';
+      return;
+    }
+
+    document.getElementById('mtcResultsSummary').textContent =
+      data.results.length + ' artist' + (data.results.length === 1 ? '' : 's') + ' found — ' +
+      data.totalRecords + ' record' + (data.totalRecords === 1 ? '' : 's') + ' in stock';
+
+    renderMtcResults(data.results);
+
+  } catch (e) {
+    document.getElementById('mtcResultsLoading').style.display = 'none';
+    document.getElementById('mtcResultsEmpty').innerHTML = '<p>Error: ' + escHtml(e.message) + '</p>';
+    document.getElementById('mtcResultsEmpty').style.display = 'block';
+  } finally {
+    findBtn.disabled = false;
+    findBtn.textContent = 'Find Records in Stock';
+  }
+}
+
+// ── Render results ──────────────────────────────────────────────────
+
+function renderMtcResults(results) {
+  var grid = document.getElementById('mtcResultsGrid');
+  grid.innerHTML = results.map(function(group) {
+    var cards = group.records.map(function(rec) {
+      var price = rec.priceUsd ? '$' + Number(rec.priceUsd).toFixed(2) : '';
+      var thumb = rec.imageUrl
+        ? '<img class="mtc-record-thumb" src="' + escHtml(rec.imageUrl) + '" alt="" loading="lazy">'
+        : '<div class="mtc-record-thumb-placeholder">&#9834;</div>';
+      return '<a class="mtc-record-card" href="' + escHtml(rec.url) + '" target="_blank" rel="noopener">' +
+        thumb +
+        '<div class="mtc-record-body">' +
+          '<div class="mtc-record-artist">' + escHtml(rec.artist) + '</div>' +
+          '<div class="mtc-record-title">' + escHtml(rec.title) + '</div>' +
+          '<div class="mtc-record-footer">' +
+            '<span class="mtc-record-store">' + escHtml(rec.store) + '</span>' +
+            (price ? '<span class="mtc-record-price">' + price + '</span>' : '') +
+          '</div>' +
+        '</div>' +
+      '</a>';
+    }).join('');
+
+    return '<div class="mtc-artist-group">' +
+      '<div class="mtc-artist-header">' +
+        '<span class="mtc-artist-name">' + escHtml(group.tracklistArtist) + '</span>' +
+        '<span class="mtc-artist-count">' + group.records.length + ' record' + (group.records.length === 1 ? '' : 's') + ' in stock</span>' +
+      '</div>' +
+      '<div class="mtc-records-row">' + cards + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
