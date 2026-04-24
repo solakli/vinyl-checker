@@ -389,6 +389,8 @@ function initTables() {
             youtube_video_id         TEXT,
             youtube_view_count       INTEGER,
             youtube_like_count       INTEGER,
+            youtube_comment_data     TEXT,   -- JSON: { genres, era, djs, sounds_like, raw_top[] }
+            youtube_enriched_at      TEXT,   -- when comments/stats were last fetched
             soundcloud_track_id      INTEGER,
             soundcloud_playback_count INTEGER,
             soundcloud_reposts       INTEGER,
@@ -459,6 +461,9 @@ function initTables() {
     try { db.exec(`ALTER TABLE users ADD COLUMN taste_tags TEXT`); } catch(e) {}
     try { db.exec(`ALTER TABLE users ADD COLUMN taste_summary TEXT`); } catch(e) {}
     try { db.exec(`ALTER TABLE users ADD COLUMN taste_computed_at TEXT`); } catch(e) {}
+    // YouTube enrichment columns
+    try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN youtube_comment_data TEXT`); } catch(e) {}
+    try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN youtube_enriched_at TEXT`); } catch(e) {}
 
     // ── GOLDIE chat sessions ──────────────────────────────────────────────────
     db.exec(`

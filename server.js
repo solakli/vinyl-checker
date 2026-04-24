@@ -1309,6 +1309,7 @@ async function runMetaSync(userId, username) {
             VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
         `);
 
+        var ytEnrich = require('./lib/youtube-enrichment');
         console.log('[meta-sync]', username, '—', items.length, 'items to enrich');
         for (var i = 0; i < items.length; i++) {
             var id = items[i].discogs_id;
@@ -1324,6 +1325,11 @@ async function runMetaSync(userId, username) {
                     det.country || null,
                     det.released ? parseInt(det.released, 10) || null : null
                 );
+                // FREE: Discogs already returns a videos[] array — extract YouTube ID at no extra quota cost
+                var videoId = ytEnrich.extractVideoIdFromDiscogs(det.videos || []);
+                if (videoId) {
+                    db.saveStreamingMetadata(id, { youtubeVideoId: videoId });
+                }
             } catch(e) { /* 404 or rate-limit — skip, will retry next sync */ }
             // 2.5s gap → 24 req/min (safely under 25/min unauthenticated limit)
             await new Promise(function(r) { setTimeout(r, 2500); });
@@ -1354,6 +1360,29 @@ app.get('/api/meta-sync/:username', function(req, res) {
         }
 
         res.json({ total: total, synced: synced, pct: pct, running: running });
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ─── YouTube enrichment status + manual trigger ───────────────────────────
+app.get('/api/youtube-enrichment/status', function(req, res) {
+    try {
+        var ytEnrich = require('./lib/youtube-enrichment');
+        var status = ytEnrich.getEnrichmentStatus();
+        if (req.query.trigger === '1' && !status.running) {
+            var YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
+            if (YOUTUBE_API_KEY) {
+                ytEnrich.runYouTubeEnrichment(YOUTUBE_API_KEY).catch(function(e) {
+                    console.error('[yt-enrich] Triggered run fatal:', e.message);
+                });
+                status.triggered = true;
+            } else {
+                status.triggered = false;
+                status.error = 'YOUTUBE_API_KEY not set';
+            }
+        }
+        res.json(status);
     } catch(e) {
         res.status(500).json({ error: e.message });
     }
@@ -2438,6 +2467,28 @@ app.listen(PORT, function () {
             .catch(function (e) { console.error('[daily] Startup check fatal:', e.message); scanner.trackJobRun('daily', false, e.message); });
         syncStaleStores();
     }, 300000);
+
+    // YouTube enrichment — fetch view/like counts + comment genre signals for all items with a video ID.
+    // Each item costs 2 quota units (stats + comments); 10,000 units/day free → 5,000 items/day.
+    // Video IDs are populated for FREE during meta-sync from Discogs release details.
+    var YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
+    if (YOUTUBE_API_KEY) {
+        var ytEnrich = require('./lib/youtube-enrichment');
+        console.log('[yt-enrich] YouTube enrichment enabled — runs every 6 hours');
+        // First run: 15 min after startup so meta-sync can populate video IDs first
+        setTimeout(function() {
+            ytEnrich.runYouTubeEnrichment(YOUTUBE_API_KEY).catch(function(e) {
+                console.error('[yt-enrich] Startup run fatal:', e.message);
+            });
+        }, 15 * 60 * 1000);
+        setInterval(function() {
+            ytEnrich.runYouTubeEnrichment(YOUTUBE_API_KEY).catch(function(e) {
+                console.error('[yt-enrich] Fatal:', e.message);
+            });
+        }, 6 * 60 * 60 * 1000);
+    } else {
+        console.log('[yt-enrich] YOUTUBE_API_KEY not set — YouTube enrichment disabled');
+    }
 
     // Stock validation — re-checks "in stock" items to catch false positives
     var VALIDATE_INTERVAL = parseInt(process.env.VALIDATE_INTERVAL) || 4 * 60 * 60 * 1000; // 4 hours
