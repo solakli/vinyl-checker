@@ -4442,6 +4442,14 @@ body.light .mobile-tab     { color: #bbb; }
 body.light .mobile-tab.active { color: #C9A227; }
 body.light .mobile-goldie-fab { box-shadow: 0 4px 16px rgba(201,162,39,0.4); }
 
+/* ── Re-enable mobile tabs AFTER base display:none (cascade fix) ── */
+/* The base .mobile-tabs rule above sets display:none for desktop.   */
+/* This block MUST come after that rule so mobile gets display:flex. */
+@media (max-width: 768px) {
+  .mobile-tabs       { display: flex !important; }
+  .mobile-goldie-fab { display: flex !important; }
+}
+
 /* ═══════════════════════════════════════════════════════════════
    MOBILE RESPONSIVE — Dashboard & Collection
    (must be after base dashboard/collection CSS to override)
