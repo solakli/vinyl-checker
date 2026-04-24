@@ -133,6 +133,7 @@ The platform has a Chrome extension called **Gold Digger** that syncs real Disco
 - **Wantlist sync**: keeps the local DB in sync with the user's Discogs wantlist in real time.
 - This data lets you compare store prices vs Discogs marketplace prices, find the best-rated seller, or filter by condition and shipping origin.
 - Use 'get_discogs_marketplace' to query this data. If no listings found, tell the user to run a marketplace sync from the app or Chrome extension.
+- Use 'get_sync_status' whenever the user asks "is it done?", "what's the progress?", "did it work?", or similar. Also call it automatically after trigger_sync to confirm the sync actually started. NEVER say you can't check progress — you have get_sync_status for exactly that.
 
 ## Your capabilities
 - Show a user what's in stock for them right now (scraped stores)
@@ -302,6 +303,17 @@ const TOOLS = [
             properties: {
                 username: { type: 'string', description: 'Discogs username' },
                 type:     { type: 'string', enum: ['wantlist', 'marketplace', 'both'], description: 'What to sync: wantlist (pull from Discogs API), marketplace (scrape seller listings), or both (default: both)' }
+            },
+            required: ['username']
+        }
+    },
+    {
+        name: 'get_sync_status',
+        description: 'Check the live progress of an ongoing Discogs marketplace sync. Use this whenever the user asks "is it done?", "what\'s the progress?", "how far along is the sync?", or any time you want to report sync progress after triggering one. Returns running state, items done vs total, elapsed time, and how many listings are in the DB so far.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                username: { type: 'string', description: 'Discogs username' }
             },
             required: ['username']
         }
@@ -977,6 +989,61 @@ async function toolTriggerSync({ username, type }) {
     };
 }
 
+async function toolGetSyncStatus({ username }) {
+    // Hit the live status endpoint
+    var status = await new Promise(function(resolve) {
+        var opts = require('url').parse(CHECKER_URL + '/api/marketplace-sync/' + encodeURIComponent(username) + '/status');
+        http.get(opts, function(res) {
+            var body = '';
+            res.on('data', function(c){ body += c; });
+            res.on('end', function(){
+                try { resolve(JSON.parse(body)); } catch(e) { resolve({}); }
+            });
+        }).on('error', function(e){ resolve({ error: e.message }); });
+    });
+
+    // Also count how many listings are already in the DB
+    var d = db.getDb();
+    var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
+    var listingCount = 0;
+    var itemsCovered = 0;
+    if (user) {
+        listingCount = (d.prepare(
+            'SELECT COUNT(*) as c FROM discogs_listings dl JOIN wantlist w ON w.id=dl.wantlist_id WHERE w.user_id=?'
+        ).get(user.id) || {c:0}).c;
+        itemsCovered = (d.prepare(
+            'SELECT COUNT(DISTINCT dl.wantlist_id) as c FROM discogs_listings dl JOIN wantlist w ON w.id=dl.wantlist_id WHERE w.user_id=?'
+        ).get(user.id) || {c:0}).c;
+    }
+
+    var elapsedSec = status.startedAt ? Math.round((Date.now() - status.startedAt) / 1000) : null;
+    var pct = status.total > 0 ? Math.round((status.done / status.total) * 100) : 0;
+
+    if (!status.running && !status.done) {
+        return {
+            running: false,
+            message: 'No marketplace sync has been triggered yet. Use trigger_sync to start one.',
+            listings_in_db: listingCount,
+            items_covered: itemsCovered
+        };
+    }
+
+    return {
+        running:        status.running || false,
+        done:           status.done    || 0,
+        total:          status.total   || 0,
+        pct_complete:   pct,
+        errors:         status.errors  || 0,
+        elapsed_sec:    elapsedSec,
+        completed_at:   status.completedAt ? new Date(status.completedAt).toISOString() : null,
+        listings_in_db: listingCount,
+        items_covered:  itemsCovered,
+        message: status.running
+            ? pct + '% done (' + status.done + '/' + status.total + ' items scraped, ' + elapsedSec + 's elapsed). ' + listingCount + ' listings in DB so far.'
+            : 'Sync complete. ' + listingCount + ' listings across ' + itemsCovered + ' wantlist items now in DB.'
+    };
+}
+
 // Store checkout URL map
 var STORE_CHECKOUT_URLS = {
     'HHV':                  'https://www.hhv.de/cart',
@@ -1156,6 +1223,7 @@ function runTool(name, input) {
         case 'compare_diggers':         return toolCompareDiggers(input);
         case 'get_discogs_marketplace': return toolGetDiscogsMarketplace(input);
         case 'trigger_sync':            return toolTriggerSync(input);
+        case 'get_sync_status':         return toolGetSyncStatus(input);
         case 'get_optimizer_result':    return toolGetOptimizerResult(input);
         case 'run_optimizer':           return toolRunOptimizer(input);
         case 'get_cart':                return toolGetCart(input);
