@@ -3323,8 +3323,9 @@ body.light .coming-soon-sub { color: #aaa !important; }
   .wl-genre-row::-webkit-scrollbar { display: none; }
   .wl-filter-pills { padding: 6px 0 0; }
 
-  /* ── Mobile tab bar visible ── */
+  /* ── Mobile tab bar + FAB visible ── */
   .mobile-tabs { display: flex; }
+  .mobile-goldie-fab { display: flex; }
 
   /* ── Bottom padding on all views so tab bar doesn't cover content ── */
   .alt-view,
@@ -3332,7 +3333,36 @@ body.light .coming-soon-sub { color: #aaa !important; }
   .coll-wrap,
   .disc-wrap,
   #profileBody,
-  .prof-wrap { padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)) !important; }
+  .prof-wrap { padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important; }
+
+  /* ── Wantlist: 2-column card grid on mobile ── */
+  .grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    padding: 0 !important;
+  }
+  .app-layout { padding: 0 8px 80px; }
+
+  /* ── Compact card art for 2-col layout ── */
+  .card-v2 { border-radius: 8px; }
+  .card-art { height: 120px; }
+  .card-vinyl-disc {
+    width: 120px;
+    height: 120px;
+    left: calc(60% - 60px);
+  }
+  .card-body   { padding: 8px 10px 10px; }
+  .card-artist { font-size: 10px; margin-bottom: 2px; }
+  .card-title-v2 { font-size: 12px; margin-bottom: 2px; }
+  .card-meta   { font-size: 9px; margin-bottom: 6px; }
+  .card-price-label { font-size: 9px; margin-bottom: 2px; }
+  .card-price-v2 { font-size: 16px; margin-bottom: 6px; }
+  .card-price-v2.no-price { font-size: 11px; }
+  .card-actions { gap: 5px; }
+  .btn-add-cart, .btn-wishlist { padding: 6px 4px; font-size: 9px; border-radius: 5px; }
+  /* Hide secondary button text on very small screens, keep icon */
+  .card-store-rows { margin-bottom: 8px; padding-top: 8px; gap: 3px; }
+  .card-store-row  { padding: 3px 6px; font-size: 9px; gap: 5px; }
 
   /* ── Profile on mobile: single column ── */
   .prof-body { grid-template-columns: 1fr !important; gap: 12px !important; }
@@ -3341,6 +3371,20 @@ body.light .coming-soon-sub { color: #aaa !important; }
   .prof-ring-svg { width: 80px; height: 80px; }
   .prof-coll-mini-grid { grid-template-columns: 1fr 1fr !important; }
   .prof-diggers-grid { grid-template-columns: 1fr !important; }
+
+  /* ── Taste Intelligence band: 2x2 on mobile ── */
+  .ti-band { grid-template-columns: 1fr 1fr; }
+  .ti-col { padding: 12px 14px; }
+  .ti-bar-wrap { width: 44px; }
+
+  /* ── GOLDIE panel full-screen on mobile ── */
+  .goldie-panel {
+    width: 100% !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    border-radius: 0 !important;
+    height: 100dvh !important;
+  }
 
   /* ── Discover on mobile ── */
   .disc-wrap { padding: 16px 14px 100px; }
@@ -4249,12 +4293,12 @@ body.light .wl-style-pill.active { background: rgba(201,162,39,0.12); color: #a0
   bottom: 0;
   left: 0;
   right: 0;
-  height: 58px;
-  background: #111;
-  border-top: 1px solid #2a2a2a;
+  height: 56px;
+  background: #0d0d0d;
+  border-top: 1px solid #222;
   z-index: 300;
   align-items: stretch;
-  /* Safe area padding for notched phones */
+  /* Safe area for notched phones / iOS Safari home bar */
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
@@ -4264,44 +4308,71 @@ body.light .wl-style-pill.active { background: rgba(201,162,39,0.12); color: #a0
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 2px;
   background: transparent;
   border: none;
   color: #555;
   font-family: 'Oswald', sans-serif;
   cursor: pointer;
   transition: color 0.15s;
-  padding: 8px 2px 6px;
+  padding: 6px 1px 4px;
   -webkit-tap-highlight-color: transparent;
   min-width: 0;
 }
-.mobile-tab:hover { color: #999; }
+.mobile-tab:hover { color: #888; }
 .mobile-tab.active { color: #C9A227; }
 
-/* GOLDIE tab — always gold-tinted */
-.mobile-tab-goldie { color: #8a6e1a; }
-.mobile-tab-goldie:hover { color: #C9A227; }
-.mobile-tab-goldie.goldie-open { color: #C9A227; }
-.mobile-goldie-icon { font-size: 18px; }
-
 .mobile-tab-icon {
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1;
 }
 
 .mobile-tab-label {
-  font-size: 8px;
+  font-size: 7px;
   font-weight: 600;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
+/* ── GOLDIE floating action button ── */
+.mobile-goldie-fab {
+  display: none; /* shown only on mobile */
+  position: fixed;
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  right: 16px;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: #C9A227;
+  border: none;
+  cursor: pointer;
+  z-index: 400;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(201,162,39,0.5);
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.mobile-goldie-fab:active { transform: scale(0.92); box-shadow: 0 2px 8px rgba(201,162,39,0.4); }
+.mobile-goldie-fab.goldie-open {
+  background: #111;
+  border: 2px solid #C9A227;
+  box-shadow: 0 4px 16px rgba(201,162,39,0.3);
+}
+.mobile-goldie-fab-icon {
+  font-size: 20px;
+  color: #000;
+  line-height: 1;
+  display: block;
+}
+.mobile-goldie-fab.goldie-open .mobile-goldie-fab-icon { color: #C9A227; }
+
 /* Light mode */
-body.light .mobile-tabs    { background: #f5f5f5; border-top-color: #ddd; }
+body.light .mobile-tabs    { background: #f8f8f8; border-top-color: #e0e0e0; }
 body.light .mobile-tab     { color: #bbb; }
 body.light .mobile-tab.active { color: #C9A227; }
-body.light .mobile-tab-goldie { color: #c9a22760; }
+body.light .mobile-goldie-fab { box-shadow: 0 4px 16px rgba(201,162,39,0.4); }
 
 /* ═══════════════════════════════════════════════════════════════
    MOBILE RESPONSIVE — Dashboard & Collection
