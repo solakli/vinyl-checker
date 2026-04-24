@@ -264,6 +264,20 @@ app.get('/api/auth/google/callback', async function (req, res) {
         });
 
         res.redirect(APP_BASE + '/?auth=youtube');
+
+        // Background: ingest YouTube liked videos + subscriptions for recommender seeds
+        var ytIngest = require('./lib/youtube-ingest');
+        var _ytUserId   = req.sessionUser.id;
+        var _ytUsername = req.sessionUser.username;
+        ytIngest.ingestAll(tokens.accessToken).then(function(result) {
+            db.saveOAuthToken(_ytUserId, 'google', {
+                accessToken:      tokens.accessToken,
+                refreshToken:     tokens.refreshToken,
+                expiresAt:        new Date(tokens.expiresAt).toISOString(),
+                providerUsername: JSON.stringify({ counts: result.counts, artists: (result.allArtists || []).slice(0, 300) })
+            });
+            console.log('[youtube-ingest] Ingested', result.counts, 'for', _ytUsername);
+        }).catch(function(e) { console.warn('[youtube-ingest] Error:', e.message); });
     } catch (e) {
         console.error('[auth] Google callback error:', e.message);
         res.redirect(APP_BASE + '/?auth_error=' + encodeURIComponent(e.message));
@@ -274,6 +288,201 @@ app.post('/api/auth/google/disconnect', function (req, res) {
     if (!req.sessionUser) return res.status(401).json({ error: 'Not logged in' });
     db.deleteOAuthToken(req.sessionUser.id, 'google');
     res.json({ ok: true });
+});
+
+// ─── SOUNDCLOUD OAUTH ──────────────────────────────────────────────────────
+
+app.get('/api/auth/soundcloud', function(req, res) {
+    if (!oauth.soundcloudEnabled()) return res.status(503).json({ error: 'SoundCloud OAuth not configured — add SOUNDCLOUD_CLIENT_ID and SOUNDCLOUD_CLIENT_SECRET to .env' });
+    if (!req.sessionUser) return res.status(401).json({ error: 'Login first' });
+    var state = (req.cookies['vinyl_session'] || '') + '|' + req.sessionUser.username;
+    res.redirect(oauth.soundcloudAuthorizeUrl(state));
+});
+
+app.get('/api/auth/soundcloud/callback', async function(req, res) {
+    var code  = req.query.code;
+    var state = req.query.state || '';
+    var error = req.query.error;
+    if (error || !code) return res.redirect(APP_BASE + '/?auth_error=soundcloud_denied');
+    try {
+        var tokens = await oauth.soundcloudExchangeCode(code, state);
+
+        var user = req.sessionUser;
+        if (!user) {
+            var stateParts   = state.split('|');
+            var stateUsername = stateParts[1] || '';
+            if (stateUsername) {
+                user = db.getOrCreateUser(stateUsername);
+                var newTok = db.createSession(user.id);
+                res.cookie('vinyl_session', newTok, { httpOnly: true, maxAge: 365 * 24 * 60 * 60 * 1000, sameSite: 'lax', path: '/' });
+            }
+        }
+        if (!user) return res.redirect(APP_BASE + '/?auth_error=no_session');
+
+        db.saveOAuthToken(user.id, 'soundcloud', {
+            accessToken:  tokens.accessToken,
+            refreshToken: tokens.refreshToken || null,
+            expiresAt:    tokens.expiresAt ? new Date(tokens.expiresAt).toISOString() : null
+        });
+
+        res.redirect(APP_BASE + '/?auth=soundcloud');
+
+        // Background ingest: liked tracks, following, tracklist artists → recommender seeds
+        var soundcloud  = require('./lib/soundcloud');
+        var _scUserId   = user.id;
+        var _scUsername = user.username;
+        soundcloud.ingestAll(tokens.accessToken).then(function(result) {
+            db.saveOAuthToken(_scUserId, 'soundcloud', {
+                accessToken:      tokens.accessToken,
+                refreshToken:     tokens.refreshToken || null,
+                expiresAt:        tokens.expiresAt ? new Date(tokens.expiresAt).toISOString() : null,
+                providerUsername: JSON.stringify({ counts: result.counts, weightedArtists: result.weightedArtists || [] })
+            });
+            console.log('[soundcloud] Ingested', result.counts, 'for', _scUsername);
+        }).catch(function(e) { console.warn('[soundcloud] Ingest error:', e.message); });
+    } catch(e) {
+        console.error('[auth] SoundCloud callback error:', e.message);
+        res.redirect(APP_BASE + '/?auth_error=' + encodeURIComponent(e.message));
+    }
+});
+
+app.post('/api/auth/soundcloud/disconnect', function(req, res) {
+    if (!req.sessionUser) return res.status(401).json({ error: 'Not logged in' });
+    db.deleteOAuthToken(req.sessionUser.id, 'soundcloud');
+    res.json({ ok: true });
+});
+
+// Manual re-ingest
+app.post('/api/soundcloud/ingest', async function(req, res) {
+    if (!req.sessionUser) return res.status(401).json({ error: 'Not logged in' });
+    var scToken = db.getOAuthToken(req.sessionUser.id, 'soundcloud');
+    if (!scToken) return res.status(400).json({ error: 'SoundCloud not connected' });
+    try {
+        var soundcloud = require('./lib/soundcloud');
+        var result = await soundcloud.ingestAll(scToken.access_token);
+        db.saveOAuthToken(req.sessionUser.id, 'soundcloud', {
+            accessToken:      scToken.access_token,
+            refreshToken:     scToken.refresh_token || null,
+            expiresAt:        scToken.expires_at || null,
+            providerUsername: JSON.stringify({ counts: result.counts, weightedArtists: result.weightedArtists || [] })
+        });
+        res.json({ ok: true, counts: result.counts });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/soundcloud/status', function(req, res) {
+    if (!req.sessionUser) return res.status(401).json({ error: 'Not logged in' });
+    var scToken = db.getOAuthToken(req.sessionUser.id, 'soundcloud');
+    if (!scToken) return res.json({ connected: false });
+    try {
+        var data = JSON.parse(scToken.provider_username || '{}');
+        res.json({ connected: true, counts: data.counts || null, artistCount: (data.weightedArtists || []).length });
+    } catch(e) { res.json({ connected: true }); }
+});
+
+// ─── YOUTUBE PERSONAL INGEST (liked videos + subscriptions) ──────────────
+
+app.post('/api/youtube/ingest', async function(req, res) {
+    if (!req.sessionUser) return res.status(401).json({ error: 'Not logged in' });
+    var gToken = db.getOAuthToken(req.sessionUser.id, 'google');
+    if (!gToken) return res.status(400).json({ error: 'YouTube not connected' });
+    try {
+        var accessToken = gToken.access_token;
+        if (gToken.expires_at && new Date(gToken.expires_at) < new Date()) {
+            if (!gToken.refresh_token) return res.status(401).json({ error: 'Token expired — reconnect YouTube' });
+            var refreshed = await oauth.googleRefreshToken(gToken.refresh_token);
+            db.saveOAuthToken(req.sessionUser.id, 'google', { accessToken: refreshed.accessToken, expiresAt: new Date(refreshed.expiresAt).toISOString() });
+            accessToken = refreshed.accessToken;
+        }
+        var ytIngest = require('./lib/youtube-ingest');
+        var result = await ytIngest.ingestAll(accessToken);
+        db.saveOAuthToken(req.sessionUser.id, 'google', {
+            accessToken:      accessToken,
+            providerUsername: JSON.stringify({ counts: result.counts, artists: (result.allArtists || []).slice(0, 300) })
+        });
+        res.json({ ok: true, counts: result.counts });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/youtube/status', async function(req, res) {
+    if (!req.sessionUser) return res.status(401).json({ error: 'Not logged in' });
+    var gToken = db.getOAuthToken(req.sessionUser.id, 'google');
+    if (!gToken) return res.json({ connected: false });
+    try {
+        var data = JSON.parse(gToken.provider_username || '{}');
+        res.json({ connected: true, counts: data.counts || null, artistCount: (data.artists || []).length });
+    } catch(e) { res.json({ connected: true }); }
+});
+
+// ─── DISCOVERY — Last.fm-powered recommendations from wantlist + streaming seeds ──
+
+app.get('/api/discovery/:username', async function(req, res) {
+    try {
+        var username = req.params.username.trim();
+        var d = db.getDb();
+        var recommender = require('./lib/recommender');
+        var result = await recommender.recommend(username, d, {
+            seedLimit:      parseInt(req.query.seeds)   || 30,
+            similarPerSeed: parseInt(req.query.similar) || 8,
+            resultLimit:    parseInt(req.query.limit)   || 40
+        });
+        res.json(result);
+    } catch(e) {
+        console.error('[discovery]', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ─── MIX TO CART ──────────────────────────────────────────────────────────────
+
+// Resolve a SoundCloud / YouTube / Mixcloud URL → tracklist waterfall
+app.post('/api/mix-to-cart/resolve', async function(req, res) {
+    if (!req.sessionUser) return res.status(401).json({ error: 'Not logged in' });
+    var url = (req.body.url || '').trim();
+    if (!url) return res.status(400).json({ error: 'url required' });
+    try {
+        var scToken = db.getOAuthToken(req.sessionUser.id, 'soundcloud');
+        var gToken  = db.getOAuthToken(req.sessionUser.id, 'google');
+        var tokens  = {
+            soundcloud: scToken ? scToken.access_token : null,
+            youtube:    gToken  ? gToken.access_token  : null,
+            youtubeApiKey: process.env.YOUTUBE_API_KEY || null,
+        };
+        var mixResolver = require('./lib/mix-resolver');
+        var result = await mixResolver.resolveMixUrl(url, tokens);
+        res.json(result);
+    } catch(e) {
+        console.error('[mix-to-cart] resolve error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Cross-reference parsed artists against store inventory
+app.post('/api/mix-to-cart/search', function(req, res) {
+    var artists = req.body.artists || [];
+    if (!artists.length) return res.status(400).json({ error: 'artists array required' });
+    try {
+        var mixResolver = require('./lib/mix-resolver');
+        var rawDb = db.getDb();
+        var results = mixResolver.searchInventoryForTracklist(artists, rawDb);
+        res.json({ results: results });
+    } catch(e) {
+        console.error('[mix-to-cart] search error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Parse a pasted tracklist description (no URL needed)
+app.post('/api/mix-to-cart/parse-text', function(req, res) {
+    var text = (req.body.text || '').trim();
+    if (!text) return res.status(400).json({ error: 'text required' });
+    try {
+        var { parseTracklistFromDescription } = require('./lib/mix-resolver');
+        var artists = parseTracklistFromDescription(text);
+        res.json({ artists: artists });
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // --- YOUTUBE PLAYLIST CREATION ---
