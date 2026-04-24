@@ -138,12 +138,28 @@ The platform has a Chrome extension called **Gold Digger** that syncs real Disco
 - Show a user what's in stock for them right now (scraped stores)
 - Look up Discogs marketplace listings for wantlist items: price, seller, condition, ships-from
 - Compare store prices vs Discogs marketplace prices — surface where a record is cheapest
-- Suggest carts per store based on their taste profile and budget
+- Suggest carts per store based on their taste profile and budget, add/remove items via manage_cart
+- Read current cart state and generate checkout links per store via get_cart
+- Browse a user's owned collection via get_collection (separate from wantlist)
 - Rank in-stock items by rarity, price value vs Discogs market, or taste alignment
 - Compare taste between diggers and find shared interests
 - Explain a user's taste profile in plain language
 - Highlight hidden gems (low community_have = hard to find elsewhere)
 - Provide store recommendations (which stores are best for their taste)
+
+## Cart workflow
+When a user says "add to cart", "build my cart", or "what should I buy":
+1. Call get_optimizer_result first — it covers both stores + Discogs sellers with real shipping
+2. Suggest specific items: list them grouped by store/seller with prices
+3. Offer to add them to the in-app cart via manage_cart
+4. Use get_cart to show current cart state and checkout URLs per store
+- Store checkout URLs: HHV → hhv.de/cart, Juno → juno.co.uk/basket/, Deejay.de → deejay.de/warenkorb/
+- For Discogs sellers: https://www.discogs.com/seller/SELLER_NAME/profile
+
+## Collection vs Wantlist
+- Wantlist = records the user WANTS to buy (search_wantlist, get_in_stock)
+- Collection = records the user OWNS (get_collection)
+- Both are used for taste profiling. Use get_collection when a user asks "what do I own", "show my collection", or when comparing with another user's collection.
 
 ## Personality
 You are knowledgeable, passionate about vinyl culture, concise. You speak like an experienced record store owner who also knows data. You surface insights ("this press only has 47 collectors worldwide", "98% seller rating ships from Germany — solid buy") and make opinionated recommendations backed by data. Keep responses focused and scannable — use bullet lists when presenting multiple items.
@@ -315,6 +331,59 @@ const TOOLS = [
                 min_seller_rating: { type: 'number',  description: 'Minimum Discogs seller rating 0-100 (default: 98)' },
                 max_price_usd:     { type: 'number',  description: 'Max price per record in USD (optional)' },
                 force_refresh:     { type: 'boolean', description: 'Force a new run even if a fresh cached result exists (default false)' }
+            },
+            required: ['username']
+        }
+    },
+    {
+        name: 'get_cart',
+        description: 'Get the current in-app cart for a user — items queued for purchase, grouped by store with totals and checkout URLs. Use this when the user asks "what\'s in my cart", "show my cart", or after adding items via manage_cart.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                username: { type: 'string', description: 'Discogs username' }
+            },
+            required: ['username']
+        }
+    },
+    {
+        name: 'manage_cart',
+        description: 'Add or remove items from the user\'s in-app cart. Use this to actually queue items for purchase after suggesting them. Items are matched by title+store. Returns updated cart summary with checkout URLs. Action: "add" (queue items), "remove" (dequeue), "clear" (empty cart).',
+        input_schema: {
+            type: 'object',
+            properties: {
+                username: { type: 'string', description: 'Discogs username' },
+                action:   { type: 'string', enum: ['add', 'remove', 'clear'], description: 'add items, remove specific items, or clear entire cart' },
+                items: {
+                    type: 'array',
+                    description: 'Items to add or remove (not needed for clear action)',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            artist:    { type: 'string', description: 'Artist name' },
+                            title:     { type: 'string', description: 'Record title' },
+                            store:     { type: 'string', description: 'Store name, e.g. HHV, Juno, Deejay.de' },
+                            price_usd: { type: 'number', description: 'Price in USD (optional for add)' }
+                        },
+                        required: ['artist', 'title', 'store']
+                    }
+                }
+            },
+            required: ['username', 'action']
+        }
+    },
+    {
+        name: 'get_collection',
+        description: 'Get records a user OWNS (their collection, not wantlist). Can search by artist, title, genre, or style. Use this when the user asks "what do I own", "show my collection", or when you need to compare two users\' owned records.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                username: { type: 'string', description: 'Discogs username' },
+                query:    { type: 'string', description: 'Search by artist or title (optional)' },
+                genre:    { type: 'string', description: 'Filter by genre (optional)' },
+                style:    { type: 'string', description: 'Filter by style (optional)' },
+                sort:     { type: 'string', enum: ['date_added', 'artist', 'year'], description: 'Sort order (default: date_added desc)' },
+                limit:    { type: 'number', description: 'Max items to return (default 30, max 100)' }
             },
             required: ['username']
         }
@@ -908,6 +977,172 @@ async function toolTriggerSync({ username, type }) {
     };
 }
 
+// Store checkout URL map
+var STORE_CHECKOUT_URLS = {
+    'HHV':                  'https://www.hhv.de/cart',
+    'Juno':                 'https://www.juno.co.uk/basket/',
+    'Deejay.de':            'https://www.deejay.de/warenkorb/',
+    'Hardwax':              'https://hardwax.com/basket/',
+    'Decks.de':             'https://www.decks.de/cart',
+    'Phonica':              'https://www.phonicarecords.com/basket',
+    'Turntable Lab':        'https://www.turntablelab.com/cart',
+    'Gramaphone':           'https://gramaphonerecords.com/cart/',
+    'Further Records':      'https://www.furtherrecords.com/cart',
+    'Underground Vinyl':    'https://www.undergroundvinyl.net/cart',
+    'Octopus Records NYC':  'https://www.octopusrecordsnyc.com/cart',
+};
+
+function toolGetCart({ username }) {
+    var d = db.getDb();
+    var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
+    if (!user) return { error: 'User not found: ' + username };
+
+    var items = db.getCartItems(user.id);
+    if (!items || items.length === 0) {
+        return {
+            total_items: 0,
+            stores: [],
+            message: 'Cart is empty. Use manage_cart to queue items, or get_optimizer_result to see recommended buys.'
+        };
+    }
+
+    // Group by store
+    var byStore = {};
+    var grandTotal = 0;
+    items.forEach(function(item) {
+        if (!byStore[item.store]) byStore[item.store] = { store: item.store, items: [], subtotal_usd: 0 };
+        byStore[item.store].items.push({
+            artist:      item.artist,
+            title:       item.title,
+            year:        item.year,
+            price_usd:   item.price_usd ? +item.price_usd.toFixed(2) : null,
+            wantlist_id: item.wantlist_id
+        });
+        byStore[item.store].subtotal_usd += item.price_usd || 0;
+        grandTotal += item.price_usd || 0;
+    });
+
+    var stores = Object.values(byStore).map(function(s) {
+        s.subtotal_usd = +s.subtotal_usd.toFixed(2);
+        s.item_count   = s.items.length;
+        s.checkout_url = STORE_CHECKOUT_URLS[s.store] || null;
+        return s;
+    });
+
+    return {
+        total_items:     items.length,
+        grand_total_usd: +grandTotal.toFixed(2),
+        stores:          stores,
+        tip: 'Visit each store\'s checkout_url to complete purchase. Discogs sellers: go to discogs.com/seller/SELLER_NAME/profile'
+    };
+}
+
+function toolManageCart({ username, action, items }) {
+    var d = db.getDb();
+    var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
+    if (!user) return { error: 'User not found: ' + username };
+
+    if (action === 'clear') {
+        db.clearCart(user.id);
+        return { success: true, action: 'clear', message: 'Cart cleared.', cart: { total_items: 0, grand_total_usd: 0 } };
+    }
+
+    if (!items || items.length === 0) return { error: 'No items provided for action: ' + action };
+
+    var results = [];
+    items.forEach(function(item) {
+        // Match by title (fuzzy)
+        var q = '%' + (item.title || '').toLowerCase().replace(/%/g,'').replace(/_/g,'') + '%';
+        var wRow = d.prepare(
+            'SELECT id FROM wantlist WHERE user_id=? AND active=1 AND LOWER(title) LIKE ? LIMIT 1'
+        ).get(user.id, q);
+
+        if (!wRow) {
+            results.push({ artist: item.artist, title: item.title, store: item.store, status: 'not_found', note: 'Not in wantlist — can only cart wantlist items' });
+            return;
+        }
+
+        if (action === 'add') {
+            db.addToCart(user.id, wRow.id, item.store, null, item.price_usd || null);
+            results.push({ artist: item.artist, title: item.title, store: item.store, status: 'added', wantlist_id: wRow.id });
+        } else if (action === 'remove') {
+            db.removeFromCart(user.id, wRow.id, item.store);
+            results.push({ artist: item.artist, title: item.title, store: item.store, status: 'removed' });
+        }
+    });
+
+    var cart = toolGetCart({ username });
+    return {
+        success: true,
+        action:  action,
+        results: results,
+        cart:    { total_items: cart.total_items, grand_total_usd: cart.grand_total_usd, stores: cart.stores }
+    };
+}
+
+function toolGetCollection({ username, query, genre, style, sort, limit }) {
+    var d = db.getDb();
+    var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
+    if (!user) return { error: 'User not found: ' + username };
+    limit = Math.min(limit || 30, 100);
+
+    var conditions = ['user_id = ?'];
+    var params = [user.id];
+
+    if (query && query.trim()) {
+        conditions.push('(LOWER(artist) LIKE ? OR LOWER(title) LIKE ?)');
+        var lq = '%' + query.toLowerCase() + '%';
+        params.push(lq, lq);
+    }
+    if (genre && genre.trim()) {
+        conditions.push('LOWER(genres) LIKE ?');
+        params.push('%' + genre.toLowerCase() + '%');
+    }
+    if (style && style.trim()) {
+        conditions.push('LOWER(styles) LIKE ?');
+        params.push('%' + style.toLowerCase() + '%');
+    }
+
+    var sortCol = sort === 'artist' ? 'artist ASC' : sort === 'year' ? 'year DESC' : 'date_added DESC';
+    params.push(limit);
+
+    var rows = d.prepare(
+        'SELECT artist, title, year, label, catno, genres, styles, formats, thumb, date_added, rating ' +
+        'FROM collection WHERE ' + conditions.join(' AND ') + ' ORDER BY ' + sortCol + ' LIMIT ?'
+    ).all(...params);
+
+    var totalRow = d.prepare('SELECT COUNT(*) as c FROM collection WHERE user_id=?').get(user.id);
+
+    if (totalRow.c === 0) {
+        return {
+            total_in_collection: 0,
+            showing: 0,
+            items: [],
+            message: username + ' has no collection synced. They need to hit "Sync Collection" in the app, or visit stream.ronautradio.la/vinyl/api/collection/' + username + '?refresh=1'
+        };
+    }
+
+    return {
+        total_in_collection: totalRow.c,
+        showing: rows.length,
+        filters: { query: query || null, genre: genre || null, style: style || null },
+        items: rows.map(function(r) {
+            return {
+                artist:     r.artist,
+                title:      r.title,
+                year:       r.year,
+                label:      r.label,
+                catno:      r.catno,
+                genres:     (r.genres  || '').split('|').map(function(s){ return s.trim(); }).filter(Boolean),
+                styles:     (r.styles  || '').split('|').map(function(s){ return s.trim(); }).filter(Boolean),
+                formats:    (r.formats || '').split('|').map(function(s){ return s.trim(); }).filter(Boolean),
+                rating:     r.rating || null,
+                date_added: r.date_added
+            };
+        })
+    };
+}
+
 // Tool dispatch
 function runTool(name, input) {
     switch(name) {
@@ -923,6 +1158,9 @@ function runTool(name, input) {
         case 'trigger_sync':            return toolTriggerSync(input);
         case 'get_optimizer_result':    return toolGetOptimizerResult(input);
         case 'run_optimizer':           return toolRunOptimizer(input);
+        case 'get_cart':                return toolGetCart(input);
+        case 'manage_cart':             return toolManageCart(input);
+        case 'get_collection':          return toolGetCollection(input);
         default: return { error: 'Unknown tool: ' + name };
     }
 }
