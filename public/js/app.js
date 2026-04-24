@@ -4715,10 +4715,12 @@ var _goldieStreaming = false;
 
 function goldieToggle() {
   _goldieOpen = !_goldieOpen;
-  var panel = document.getElementById('goldiePanel');
-  var btn   = document.getElementById('goldieNavBtn');
+  var panel   = document.getElementById('goldiePanel');
+  var btn     = document.getElementById('goldieNavBtn');
+  var mobileTab = document.getElementById('mobileGoldieTab');
   if (panel) panel.style.display = _goldieOpen ? 'flex' : 'none';
   if (btn)   btn.classList.toggle('active', _goldieOpen);
+  if (mobileTab) mobileTab.classList.toggle('goldie-open', _goldieOpen);
   if (_goldieOpen) {
     var input = document.getElementById('goldieInput');
     if (input) input.focus();

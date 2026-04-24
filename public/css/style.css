@@ -3325,6 +3325,39 @@ body.light .coming-soon-sub { color: #aaa !important; }
 
   /* ── Mobile tab bar visible ── */
   .mobile-tabs { display: flex; }
+
+  /* ── Bottom padding on all views so tab bar doesn't cover content ── */
+  .alt-view,
+  .dash-wrap,
+  .coll-wrap,
+  .disc-wrap,
+  #profileBody,
+  .prof-wrap { padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)) !important; }
+
+  /* ── Profile on mobile: single column ── */
+  .prof-body { grid-template-columns: 1fr !important; gap: 12px !important; }
+  .prof-hero { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .prof-ring { width: 80px; height: 80px; min-width: 80px; }
+  .prof-ring-svg { width: 80px; height: 80px; }
+  .prof-coll-mini-grid { grid-template-columns: 1fr 1fr !important; }
+  .prof-diggers-grid { grid-template-columns: 1fr !important; }
+
+  /* ── Discover on mobile ── */
+  .disc-wrap { padding: 16px 14px 100px; }
+
+  /* ── GOLDIE panel full-screen on mobile ── */
+  #goldiePanel {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 58px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 0 !important;
+    border: none !important;
+    z-index: 500 !important;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -4226,28 +4259,37 @@ body.light .wl-style-pill.active { background: rgba(201,162,39,0.12); color: #a0
   font-family: 'Oswald', sans-serif;
   cursor: pointer;
   transition: color 0.15s;
-  padding: 8px 0 6px;
+  padding: 8px 2px 6px;
   -webkit-tap-highlight-color: transparent;
+  min-width: 0;
 }
 .mobile-tab:hover { color: #999; }
 .mobile-tab.active { color: #C9A227; }
 
+/* GOLDIE tab — always gold-tinted */
+.mobile-tab-goldie { color: #8a6e1a; }
+.mobile-tab-goldie:hover { color: #C9A227; }
+.mobile-tab-goldie.goldie-open { color: #C9A227; }
+.mobile-goldie-icon { font-size: 18px; }
+
 .mobile-tab-icon {
-  font-size: 17px;
+  font-size: 16px;
   line-height: 1;
 }
 
 .mobile-tab-label {
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 600;
-  letter-spacing: 0.8px;
+  letter-spacing: 0.5px;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 /* Light mode */
-body.light .mobile-tabs { background: #f5f5f5; border-top-color: #ddd; }
-body.light .mobile-tab { color: #bbb; }
+body.light .mobile-tabs    { background: #f5f5f5; border-top-color: #ddd; }
+body.light .mobile-tab     { color: #bbb; }
 body.light .mobile-tab.active { color: #C9A227; }
+body.light .mobile-tab-goldie { color: #c9a22760; }
 
 /* ═══════════════════════════════════════════════════════════════
    MOBILE RESPONSIVE — Dashboard & Collection
