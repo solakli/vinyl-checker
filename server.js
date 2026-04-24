@@ -1399,23 +1399,82 @@ app.get('/api/profile/:username', function (req, res) {
 
         // ── Taste profile (genres/styles from wantlist + collection combined) ──
         var wantlistItems    = d.prepare('SELECT genres, styles, artist FROM wantlist WHERE user_id = ? AND active = 1').all(user.id);
-        var collectionItems  = d.prepare('SELECT genres, styles, artist FROM collection WHERE user_id = ?').all(user.id);
+        var collectionItems  = d.prepare('SELECT genres, styles, artist, date_added FROM collection WHERE user_id = ?').all(user.id);
         var collectionSize   = collectionItems.length;
         var genreCounts = {}, styleCounts = {}, artistCounts = {};
-        // Wantlist items — full weight (want but don't own)
+        // ── Hunting: wantlist-only taste ──
+        var huntingGenre = {}, huntingStyle = {};
         wantlistItems.forEach(function(w) {
-            (w.genres || '').split('|').forEach(function(g) { g = g.trim(); if (g) genreCounts[g] = (genreCounts[g] || 0) + 1; });
-            (w.styles || '').split('|').forEach(function(s) { s = s.trim(); if (s) styleCounts[s] = (styleCounts[s] || 0) + 1; });
+            (w.genres || '').split('|').forEach(function(g) { g = g.trim(); if (g) { genreCounts[g] = (genreCounts[g]||0)+1; huntingGenre[g] = (huntingGenre[g]||0)+1; } });
+            (w.styles || '').split('|').forEach(function(s) { s = s.trim(); if (s) { styleCounts[s] = (styleCounts[s]||0)+1; huntingStyle[s] = (huntingStyle[s]||0)+1; } });
             var a = (w.artist || '').trim();
             if (a && a !== 'Various' && a !== 'Various Artists') artistCounts[a] = (artistCounts[a] || 0) + 1;
         });
-        // Collection items — full weight (already own = proven taste signal)
+        var wantN = wantlistItems.length || 1;
+        var huntingTopGenres = Object.keys(huntingGenre).sort(function(a,b){return huntingGenre[b]-huntingGenre[a];}).slice(0,6)
+            .map(function(g){ return { name:g, count:huntingGenre[g], pct:Math.round(huntingGenre[g]/wantN*100) }; });
+        var huntingTopStyles = Object.keys(huntingStyle).sort(function(a,b){return huntingStyle[b]-huntingStyle[a];}).slice(0,10)
+            .map(function(s){ return { name:s, count:huntingStyle[s], pct:Math.round(huntingStyle[s]/wantN*100) }; });
+
+        // ── Keeping: collection-only taste ──
+        var keepingGenre = {}, keepingStyle = {};
         collectionItems.forEach(function(w) {
-            (w.genres || '').split('|').forEach(function(g) { g = g.trim(); if (g) genreCounts[g] = (genreCounts[g] || 0) + 1; });
-            (w.styles || '').split('|').forEach(function(s) { s = s.trim(); if (s) styleCounts[s] = (styleCounts[s] || 0) + 1; });
+            (w.genres || '').split('|').forEach(function(g) { g = g.trim(); if (g) { genreCounts[g] = (genreCounts[g]||0)+1; keepingGenre[g] = (keepingGenre[g]||0)+1; } });
+            (w.styles || '').split('|').forEach(function(s) { s = s.trim(); if (s) { styleCounts[s] = (styleCounts[s]||0)+1; keepingStyle[s] = (keepingStyle[s]||0)+1; } });
             var a = (w.artist || '').trim();
             if (a && a !== 'Various' && a !== 'Various Artists') artistCounts[a] = (artistCounts[a] || 0) + 1;
         });
+        var collN = collectionSize || 1;
+        var keepingTopGenres = Object.keys(keepingGenre).sort(function(a,b){return keepingGenre[b]-keepingGenre[a];}).slice(0,6)
+            .map(function(g){ return { name:g, count:keepingGenre[g], pct:Math.round(keepingGenre[g]/collN*100) }; });
+        var keepingTopStyles = Object.keys(keepingStyle).sort(function(a,b){return keepingStyle[b]-keepingStyle[a];}).slice(0,10)
+            .map(function(s){ return { name:s, count:keepingStyle[s], pct:Math.round(keepingStyle[s]/collN*100) }; });
+
+        // ── Leaning lately: recent collection additions (60 days) ──
+        var sixtyDaysAgo = new Date(Date.now() - 60*24*60*60*1000).toISOString().slice(0,10);
+        var recentCollItems = collectionItems.filter(function(w) {
+            return w.date_added && w.date_added.slice(0,10) >= sixtyDaysAgo;
+        });
+        var leaningGenre = {}, leaningStyle = {};
+        recentCollItems.forEach(function(w) {
+            (w.genres||'').split('|').forEach(function(g){ g=g.trim(); if(g) leaningGenre[g]=(leaningGenre[g]||0)+1; });
+            (w.styles||'').split('|').forEach(function(s){ s=s.trim(); if(s) leaningStyle[s]=(leaningStyle[s]||0)+1; });
+        });
+        var recentN = recentCollItems.length || 1;
+        var leaningTrend = Object.keys(leaningStyle).sort(function(a,b){return leaningStyle[b]-leaningStyle[a];}).slice(0,8)
+            .map(function(s) {
+                var leanPct  = Math.round(leaningStyle[s] / recentN * 100);
+                var keepPct  = Math.round((keepingStyle[s]||0) / collN * 100);
+                return { name:s, count:leaningStyle[s], leanPct:leanPct, keepPct:keepPct, drift:leanPct-keepPct };
+            }).sort(function(a,b){ return b.drift - a.drift; });
+        var leaningGenreTrend = Object.keys(leaningGenre).sort(function(a,b){return leaningGenre[b]-leaningGenre[a];}).slice(0,4)
+            .map(function(g) {
+                var leanPct = Math.round(leaningGenre[g] / recentN * 100);
+                var keepPct = Math.round((keepingGenre[g]||0) / collN * 100);
+                return { name:g, count:leaningGenre[g], leanPct:leanPct, keepPct:keepPct, drift:leanPct-keepPct };
+            }).sort(function(a,b){ return b.drift - a.drift; });
+
+        // ── Store match: catalog alignment with user's taste ──
+        var storeItemRows = d.prepare(
+            'SELECT sr.store, w.genres, w.styles FROM store_results sr JOIN wantlist w ON w.id = sr.wantlist_id WHERE w.user_id = ? AND sr.in_stock = 1'
+        ).all(user.id);
+        var storeStyleMap = {};
+        storeItemRows.forEach(function(r) {
+            if (!storeStyleMap[r.store]) storeStyleMap[r.store] = {};
+            (r.styles||'').split('|').forEach(function(s){ s=s.trim(); if(s) storeStyleMap[r.store][s]=(storeStyleMap[r.store][s]||0)+1; });
+            (r.genres||'').split('|').forEach(function(g){ g=g.trim(); if(g) storeStyleMap[r.store][g]=(storeStyleMap[r.store][g]||0)+1; });
+        });
+        var userSignal = new Set(
+            Object.keys(huntingStyle).sort(function(a,b){return huntingStyle[b]-huntingStyle[a];}).slice(0,20)
+            .concat(Object.keys(huntingGenre).sort(function(a,b){return huntingGenre[b]-huntingGenre[a];}).slice(0,8))
+        );
+        var storeMatch = Object.keys(storeStyleMap).map(function(store) {
+            var storeSet = new Set(Object.keys(storeStyleMap[store]));
+            var hits = 0; userSignal.forEach(function(s){ if(storeSet.has(s)) hits++; });
+            var matchPct = userSignal.size > 0 ? Math.round(hits/userSignal.size*100) : 0;
+            var topStylesAtStore = Object.keys(storeStyleMap[store]).sort(function(a,b){return storeStyleMap[store][b]-storeStyleMap[store][a];}).slice(0,3);
+            return { store:store, matchPct:matchPct, topStyles:topStylesAtStore };
+        }).sort(function(a,b){ return b.matchPct-a.matchPct; });
         var totalTasteItems = wantlistItems.length + collectionItems.length;
         var topGenres = Object.keys(genreCounts).sort(function(a,b){ return genreCounts[b]-genreCounts[a]; }).slice(0,8)
             .map(function(g){ return { name: g, count: genreCounts[g] }; });
@@ -1543,7 +1602,12 @@ app.get('/api/profile/:username', function (req, res) {
             avgHave:         avgHave ? Math.round(avgHave) : null,
             avgWant:         metaStats && metaStats.avgWant ? Math.round(metaStats.avgWant) : null,
             avgRating:       metaStats && metaStats.avgRating ? Math.round(metaStats.avgRating * 10) / 10 : null,
-            rarePct:         rarePct
+            rarePct:         rarePct,
+            // ── Taste intelligence ──
+            hunting: { topGenres: huntingTopGenres, topStyles: huntingTopStyles, total: wantlistItems.length },
+            keeping: { topGenres: keepingTopGenres, topStyles: keepingTopStyles, total: collectionSize },
+            leaning: { trend: leaningTrend, genreTrend: leaningGenreTrend, recentCount: recentCollItems.length },
+            storeMatch: storeMatch
         });
     } catch(e) {
         console.error('[profile] error:', e.message);

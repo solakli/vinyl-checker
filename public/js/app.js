@@ -4315,6 +4315,95 @@ function loadProfile() {
     });
 }
 
+// ── Taste Intelligence: Hunting / Keeping / Leaning / Store Match ──────────
+function _buildTasteIntelHtml(p) {
+  var h = p.hunting  || { topStyles: [], topGenres: [], total: 0 };
+  var k = p.keeping  || { topStyles: [], topGenres: [], total: 0 };
+  var l = p.leaning  || { trend: [], genreTrend: [], recentCount: 0 };
+  var sm = p.storeMatch || [];
+
+  // If no data yet, skip the whole section
+  if (!h.total && !k.total) return '';
+
+  // ── Hunting column ──
+  var topH = h.topStyles.slice(0,6);
+  var maxH = topH.length ? topH[0].pct : 1;
+  var huntRows = topH.map(function(s) {
+    var barW = maxH > 0 ? Math.round(s.pct / maxH * 100) : 0;
+    return '<div class="ti-row">' +
+      '<div class="ti-label">' + escapeHtml(s.name) + '</div>' +
+      '<div class="ti-bar-wrap"><div class="ti-bar ti-bar-hunt" style="width:' + barW + '%"></div></div>' +
+      '<div class="ti-pct">' + s.pct + '%</div>' +
+    '</div>';
+  }).join('');
+
+  // ── Keeping column ──
+  var topK = k.topStyles.slice(0,6);
+  var maxK = topK.length ? topK[0].pct : 1;
+  var keepRows = topK.map(function(s) {
+    var barW = maxK > 0 ? Math.round(s.pct / maxK * 100) : 0;
+    return '<div class="ti-row">' +
+      '<div class="ti-label">' + escapeHtml(s.name) + '</div>' +
+      '<div class="ti-bar-wrap"><div class="ti-bar ti-bar-keep" style="width:' + barW + '%"></div></div>' +
+      '<div class="ti-pct">' + s.pct + '%</div>' +
+    '</div>';
+  }).join('');
+
+  // ── Leaning column ──
+  var leanRows = '';
+  if (l.trend && l.trend.length) {
+    leanRows = l.trend.slice(0,6).map(function(s) {
+      var driftAbs = Math.abs(s.drift);
+      var arrow = s.drift > 3 ? '<span class="ti-drift-up">↑' + driftAbs + '%</span>' :
+                  s.drift < -3 ? '<span class="ti-drift-dn">↓' + driftAbs + '%</span>' :
+                                 '<span class="ti-drift-flat">→</span>';
+      return '<div class="ti-row">' +
+        '<div class="ti-label">' + escapeHtml(s.name) + '</div>' +
+        '<div class="ti-bar-wrap"><div class="ti-bar ti-bar-lean" style="width:' + s.leanPct + '%"></div></div>' +
+        arrow +
+      '</div>';
+    }).join('');
+  } else if (k.total < 1) {
+    leanRows = '<div class="ti-empty">No collection yet.</div>';
+  } else {
+    leanRows = '<div class="ti-empty">No recent additions (60 days).</div>';
+  }
+
+  var leanSubtitle = l.recentCount > 0
+    ? l.recentCount + ' records added in last 60 days'
+    : 'Based on last 60 days of collection';
+
+  // ── Store Match column ──
+  var smRows = sm.slice(0,6).map(function(s) {
+    var barW = Math.min(s.matchPct, 100);
+    var barCls = s.matchPct >= 70 ? 'ti-bar-match-hi' : s.matchPct >= 40 ? 'ti-bar-match-mid' : 'ti-bar-match-lo';
+    return '<div class="ti-row">' +
+      '<div class="ti-label">' + escapeHtml(s.store) + '</div>' +
+      '<div class="ti-bar-wrap"><div class="ti-bar ' + barCls + '" style="width:' + barW + '%"></div></div>' +
+      '<div class="ti-pct">' + s.matchPct + '%</div>' +
+    '</div>';
+  }).join('') || '<div class="ti-empty">Run a scan to see store match.</div>';
+
+  return '<div class="ti-band">' +
+    '<div class="ti-col">' +
+      '<div class="ti-col-head"><span class="ti-icon">🎯</span> Hunting <span class="ti-col-sub">' + h.total + ' wants</span></div>' +
+      '<div class="ti-rows">' + (huntRows || '<div class="ti-empty">No wantlist data.</div>') + '</div>' +
+    '</div>' +
+    '<div class="ti-col">' +
+      '<div class="ti-col-head"><span class="ti-icon">🗄</span> Keeping <span class="ti-col-sub">' + k.total + ' owned</span></div>' +
+      '<div class="ti-rows">' + (keepRows || '<div class="ti-empty">No collection yet.</div>') + '</div>' +
+    '</div>' +
+    '<div class="ti-col">' +
+      '<div class="ti-col-head"><span class="ti-icon">📈</span> Leaning <span class="ti-col-sub">' + leanSubtitle + '</span></div>' +
+      '<div class="ti-rows">' + leanRows + '</div>' +
+    '</div>' +
+    '<div class="ti-col">' +
+      '<div class="ti-col-head"><span class="ti-icon">🏪</span> Store Match <span class="ti-col-sub">catalog alignment</span></div>' +
+      '<div class="ti-rows">' + smRows + '</div>' +
+    '</div>' +
+  '</div>';
+}
+
 function renderProfile(p) {
   var memberYear = p.memberSince ? new Date(p.memberSince).getFullYear() : '—';
   var lastScanLabel = p.lastScan ? formatRelativeTime(p.lastScan) : 'Never';
@@ -4566,6 +4655,9 @@ function renderProfile(p) {
 
     // Decade chart (full width, below hero)
     decadeHtml +
+
+    // ── Taste Intelligence band (Hunting / Keeping / Leaning + Store Match) ──
+    _buildTasteIntelHtml(p) +
 
     // Two-column body
     '<div class="prof-body">' +

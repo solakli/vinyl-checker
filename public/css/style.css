@@ -6287,6 +6287,104 @@ body.light .disc-digger-tag   { background: #fff8e0; border-color: #e8d890; colo
 body.light .disc-digger-genre { background: #f5f5f5; border-color: #e0e0e0; color: #888; }
 body.light .disc-digger-stats { color: #aaa; }
 
+/* ── Taste Intelligence band (Hunting / Keeping / Leaning / Store Match) ── */
+.ti-band {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: #1a1a1a;
+  border-top: 1px solid #1e1e1e;
+  border-bottom: 1px solid #1e1e1e;
+  margin: 0 -1px;
+}
+.ti-col {
+  background: #0d0d0d;
+  padding: 18px 20px 16px;
+}
+.ti-col-head {
+  font-family: 'Oswald', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #eee;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.ti-icon { font-size: 14px; }
+.ti-col-sub {
+  font-size: 10px;
+  font-weight: 400;
+  color: #555;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: auto;
+}
+.ti-rows { display: flex; flex-direction: column; gap: 6px; }
+.ti-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 6px;
+}
+.ti-label {
+  font-size: 11px;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.ti-bar-wrap {
+  width: 60px;
+  height: 3px;
+  background: #1e1e1e;
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.ti-bar { height: 100%; border-radius: 2px; transition: width 0.3s; }
+.ti-bar-hunt     { background: #C9A227; }
+.ti-bar-keep     { background: #4ecdc4; }
+.ti-bar-lean     { background: #7eb8f7; }
+.ti-bar-match-hi  { background: #4ecdc4; }
+.ti-bar-match-mid { background: #C9A227; }
+.ti-bar-match-lo  { background: #444; }
+.ti-pct {
+  font-size: 10px;
+  color: #555;
+  font-family: 'Oswald', sans-serif;
+  min-width: 26px;
+  text-align: right;
+}
+.ti-drift-up   { font-size: 10px; color: #4ecdc4; font-weight: 600; min-width: 30px; text-align: right; }
+.ti-drift-dn   { font-size: 10px; color: #e05555; font-weight: 600; min-width: 30px; text-align: right; }
+.ti-drift-flat { font-size: 10px; color: #444; min-width: 30px; text-align: right; }
+.ti-empty { font-size: 11px; color: #444; font-style: italic; padding: 4px 0; }
+
+/* Light mode */
+body.light .ti-band       { background: #e8e8e8; border-color: #ddd; }
+body.light .ti-col        { background: #fafafa; }
+body.light .ti-col-head   { color: #222; }
+body.light .ti-col-sub    { color: #aaa; }
+body.light .ti-label      { color: #666; }
+body.light .ti-bar-wrap   { background: #e8e8e8; }
+body.light .ti-pct        { color: #aaa; }
+body.light .ti-bar-match-lo { background: #ccc; }
+body.light .ti-drift-flat { color: #bbb; }
+
+/* Mobile: stack into 2x2 */
+@media (max-width: 700px) {
+  .ti-band { grid-template-columns: 1fr 1fr; }
+  .ti-col  { padding: 14px 16px; }
+  .ti-bar-wrap { width: 40px; }
+}
+@media (max-width: 440px) {
+  .ti-band { grid-template-columns: 1fr; }
+}
+
 /* ── Era decade chart ───────────────────────────────────────────────────── */
 .prof-decade-section {
   padding: 16px 20px 12px;
