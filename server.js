@@ -1581,6 +1581,31 @@ app.get('/api/meta-sync/:username', function(req, res) {
     }
 });
 
+// ─── Gem Score — taste intelligence per release ───────────────────────────
+app.get('/api/gem-score/:username', function(req, res) {
+    try {
+        var username = req.params.username.trim();
+        var d = db.getDb();
+        var user = d.prepare('SELECT id FROM users WHERE username=?').get(username);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        var gemScore = require('./lib/gem-score');
+        var scored   = gemScore.scoreUserCollection(user.id, d);
+        var summary  = gemScore.tasteSummary(scored);
+
+        // Optionally filter by tier
+        var tier = req.query.tier;
+        if (tier) scored = scored.filter(function(r) { return r.tier === tier; });
+
+        // Limit for performance
+        var limit = parseInt(req.query.limit) || 100;
+        res.json({ summary: summary, releases: scored.slice(0, limit) });
+    } catch(e) {
+        console.error('[gem-score]', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ─── YouTube enrichment status + manual trigger ───────────────────────────
 app.get('/api/youtube-enrichment/status', function(req, res) {
     try {
