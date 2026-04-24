@@ -207,8 +207,21 @@ app.get('/api/auth/discogs/callback', async function (req, res) {
             path: '/'
         });
 
-        // Redirect back to app
+        // Redirect back to app immediately — don't wait for collection sync
         res.redirect(APP_BASE + '/?auth=discogs&username=' + encodeURIComponent(identity.username));
+
+        // Auto-fetch collection in background now that we have a valid OAuth token
+        var _authHeaderFn = function(method, url) {
+            return {
+                'Authorization': require('./lib/oauth').discogsAuthHeader(method, url, tokens.accessToken, tokens.accessSecret)
+            };
+        };
+        discogs.fetchCollection(identity.username, _authHeaderFn).then(function(items) {
+            db.syncCollectionItems(user.id, items);
+            console.log('[oauth] Auto-synced collection for', identity.username, '—', items.length, 'items');
+        }).catch(function(e) {
+            console.warn('[oauth] Collection auto-sync failed for', identity.username, ':', e.message);
+        });
     } catch (e) {
         console.error('[auth] Discogs callback error:', e.message);
         res.redirect(APP_BASE + '/?auth_error=' + encodeURIComponent(e.message));
