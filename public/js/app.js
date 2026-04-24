@@ -29,8 +29,9 @@ function fetchGemScores(username) {
     .catch(function() { _gemScoreFetching = false; });
 }
 
-function _buildCardGemStrip(discogsId) {
-  var g = _gemScoreMap[discogsId];
+function _buildCardGemStrip(discogsId, inlineGem) {
+  // Prefer gem data embedded in the results payload (db join); fall back to async map
+  var g = inlineGem || _gemScoreMap[discogsId];
   if (!g) return '';
 
   var TIER = {
@@ -1305,7 +1306,7 @@ function render() {
         '<div class="card-artist">' + escapeHtml(item.item.artist) + '</div>' +
         '<div class="card-title-v2">' + escapeHtml(item.item.title) + '</div>' +
         '<div class="card-meta">' + metaParts.join(' · ') + '</div>' +
-        _buildCardGemStrip(item.item.id) +
+        _buildCardGemStrip(item.item.id, item.gem || null) +
         priceHtml +
         storeRowsHtml +
         '<div class="card-actions">' +

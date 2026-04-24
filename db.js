@@ -820,6 +820,8 @@ function getFullResults(userId) {
     // Build per-item summary from market_listings (populated by the cart optimizer).
     // Keyed by discogs_id since market_listings doesn't know wantlist_ids.
     var marketListingsSummary = {};
+    // Batch-fetch streaming_metadata (YouTube views, gem signals) — keyed by discogs_id.
+    var streamingMap = {};
     if (items.length > 0) {
         var discogIds = items.map(function (w) { return w.discogs_id; }).filter(Boolean);
         if (discogIds.length > 0) {
@@ -843,6 +845,40 @@ function getFullResults(userId) {
                     }
                 });
             } catch (e) { /* market_listings may be empty — not fatal */ }
+
+            // ── Streaming metadata: YouTube views/likes/comments + gem signals ──
+            try {
+                var gemScore = require('./lib/gem-score');
+                var smRows = d.prepare(
+                    'SELECT discogs_id, youtube_video_id, youtube_view_count, youtube_like_count,' +
+                    '  youtube_comment_data, youtube_enriched_at FROM streaming_metadata' +
+                    ' WHERE discogs_id IN (' + ph2 + ')'
+                ).all(...discogIds);
+                var rmRows = d.prepare(
+                    'SELECT discogs_id, community_have, community_want FROM release_meta' +
+                    ' WHERE discogs_id IN (' + ph2 + ')'
+                ).all(...discogIds);
+                var rmMap = {};
+                rmRows.forEach(function(r) { rmMap[r.discogs_id] = r; });
+                smRows.forEach(function(sm) {
+                    var rm = rmMap[sm.discogs_id] || null;
+                    var scored = gemScore.scoreRelease(sm, rm);
+                    var commentData = {};
+                    try { commentData = JSON.parse(sm.youtube_comment_data || '{}'); } catch(e) {}
+                    streamingMap[sm.discogs_id] = {
+                        tier:       scored.tier,
+                        gemScore:   scored.gemScore,
+                        viewCount:  sm.youtube_view_count  || null,
+                        likeCount:  sm.youtube_like_count  || null,
+                        videoId:    sm.youtube_video_id    || null,
+                        genres:     commentData.genres     || [],
+                        djs:        commentData.djs        || [],
+                        era:        commentData.era        || [],
+                        enriched:   !!sm.youtube_enriched_at,
+                        signals:    scored.signals,
+                    };
+                });
+            } catch(e) { /* streaming_metadata may not exist or gem-score unavailable */ }
         }
     }
 
@@ -889,6 +925,8 @@ function getFullResults(userId) {
                 cheapestUsUsd: mls.cheapest_us_usd || null,
                 usCount: mls.us_count || 0
             } : null,
+            // Gem intelligence: YouTube signals + Discogs rarity → pre-computed score
+            gem: streamingMap[w.discogs_id] || null,
             wantlistId: w.id
         };
     });

@@ -147,6 +147,16 @@ The platform has a Chrome extension called **Gold Digger** that syncs real Disco
 - Explain a user's taste profile in plain language
 - Highlight hidden gems (low community_have = hard to find elsewhere)
 - Provide store recommendations (which stores are best for their taste)
+- Show GEM INTELLIGENCE: underground index, hidden gem tier, YouTube view data, DJ validation, YouTube-comment genre tags — use get_gem_intelligence for any question about "hidden gems", "underground records", "my underground index", "DJ validation", or "YouTube data on my records"
+
+## GEM INTELLIGENCE
+The platform enriches every wantlist + collection item with YouTube data (view count, DJ mentions in comments, genre tags). From this it computes a Gem Score (0-100) and assigns each release a tier:
+- **hidden_gem**: very low YouTube views (<10k), obscure on Discogs — truly underground
+- **club_weapon**: DJs shout it out in comments — underground but validated
+- **deep_cut**: niche but with some following
+- **known_quantity**: well-known, widely discussed
+- **unscored**: not yet enriched (background job runs 90/day)
+Use get_gem_intelligence to answer questions about underground percentage, top hidden gems, which DJs are in the comments, YouTube-based genre tags. The underground index and tier counts improve daily as the enrichment job runs.
 
 ## Cart workflow
 When a user says "add to cart", "build my cart", or "what should I buy":
@@ -399,6 +409,18 @@ const TOOLS = [
             },
             required: ['username']
         }
+    },
+    {
+        name: 'get_gem_intelligence',
+        description: 'Get a user\'s GEM INTELLIGENCE profile: underground index (% of releases with <10k YouTube views), gem tier breakdown (hidden_gem/club_weapon/deep_cut/known_quantity/unscored), top hidden gems, most underground records by view count, YouTube-comment genre tags, and DJs who have mentioned their records. Use this for any question about "hidden gems", "underground index", "which records are most underground", "what DJs are in my records", "YouTube data on my collection", or taste profile deep-dives based on streaming data.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                username: { type: 'string', description: 'Discogs username' },
+                limit:    { type: 'number', description: 'Max top gems to return (default 20, max 50)' }
+            },
+            required: ['username']
+        }
     }
 ];
 
@@ -443,6 +465,59 @@ function toolGetUserProfile({ username }) {
     var avgHave = meta && meta.synced > 0 ? Math.round(meta.avgHave) : null;
     var personalityTags = computePersonalityTags(gC, sC, allItems.length, avgHave, topDecade ? topDecade[0] : null);
 
+    // Quick gem summary from streaming_metadata (non-fatal — may not exist yet)
+    var gemSummary = null;
+    try {
+        var allDiscogsIds = d.prepare(`
+            SELECT discogs_id FROM (
+                SELECT discogs_id FROM wantlist   WHERE user_id=? AND active=1 AND discogs_id IS NOT NULL
+                UNION
+                SELECT discogs_id FROM collection WHERE user_id=? AND discogs_id IS NOT NULL
+            )
+        `).all(user.id, user.id).map(function(r){ return r.discogs_id; });
+
+        if (allDiscogsIds.length > 0) {
+            var gph = allDiscogsIds.map(function(){ return '?'; }).join(',');
+            var smSummary = d.prepare(
+                'SELECT youtube_view_count, youtube_enriched_at FROM streaming_metadata' +
+                ' WHERE discogs_id IN (' + gph + ')'
+            ).all(...allDiscogsIds);
+
+            var enrichedG = smSummary.filter(function(s){ return s.youtube_enriched_at; }).length;
+            var undergroundG = smSummary.filter(function(s){ return s.youtube_enriched_at && (s.youtube_view_count||0) < 10000; }).length;
+            var undergroundPctG = enrichedG > 0 ? Math.round(undergroundG/enrichedG*100) : null;
+
+            // Tier counts from gem-score
+            var gsModule = require('./lib/gem-score');
+            var rmSummary = d.prepare(
+                'SELECT discogs_id, community_have, community_want FROM release_meta WHERE discogs_id IN (' + gph + ')'
+            ).all(...allDiscogsIds);
+            var rmMapG = {};
+            rmSummary.forEach(function(r){ rmMapG[r.discogs_id] = r; });
+
+            var smFull = d.prepare(
+                'SELECT discogs_id, youtube_video_id, youtube_view_count, youtube_like_count,' +
+                ' youtube_comment_data, youtube_enriched_at FROM streaming_metadata WHERE discogs_id IN (' + gph + ')'
+            ).all(...allDiscogsIds);
+
+            var tierG = { hidden_gem:0, club_weapon:0, deep_cut:0, known_quantity:0, unscored:0 };
+            smFull.forEach(function(sm){
+                var scored = gsModule.scoreRelease(sm, rmMapG[sm.discogs_id]||null);
+                var t = scored.tier || 'unscored';
+                tierG[t] = (tierG[t]||0) + 1;
+            });
+            tierG.unscored += allDiscogsIds.length - smFull.length;
+
+            gemSummary = {
+                undergroundIndex: undergroundPctG,
+                enrichedPct:      allDiscogsIds.length > 0 ? Math.round(enrichedG/allDiscogsIds.length*100) : 0,
+                tierCounts:       tierG,
+                tip:              enrichedG < allDiscogsIds.length * 0.5 ?
+                    'Only ' + enrichedG + '/' + allDiscogsIds.length + ' releases enriched — call get_gem_intelligence for full detail.' : null
+            };
+        }
+    } catch(e) { /* non-fatal — gem module may not be available */ }
+
     return {
         username:        user.username,
         wantlistSize:    wantlistSize,
@@ -459,6 +534,7 @@ function toolGetUserProfile({ username }) {
                            rarePct: meta && meta.synced > 0 ? Math.round(rareCount/meta.synced*100) : null,
                            metaSynced: meta ? meta.synced : 0 },
         personalityTags: personalityTags,
+        gemIntelSummary: gemSummary,
         lastScan:        user.last_full_scan,
         lastSync:        user.last_sync
     };
@@ -1210,6 +1286,164 @@ function toolGetCollection({ username, query, genre, style, sort, limit }) {
     };
 }
 
+function toolGetGemIntelligence({ username, limit }) {
+    var d = db.getDb();
+    var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
+    if (!user) return { error: 'User not found: ' + username };
+    limit = Math.min(limit || 20, 50);
+
+    // All discogs_ids from wantlist + collection (deduped via UNION)
+    var allIds = d.prepare(`
+        SELECT discogs_id FROM (
+            SELECT discogs_id FROM wantlist    WHERE user_id=? AND active=1 AND discogs_id IS NOT NULL
+            UNION
+            SELECT discogs_id FROM collection  WHERE user_id=? AND discogs_id IS NOT NULL
+        )
+    `).all(user.id, user.id).map(function(r){ return r.discogs_id; });
+
+    if (allIds.length === 0) return {
+        error: 'No releases with Discogs IDs found for ' + username,
+        tip: 'Sync the wantlist and collection from Discogs first.'
+    };
+
+    var ph = allIds.map(function(){ return '?'; }).join(',');
+
+    var smRows = d.prepare(
+        'SELECT discogs_id, youtube_video_id, youtube_view_count, youtube_like_count,' +
+        ' youtube_comment_data, youtube_enriched_at FROM streaming_metadata' +
+        ' WHERE discogs_id IN (' + ph + ')'
+    ).all(...allIds);
+
+    var rmRows = d.prepare(
+        'SELECT discogs_id, community_have, community_want FROM release_meta' +
+        ' WHERE discogs_id IN (' + ph + ')'
+    ).all(...allIds);
+
+    // Build lookup maps
+    var rmMap = {};
+    rmRows.forEach(function(r){ rmMap[r.discogs_id] = r; });
+
+    var itemMap = {};
+    d.prepare('SELECT discogs_id, artist, title, thumb FROM wantlist WHERE user_id=? AND active=1').all(user.id)
+        .forEach(function(r){ itemMap[r.discogs_id] = r; });
+    d.prepare('SELECT discogs_id, artist, title, thumb FROM collection WHERE user_id=?').all(user.id)
+        .forEach(function(r){ if (!itemMap[r.discogs_id]) itemMap[r.discogs_id] = r; });
+
+    var gemScore;
+    try { gemScore = require('./lib/gem-score'); } catch(e) {
+        return { error: 'gem-score module not available: ' + e.message };
+    }
+
+    // Score every enriched release
+    var tierCounts = { hidden_gem: 0, club_weapon: 0, deep_cut: 0, known_quantity: 0, unscored: 0 };
+    var totalScore = 0, scoredCount = 0, undergroundCount = 0;
+    var genreCounts = {}, djCounts = {};
+    var scoredItems = [];
+
+    smRows.forEach(function(sm) {
+        var rm = rmMap[sm.discogs_id] || null;
+        var scored = gemScore.scoreRelease(sm, rm);
+        var commentData = {};
+        try { commentData = JSON.parse(sm.youtube_comment_data || '{}'); } catch(e) {}
+
+        var tier = scored.tier || 'unscored';
+        tierCounts[tier] = (tierCounts[tier] || 0) + 1;
+
+        if (scored.gemScore > 0) { totalScore += scored.gemScore; scoredCount++; }
+
+        // Underground = enriched + < 10k views
+        var views = sm.youtube_view_count || 0;
+        if (sm.youtube_enriched_at && views < 10000) undergroundCount++;
+
+        // Aggregate YouTube-comment genres + DJs
+        (commentData.genres || []).forEach(function(g){ genreCounts[g] = (genreCounts[g]||0)+1; });
+        (commentData.djs || []).forEach(function(dj){ djCounts[dj] = (djCounts[dj]||0)+1; });
+
+        var info = itemMap[sm.discogs_id] || {};
+        scoredItems.push({
+            discogs_id:   sm.discogs_id,
+            artist:       info.artist || 'Unknown',
+            title:        info.title  || 'Unknown',
+            tier:         tier,
+            gemScore:     scored.gemScore,
+            viewCount:    views,
+            videoId:      sm.youtube_video_id || null,
+            genres:       commentData.genres || [],
+            djs:          commentData.djs    || [],
+            enriched:     !!sm.youtube_enriched_at
+        });
+    });
+
+    // Releases with no streaming_metadata row yet count as unscored
+    tierCounts.unscored += allIds.length - smRows.length;
+
+    var enrichedCount = smRows.filter(function(s){ return s.youtube_enriched_at; }).length;
+    var enrichedPct   = allIds.length > 0 ? Math.round(enrichedCount / allIds.length * 100) : 0;
+    var undergroundPct = enrichedCount > 0 ? Math.round(undergroundCount / enrichedCount * 100) : 0;
+    var avgGemScore   = scoredCount > 0 ? Math.round(totalScore / scoredCount) : 0;
+
+    // Top gems: hidden_gem + club_weapon, sorted by gem score desc
+    var topGems = scoredItems
+        .filter(function(i){ return i.tier === 'hidden_gem' || i.tier === 'club_weapon'; })
+        .sort(function(a,b){ return b.gemScore - a.gemScore; })
+        .slice(0, limit)
+        .map(function(i){
+            return {
+                artist:      i.artist,
+                title:       i.title,
+                tier:        i.tier,
+                gemScore:    i.gemScore,
+                viewCount:   i.viewCount,
+                genres:      i.genres.slice(0, 3),
+                djs:         i.djs.slice(0, 3),
+                youtube_url: i.videoId ? 'https://youtube.com/watch?v=' + i.videoId : null
+            };
+        });
+
+    // Most underground: enriched, lowest view count, non-zero views
+    var topUnderground = scoredItems
+        .filter(function(i){ return i.enriched && i.viewCount > 0 && i.viewCount < 50000; })
+        .sort(function(a,b){ return a.viewCount - b.viewCount; })
+        .slice(0, 10)
+        .map(function(i){
+            return {
+                artist:      i.artist,
+                title:       i.title,
+                tier:        i.tier,
+                viewCount:   i.viewCount,
+                youtube_url: i.videoId ? 'https://youtube.com/watch?v=' + i.videoId : null
+            };
+        });
+
+    var topGenres = Object.entries(genreCounts)
+        .sort(function(a,b){ return b[1]-a[1]; }).slice(0,12)
+        .map(function(e){ return { name: e[0], count: e[1] }; });
+
+    var topDjs = Object.entries(djCounts)
+        .sort(function(a,b){ return b[1]-a[1]; }).slice(0,10)
+        .map(function(e){ return { name: e[0], count: e[1] }; });
+
+    var note = null;
+    if (enrichedPct < 50) {
+        note = 'Only ' + enrichedCount + '/' + allIds.length + ' releases enriched so far (' + enrichedPct + '%). Underground index and gem tiers will sharpen as the background enrichment job runs (~90 searches/day).';
+    }
+
+    return {
+        username:         username,
+        total:            allIds.length,
+        enriched:         enrichedCount,
+        enrichedPct:      enrichedPct,
+        undergroundIndex: undergroundPct,
+        avgGemScore:      avgGemScore,
+        tierCounts:       tierCounts,
+        topGems:          topGems,
+        topUnderground:   topUnderground,
+        topGenres:        topGenres,
+        topDjs:           topDjs,
+        note:             note
+    };
+}
+
 // Tool dispatch
 function runTool(name, input) {
     switch(name) {
@@ -1229,6 +1463,7 @@ function runTool(name, input) {
         case 'get_cart':                return toolGetCart(input);
         case 'manage_cart':             return toolManageCart(input);
         case 'get_collection':          return toolGetCollection(input);
+        case 'get_gem_intelligence':    return toolGetGemIntelligence(input);
         default: return { error: 'Unknown tool: ' + name };
     }
 }
