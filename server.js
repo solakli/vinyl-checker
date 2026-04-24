@@ -676,20 +676,49 @@ app.get('/api/collection/:username', async function (req, res) {
     try {
         var oauthToken = db.getOAuthToken(user.id, 'discogs');
         var headersFn  = null;
+        var tokenValid = false;
         if (oauthToken && oauthToken.access_token && oauthToken.access_secret) {
             var oauthLib = require('./lib/oauth');
-            headersFn = function (method, path) {
-                var url = 'https://api.discogs.com' + path;
-                return {
-                    'User-Agent': 'VinylWantlistChecker/1.0',
-                    'Authorization': oauthLib.discogsAuthHeader(method, url, oauthToken.access_token, oauthToken.access_secret)
+            // Quick token validation — hit identity endpoint before wasting a full sync
+            try {
+                var identityUrl = 'https://api.discogs.com/oauth/identity';
+                var identityHeader = oauthLib.discogsAuthHeader('GET', identityUrl, oauthToken.access_token, oauthToken.access_secret);
+                var identityResp = await new Promise(function(resolve) {
+                    require('https').get({ hostname: 'api.discogs.com', path: '/oauth/identity', headers: { 'User-Agent': 'VinylWantlistChecker/1.0', 'Authorization': identityHeader } }, function(r) {
+                        var d = ''; r.on('data', function(c){ d+=c; }); r.on('end', function(){ try{ resolve(JSON.parse(d)); }catch(e){ resolve({}); } });
+                    }).on('error', function(){ resolve({}); });
+                });
+                tokenValid = !!(identityResp && identityResp.username);
+            } catch(e) { tokenValid = false; }
+
+            if (tokenValid) {
+                headersFn = function (method, path) {
+                    var url = 'https://api.discogs.com' + path;
+                    return {
+                        'User-Agent': 'VinylWantlistChecker/1.0',
+                        'Authorization': oauthLib.discogsAuthHeader(method, url, oauthToken.access_token, oauthToken.access_secret)
+                    };
                 };
-            };
+            } else {
+                console.warn('[collection] OAuth token invalid for', username, '— falling back to public API');
+            }
         }
         var items = await discogs.fetchCollection(username, headersFn);
-        db.syncCollectionItems(user.id, items);
+        // Only write to DB if we actually got items back — don't wipe existing data on auth failure
+        if (items.length > 0) {
+            db.syncCollectionItems(user.id, items);
+        }
+        var cached3 = db.getCollection(user.id);
         var stats2 = db.getCollectionStats(user.id);
-        res.json({ source: 'fresh', total: items.length, stats: stats2, items: db.getCollection(user.id) });
+        res.json({
+            source: items.length > 0 ? 'fresh' : 'cache',
+            total: cached3.length,
+            stats: stats2,
+            items: cached3,
+            token_valid: tokenValid,
+            needs_reauth: !tokenValid && !!oauthToken,
+            warning: (!tokenValid && oauthToken) ? 'Discogs OAuth token expired — reconnect to see full private collection' : undefined
+        });
     } catch (e) {
         console.error('[collection] Error for', username, ':', e.message);
         // Fall back to cache even if stale

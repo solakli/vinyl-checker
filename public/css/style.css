@@ -4136,6 +4136,18 @@ body.light .disc-art-skel, body.light .disc-skel-line {
   letter-spacing: 1px;
 }
 
+.coll-reauth-banner {
+  background: #2a1a00;
+  border: 1px solid #6b4400;
+  color: #f0c060;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 13px;
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+body.light .coll-reauth-banner { background: #fff8e8; border-color: #e8c060; color: #7a5500; }
+
 .coll-loading, .coll-empty {
   grid-column: 1 / -1;
   text-align: center;

@@ -3386,6 +3386,15 @@ function loadCollection(forceRefresh) {
       renderCollectionStats(data.stats);
       renderCollectionGenres();
       renderCollectionGrid();
+      // Warn if OAuth token is expired and collection may be incomplete
+      if (data.needs_reauth) {
+        var warn = document.createElement('div');
+        warn.className = 'coll-reauth-banner';
+        warn.innerHTML = '⚠ Your Discogs OAuth token has expired — this may be an incomplete snapshot. ' +
+          '<a href="api/auth/discogs" style="color:var(--gold);text-decoration:underline;font-weight:600">Reconnect Discogs</a> to sync your full collection.';
+        var grid = document.getElementById('collGrid');
+        if (grid && grid.parentNode) grid.parentNode.insertBefore(warn, grid);
+      }
     })
     .catch(function(e) {
       document.getElementById('collGrid').innerHTML =
