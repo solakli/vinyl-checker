@@ -2,6 +2,78 @@
 
 let resultsData = [];
 let isScanning = false;
+
+// ── Gem Intelligence cache: discogs_id → gem score data ──
+var _gemScoreMap   = {};
+var _gemScoreUser  = null;
+var _gemScoreFetching = false;
+
+function fetchGemScores(username) {
+  if (!username || _gemScoreFetching) return;
+  if (_gemScoreUser === username && Object.keys(_gemScoreMap).length > 0) {
+    render(); // already have data — just re-render
+    return;
+  }
+  _gemScoreFetching = true;
+  fetch('api/gem-score/' + encodeURIComponent(username) + '?limit=2000')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      _gemScoreMap  = {};
+      _gemScoreUser = username;
+      (data.releases || []).forEach(function(r) {
+        _gemScoreMap[r.discogs_id] = r;
+      });
+      _gemScoreFetching = false;
+      render(); // re-render with gem badges
+    })
+    .catch(function() { _gemScoreFetching = false; });
+}
+
+function _buildCardGemStrip(discogsId) {
+  var g = _gemScoreMap[discogsId];
+  if (!g) return '';
+
+  var TIER = {
+    hidden_gem:     { icon: '💎', cls: 'cgem-gem',   label: 'Hidden Gem' },
+    club_weapon:    { icon: '🔥', cls: 'cgem-club',  label: 'Club Weapon' },
+    deep_cut:       { icon: '🎯', cls: 'cgem-deep',  label: 'Deep Cut' },
+    known_quantity: { icon: '📣', cls: 'cgem-known', label: 'Known' },
+  };
+  var tc = TIER[g.tier];
+  if (!tc) return ''; // unscored — show nothing
+
+  // View count label
+  var viewsHtml = '';
+  if (g.viewCount != null) {
+    var vStr = g.viewCount >= 1000000
+      ? (g.viewCount / 1000000).toFixed(1) + 'M'
+      : g.viewCount >= 1000
+        ? (g.viewCount / 1000).toFixed(1) + 'K'
+        : String(g.viewCount);
+    var vCls = g.viewCount < 10000 ? ' cgem-views-underground' : '';
+    viewsHtml = '<span class="cgem-views' + vCls + '">' + vStr + ' views</span>';
+  } else if (g.videoId) {
+    viewsHtml = '<span class="cgem-views cgem-views-underground">underground</span>';
+  }
+
+  // Genre tags from YouTube comment NLP (max 3)
+  var tagsHtml = (g.genres || []).slice(0, 3).map(function(gn) {
+    return '<span class="cgem-tag">' + escapeHtml(gn) + '</span>';
+  }).join('');
+
+  // YouTube play link
+  var ytHtml = g.videoId
+    ? '<a class="cgem-yt" href="https://youtube.com/watch?v=' + escapeAttr(g.videoId) + '" ' +
+      'target="_blank" onclick="event.stopPropagation()" title="Watch on YouTube">▶</a>'
+    : '';
+
+  return '<div class="card-gem-strip">' +
+    '<span class="cgem-badge ' + tc.cls + '">' + tc.icon + ' ' + g.gemScore + '</span>' +
+    viewsHtml +
+    tagsHtml +
+    ytHtml +
+  '</div>';
+}
 let isOAuthed = false; // Track if user connected via Discogs OAuth
 let activeGenres = new Set();
 let activeStyles = new Set();
@@ -428,6 +500,8 @@ function connectSSE(username, force) {
     document.getElementById('timestamp').textContent = msg + ' \u00b7 ' + new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     updateStats();
     render();
+    // Load gem scores async — re-renders cards with badges once ready
+    fetchGemScores(username);
     // Show optimizer banner when there are in-stock results
     var inStockCount = resultsData.filter(function(i) { return i.stores && i.stores.some(function(s) { return s.inStock; }); }).length;
     if (inStockCount > 0) {
@@ -610,6 +684,7 @@ async function loadResultsForUser(username) {
         document.getElementById('timestamp').textContent = 'Cached \u00b7 Last full scan: ' + lastScan;
         updateStats();
         render();
+        fetchGemScores(username); // decorate cards with gem badges
         // Show optimizer banner if any in-stock items exist
         var inStockCount = resultsData.filter(function(i) { return i.stores && i.stores.some(function(s) { return s.inStock; }); }).length;
         if (inStockCount > 0) {
@@ -1230,6 +1305,7 @@ function render() {
         '<div class="card-artist">' + escapeHtml(item.item.artist) + '</div>' +
         '<div class="card-title-v2">' + escapeHtml(item.item.title) + '</div>' +
         '<div class="card-meta">' + metaParts.join(' · ') + '</div>' +
+        _buildCardGemStrip(item.item.id) +
         priceHtml +
         storeRowsHtml +
         '<div class="card-actions">' +
