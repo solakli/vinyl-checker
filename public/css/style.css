@@ -5939,6 +5939,101 @@ body.light .prof-digger-avatar   { background: #f0f0f0; border-color: #e0e0e0; }
 body.light .prof-digger-name     { color: #333; }
 body.light .prof-digger-genre    { background: #f0f0f0; border-color: #e5e5e5; color: #aaa; }
 
+/* ─── Profile: Collection panel ─────────────────────────────────────────── */
+.prof-coll-section {
+  background: #111;
+  border: 1px solid #1e1e1e;
+  border-radius: 8px;
+  padding: 18px 20px;
+  margin-top: 20px;
+}
+.prof-coll-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.prof-coll-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #171717;
+  border: 1px solid #222;
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.prof-coll-card:hover { border-color: #333; }
+.prof-coll-thumb {
+  width: 42px;
+  height: 42px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.prof-coll-thumb-ph {
+  width: 42px;
+  height: 42px;
+  border-radius: 4px;
+  background: #222;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #444;
+  flex-shrink: 0;
+}
+.prof-coll-info { overflow: hidden; min-width: 0; }
+.prof-coll-artist {
+  font-size: 11px;
+  font-weight: 600;
+  color: #C9A227;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prof-coll-title {
+  font-size: 12px;
+  color: #ddd;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+.prof-coll-meta {
+  font-size: 10px;
+  color: #666;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prof-coll-more {
+  grid-column: 1 / -1;
+  text-align: center;
+  font-size: 12px;
+  color: #555;
+  padding: 8px 0 2px;
+}
+.prof-section-link {
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  margin-left: 8px;
+  text-decoration: none;
+  opacity: 0.8;
+}
+.prof-section-link:hover { opacity: 1; text-decoration: underline; }
+
+/* Light mode */
+body.light .prof-coll-section { background: #fff; border-color: #eee; }
+body.light .prof-coll-card    { background: #f8f8f8; border-color: #eee; }
+body.light .prof-coll-card:hover { border-color: #C9A227; }
+body.light .prof-coll-thumb-ph { background: #eee; }
+body.light .prof-coll-title   { color: #333; }
+
 /* ── Taste match badges ─────────────────────────────────────────────────── */
 .prof-taste-badge {
   display: flex;

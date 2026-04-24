@@ -4476,14 +4476,74 @@ function renderProfile(p) {
 
     '</div>' +
 
+    // Collection panel — full width below the two columns
+    '<div class="prof-coll-section" id="profCollSection">' +
+      '<div class="prof-section-title">Collection' +
+        (isOwn
+          ? '<span class="prof-section-sub" style="margin-left:8px">·</span>' +
+            '<a class="prof-section-link" onclick="switchView(\'collection\',null);return false;">View all →</a>'
+          : '<span class="prof-section-sub" id="profCollCount"></span>') +
+      '</div>' +
+      '<div id="profCollGrid" class="prof-coll-mini-grid"><span class="prof-empty-small">Loading collection…</span></div>' +
+    '</div>' +
+
     // Diggers panel — full width below the columns
     '<div class="prof-diggers-section">' +
       '<div class="prof-section-title">Other Diggers <span class="prof-section-sub">click to view their profile</span></div>' +
       '<div id="diggersGrid" class="prof-diggers-grid">Loading…</div>' +
     '</div>';
 
-  // Load diggers async
+  // Load collection + diggers async
+  _loadProfileCollection(p.username, isOwn);
   _loadDiggers(p.username);
+}
+
+function _loadProfileCollection(username, isOwn) {
+  var grid  = document.getElementById('profCollGrid');
+  var count = document.getElementById('profCollCount');
+  if (!grid) return;
+
+  fetch('api/collection/' + encodeURIComponent(username))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var items = data.items || [];
+      if (count) count.textContent = items.length ? ' · ' + items.length + ' records' : '';
+
+      if (!items.length) {
+        grid.innerHTML = '<span class="prof-empty-small">' +
+          (isOwn ? 'No collection synced yet. Go to <b>My Collection</b> to sync from Discogs.' :
+                   username + ' hasn\'t synced their collection yet.') +
+          '</span>';
+        return;
+      }
+
+      // Show up to 12 most recent
+      var show = items.slice(0, 12);
+      grid.innerHTML = show.map(function(item) {
+        var genres = (item.genres || '').split('|').map(function(g){ return g.trim(); }).filter(Boolean);
+        var styles = (item.styles || '').split('|').map(function(s){ return s.trim(); }).filter(Boolean).slice(0,2);
+        var thumbHtml = item.thumb
+          ? '<img class="prof-coll-thumb" src="' + escapeHtml(item.thumb) + '" loading="lazy" alt="" onerror="this.style.display=\'none\'">'
+          : '<div class="prof-coll-thumb-ph">♪</div>';
+        var meta = [item.year, genres[0], styles[0]].filter(Boolean).join(' · ');
+        return '<div class="prof-coll-card">' +
+          thumbHtml +
+          '<div class="prof-coll-info">' +
+            '<div class="prof-coll-artist">' + escapeHtml(item.artist || '') + '</div>' +
+            '<div class="prof-coll-title">'  + escapeHtml(item.title  || '') + '</div>' +
+            (meta ? '<div class="prof-coll-meta">' + escapeHtml(meta) + '</div>' : '') +
+          '</div>' +
+        '</div>';
+      }).join('') +
+      (items.length > 12
+        ? '<div class="prof-coll-more">+' + (items.length - 12) + ' more' +
+            (isOwn ? ' — <a onclick="switchView(\'collection\',null);return false;" style="color:var(--gold);cursor:pointer">View all</a>' : '') +
+          '</div>'
+        : '');
+    })
+    .catch(function() {
+      if (grid) grid.innerHTML = '<span class="prof-empty-small">Could not load collection.</span>';
+    });
 }
 
 var _diggersCache     = null;
