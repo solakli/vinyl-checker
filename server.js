@@ -1294,14 +1294,21 @@ async function runMetaSync(userId, username) {
     try {
         var d = db.getDb();
         var cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().replace('T',' ');
+        // Cover both wantlist AND collection — UNION dedupes shared releases
         var items = d.prepare(`
-            SELECT w.discogs_id FROM wantlist w
-            LEFT JOIN release_meta rm ON rm.discogs_id = w.discogs_id
-            WHERE w.user_id = ? AND w.active = 1 AND w.discogs_id IS NOT NULL
-              AND (rm.discogs_id IS NULL OR replace(rm.fetched_at,'T',' ') < ?)
-            ORDER BY rm.fetched_at ASC NULLS FIRST
+            SELECT discogs_id FROM (
+                SELECT w.discogs_id, rm.fetched_at FROM wantlist w
+                LEFT JOIN release_meta rm ON rm.discogs_id = w.discogs_id
+                WHERE w.user_id = ? AND w.active = 1 AND w.discogs_id IS NOT NULL
+                  AND (rm.discogs_id IS NULL OR replace(rm.fetched_at,'T',' ') < ?)
+                UNION
+                SELECT c.discogs_id, rm.fetched_at FROM collection c
+                LEFT JOIN release_meta rm ON rm.discogs_id = c.discogs_id
+                WHERE c.user_id = ? AND c.discogs_id IS NOT NULL
+                  AND (rm.discogs_id IS NULL OR replace(rm.fetched_at,'T',' ') < ?)
+            ) ORDER BY fetched_at ASC NULLS FIRST
             LIMIT 300
-        `).all(userId, cutoff);
+        `).all(userId, cutoff, userId, cutoff);
 
         var upsert = d.prepare(`
             INSERT OR REPLACE INTO release_meta
