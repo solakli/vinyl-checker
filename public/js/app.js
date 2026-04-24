@@ -435,6 +435,17 @@ function connectSSE(username, force) {
     }
     // Check for changes detected by background rescans
     fetchChanges(username);
+
+    // ── Post-scan: trigger meta sync + invalidate profile cache ──
+    // Server auto-starts meta sync after done, but also make sure the profile
+    // cache is cleared so rarity/era badges reflect fresh data next time.
+    _profileCache = null;
+
+    // For first-time users: show a toast guiding them to their profile
+    var isFirstScan = !data.cached || data.cached === 0;
+    if (isFirstScan && data.checked > 0) {
+      showPostScanToast(data);
+    }
   });
 
   evtSource.addEventListener('scan-error', function(e) {
@@ -616,6 +627,32 @@ async function loadResultsForUser(username) {
 
 // ═══════════════════════════════════════════════════════════════
 // CHANGES NOTIFICATION (new since last visit)
+// ── Post-scan toast for first-time users ─────────────────────────────────────
+function showPostScanToast(data) {
+  // Don't show if a toast is already up
+  if (document.getElementById('postScanToast')) return;
+  var inStock = (data.inStock || 0);
+  var total   = (data.total  || 0);
+
+  var toast = document.createElement('div');
+  toast.id = 'postScanToast';
+  toast.className = 'post-scan-toast';
+  toast.innerHTML =
+    '<div class="pst-icon">✦</div>' +
+    '<div class="pst-body">' +
+      '<div class="pst-title">Your wantlist is live — ' + inStock + ' of ' + total + ' in stock</div>' +
+      '<div class="pst-sub">We\'re building your taste profile in the background. Check your <strong>Profile</strong> in a minute.</div>' +
+    '</div>' +
+    '<div class="pst-actions">' +
+      '<button class="pst-btn pst-btn-profile" onclick="switchView(\'profile\',null);document.getElementById(\'postScanToast\').remove()">View Profile →</button>' +
+      '<button class="pst-btn pst-btn-dismiss" onclick="this.closest(\'#postScanToast\').remove()">✕</button>' +
+    '</div>';
+
+  document.body.appendChild(toast);
+  // Auto-dismiss after 12 seconds
+  setTimeout(function() { if (toast.parentNode) toast.remove(); }, 12000);
+}
+
 // ═══════════════════════════════════════════════════════════════
 
 async function fetchChanges(username) {

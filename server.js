@@ -595,6 +595,33 @@ app.get('/api/scan/:username', function (req, res) {
                 clearInterval(keepAlive);
                 closed = true;
                 res.end();
+                // ── Post-scan background jobs (fire & forget) ──
+                if (type === 'done') {
+                    var d = db.getDb();
+                    var u = d.prepare('SELECT id FROM users WHERE username=?').get(username);
+                    if (u) {
+                        // 1. Auto-start release-meta sync if not yet fully synced
+                        var metaSynced = d.prepare('SELECT COUNT(*) as c FROM wantlist w JOIN release_meta rm ON rm.discogs_id=w.discogs_id WHERE w.user_id=? AND w.active=1').get(u.id).c;
+                        var metaTotal  = d.prepare('SELECT COUNT(*) as c FROM wantlist WHERE user_id=? AND active=1 AND discogs_id IS NOT NULL').get(u.id).c;
+                        if (metaSynced < metaTotal && !_metaSyncActive[username]) {
+                            console.log('[post-scan] Auto-starting meta sync for', username, '(' + metaSynced + '/' + metaTotal + ' synced)');
+                            setTimeout(function() { runMetaSync(u.id, username); }, 3000);
+                        }
+                        // 2. If user has OAuth, refresh collection if stale or empty
+                        var collCount = d.prepare('SELECT COUNT(*) as c FROM collection WHERE user_id=?').get(u.id).c;
+                        var oauthTok  = db.getOAuthToken(u.id, 'discogs');
+                        if (oauthTok && oauthTok.access_token && collCount === 0) {
+                            console.log('[post-scan] Auto-fetching collection for new OAuth user', username);
+                            var _hFn = function(method, url) {
+                                return { 'User-Agent': 'VinylWantlistChecker/1.0', 'Authorization': require('./lib/oauth').discogsAuthHeader(method, url, oauthTok.access_token, oauthTok.access_secret) };
+                            };
+                            discogs.fetchCollection(username, _hFn).then(function(items) {
+                                if (items.length > 0) db.syncCollectionItems(u.id, items);
+                                console.log('[post-scan] Collection synced for', username, '—', items.length, 'items');
+                            }).catch(function(e) { console.warn('[post-scan] Collection sync failed:', e.message); });
+                        }
+                    }
+                }
             }
         } catch (e) { closed = true; }
     }
