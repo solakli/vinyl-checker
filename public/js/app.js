@@ -4733,11 +4733,11 @@ function goldieNewChat() {
       '<div class="goldie-welcome-icon">✦</div>' +
       '<div class="goldie-welcome-text"><strong>New conversation started.</strong><br>What do you want to know?</div>' +
       '<div class="goldie-starters">' +
-        '<button onclick="goldieSend(\'What\\\'s in stock for me right now?\')">What\'s in stock?</button>' +
-        '<button onclick="goldieSend(\'Suggest a cart for this month\')">Suggest a cart</button>' +
-        '<button onclick="goldieSend(\'What are my rarest in-stock finds?\')">Rarest finds</button>' +
-        '<button onclick="goldieSend(\'Explain my taste profile\')">My taste profile</button>' +
-        '<button onclick="goldieSend(\'Sync my Discogs marketplace data\')">⟳ Sync Discogs</button>' +
+        '<button data-msg="What\'s in stock for me right now?" onclick="goldieSend(this.dataset.msg)">What\'s in stock?</button>' +
+        '<button data-msg="Suggest a cart for this month" onclick="goldieSend(this.dataset.msg)">Suggest a cart</button>' +
+        '<button data-msg="What are my rarest in-stock finds?" onclick="goldieSend(this.dataset.msg)">Rarest finds</button>' +
+        '<button data-msg="Explain my taste profile" onclick="goldieSend(this.dataset.msg)">My taste profile</button>' +
+        '<button data-msg="Sync my Discogs marketplace data" onclick="goldieSend(this.dataset.msg)">⟳ Sync Discogs</button>' +
       '</div>' +
     '</div>';
 }
