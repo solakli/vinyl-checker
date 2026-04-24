@@ -3568,7 +3568,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // ═══════════════════════════════════════════════════════════════
 
 var _discoverData        = null;
-var _discoverTab         = 'forYou';   // 'forYou' | 'inStock'
+var _discoverTab         = 'forYou';   // 'forYou' | 'inStock' | 'diggers'
 var _discoverSort        = 'items';
 var _discoverGenreFilter = null;
 var _activeDiscoverStore = null;
@@ -3578,6 +3578,83 @@ var _forYouStoreFilter   = 'all';      // 'all' | storeName
 var _inStockVendor       = 'all';      // 'all' | storeName | 'discogs'
 var _discogsSyncState    = null;       // live state from extension: {running, done, total, found, completedAt, error}
 var _dgPriceMap          = {};         // wantlistId → cheapestUsd from discogsListings
+
+var _diggersDiscoverCache = null;
+var _diggersDiscoverUser  = null;
+
+function renderDiscoverDiggers() {
+  var body   = document.getElementById('discBody');
+  var header = body ? body.querySelector('.disc-header') : null;
+  // Remove old content below header
+  if (body) {
+    Array.from(body.children).forEach(function(c) {
+      if (!c.classList.contains('disc-header')) c.remove();
+    });
+  }
+  var container = document.createElement('div');
+  container.className = 'disc-diggers-wrap';
+  if (body) body.appendChild(container);
+
+  var username = getCurrentUsername();
+  var cacheKey = username || '__anon__';
+
+  if (_diggersDiscoverCache && _diggersDiscoverUser === cacheKey) {
+    _renderDiscoverDiggerCards(_diggersDiscoverCache, username, container);
+    return;
+  }
+
+  container.innerHTML = '<div class="disc-loading" style="display:flex"><div class="disc-spinner"></div>Loading diggers…</div>';
+
+  var url = 'api/diggers' + (username ? '?forUser=' + encodeURIComponent(username) : '');
+  fetch(url)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      _diggersDiscoverCache = data;
+      _diggersDiscoverUser  = cacheKey;
+      _renderDiscoverDiggerCards(data, username, container);
+    })
+    .catch(function() {
+      container.innerHTML = '<div class="disc-empty">Could not load diggers.</div>';
+    });
+}
+
+function _renderDiscoverDiggerCards(diggers, currentUser, container) {
+  // Filter out self
+  var others = diggers.filter(function(d) { return d.username !== currentUser; });
+  if (!others.length) {
+    container.innerHTML = '<div class="disc-empty">No other diggers yet — invite some friends.</div>';
+    return;
+  }
+  // Sort by taste match desc
+  others.sort(function(a, b) { return (b.tasteMatch || 0) - (a.tasteMatch || 0); });
+
+  container.innerHTML = others.map(function(d) {
+    var matchCls = (d.tasteMatch >= 70) ? 'match-high' : (d.tasteMatch >= 40) ? 'match-mid' : 'match-low';
+    var matchHtml = typeof d.tasteMatch === 'number'
+      ? '<div class="disc-digger-match ' + matchCls + '">' + d.tasteMatch + '%<span class="disc-digger-match-label">match</span></div>'
+      : '';
+    var tags = (d.personalityTags || []).slice(0, 2).map(function(t) {
+      return '<span class="disc-digger-tag">' + (t.icon || '') + ' ' + escapeHtml(t.label) + '</span>';
+    }).join('');
+    var genres = (d.topGenres || []).slice(0, 3).map(function(g) {
+      return '<span class="disc-digger-genre">' + escapeHtml(g.name) + '</span>';
+    }).join('');
+    return '<div class="disc-digger-card" onclick="profLoadPublic(\'' + escapeAttr(d.username) + '\')">' +
+      '<div class="disc-digger-avatar">' + escapeHtml(d.username.charAt(0).toUpperCase()) + '</div>' +
+      '<div class="disc-digger-info">' +
+        '<div class="disc-digger-name">' + escapeHtml(d.username) + '</div>' +
+        (tags ? '<div class="disc-digger-tags">' + tags + '</div>' : '') +
+        (genres ? '<div class="disc-digger-genres">' + genres + '</div>' : '') +
+        '<div class="disc-digger-stats">' +
+          '<span>' + (d.wantlistSize || 0) + ' wants</span>' +
+          '<span>' + (d.collectionSize || d.collection || 0) + ' owned</span>' +
+          '<span>' + (d.inStockCount || 0) + ' in stock</span>' +
+        '</div>' +
+      '</div>' +
+      matchHtml +
+    '</div>';
+  }).join('');
+}
 
 function loadDiscover() {
   var username = getCurrentUsername();
@@ -3653,6 +3730,7 @@ function renderDiscover() {
     '<div class="disc-tabs">' +
       '<button class="disc-tab-btn' + (_discoverTab === 'forYou' ? ' active' : '') + '" data-tab="forYou" onclick="switchDiscoverTab(\'forYou\')">For You</button>' +
       '<button class="disc-tab-btn' + (_discoverTab === 'inStock' ? ' active' : '') + '" data-tab="inStock" onclick="switchDiscoverTab(\'inStock\')">In Stock</button>' +
+      '<button class="disc-tab-btn' + (_discoverTab === 'diggers' ? ' active' : '') + '" data-tab="diggers" onclick="switchDiscoverTab(\'diggers\')">DIGGERS</button>' +
     '</div>' +
     // Body
     '<div id="discBody"></div>';
@@ -3664,6 +3742,7 @@ function renderDiscover() {
 function renderDiscoverBody() {
   if (!_discoverData) return;
   if (_discoverTab === 'forYou') renderForYouTab();
+  else if (_discoverTab === 'diggers') { renderDiscoverDiggers(); return; }
   else renderInStockTab();
 }
 
@@ -4301,6 +4380,41 @@ function renderProfile(p) {
     tagsHtml = '<div class="prof-archetype-row">' + tagPills + '</div>';
   }
 
+  // ── Rarity tier badge ──
+  var rarityTierHtml = '';
+  if (typeof p.avgHave === 'number' && p.metaSynced > 10) {
+    var rt = p.avgHave < 50  ? { label:'Ultra Rare Digger', icon:'💎', cls:'prof-badge-gold'  } :
+             p.avgHave < 150 ? { label:'Underground',        icon:'🔍', cls:'prof-badge-teal'  } :
+             p.avgHave < 400 ? { label:'Deep Digger',        icon:'⛏', cls:'prof-badge-smoke' } :
+                               { label:'Broad Taste',        icon:'📻', cls:'prof-badge-blue'  };
+    rarityTierHtml = '<span class="prof-badge ' + rt.cls + '">' + rt.icon + ' ' + rt.label + '</span>';
+  }
+
+  // ── Era badge ──
+  var eraBadgeHtml = '';
+  if (p.topDecade) {
+    var eraLabels = { '60s':'60s Soul', '70s':'70s Vinyl', '80s':'80s Wave', '90s':'90s Head', '0s':'00s Underground', '10s':'2010s Digger', '20s':'New Wave' };
+    eraBadgeHtml = '<span class="prof-badge prof-badge-era">📅 ' + (eraLabels[p.topDecade] || p.topDecade) + '</span>';
+  }
+
+  // ── Rarity % stat ──
+  var rarityStatHtml = '';
+  if (typeof p.rarePct === 'number' && p.metaSynced > 10) {
+    rarityStatHtml = '<span class="prof-stat-pill">' + p.rarePct + '% rare <span class="prof-stat-pill-sub">(&lt;200 collectors)</span></span>';
+  }
+
+  // ── Collection ratio badge ──
+  var collRatioHtml = '';
+  if (p.collectionSize > 0 && p.wantlistSize > 0) {
+    var ratio = p.collectionSize / p.wantlistSize;
+    var ratioLabel = ratio > 8 ? 'Collector' : ratio > 3 ? 'Keeper' : ratio > 1 ? 'Balanced' : 'Active Buyer';
+    collRatioHtml = '<span class="prof-stat-pill">📦 ' + ratioLabel + ' <span class="prof-stat-pill-sub">(' + p.collectionSize + ' owned)</span></span>';
+  }
+
+  var metaBadgesHtml = (rarityTierHtml || eraBadgeHtml || rarityStatHtml || collRatioHtml)
+    ? '<div class="prof-meta-badges">' + rarityTierHtml + eraBadgeHtml + rarityStatHtml + collRatioHtml + '</div>'
+    : '';
+
   // ── Meta-sync progress bar (own profile only) ──
   var metaSyncHtml = '';
   if (isOwn && typeof p.metaTotal === 'number' && p.metaTotal > 0) {
@@ -4435,6 +4549,7 @@ function renderProfile(p) {
           tasteMatchHtml +
         '</div>' +
         (tagsHtml) +
+        metaBadgesHtml +
         '<div class="prof-meta-row">' +
           '<span class="prof-meta-item">🎵 Digger since ' + memberYear + '</span>' +
           '<span class="prof-meta-item">⏱ Last scan ' + lastScanLabel + '</span>' +

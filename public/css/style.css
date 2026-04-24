@@ -6169,6 +6169,124 @@ body.light .prof-hero-match.match-low { color: #666; }
 
 body.light .prof-archetype-smoke { background: #f0f0f0; border-color: #ddd; color: #666; }
 
+/* ── Profile metadata badges ── */
+.prof-meta-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+.prof-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 20px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.prof-badge-gold  { color: #C9A227; border-color: #C9A22750; background: #C9A22710; }
+.prof-badge-teal  { color: #4ecdc4; border-color: #4ecdc440; background: #4ecdc410; }
+.prof-badge-smoke { color: #999;    border-color: #44444480; background: #33333320; }
+.prof-badge-blue  { color: #7eb8f7; border-color: #7eb8f740; background: #7eb8f710; }
+.prof-badge-era   { color: #b0b0b0; border-color: #44444480; background: #22222220; }
+.prof-stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: #888;
+  padding: 3px 8px;
+  border-radius: 20px;
+  border: 1px solid #2a2a2a;
+  background: #1a1a1a;
+  white-space: nowrap;
+}
+.prof-stat-pill-sub { font-size: 9px; opacity: 0.7; }
+body.light .prof-badge-gold  { background: #fffbe8; border-color: #C9A22760; }
+body.light .prof-badge-teal  { background: #e8fffe; border-color: #4ecdc460; }
+body.light .prof-badge-smoke { background: #f5f5f5; border-color: #cccccc80; }
+body.light .prof-badge-blue  { background: #eaf4ff; border-color: #7eb8f760; }
+body.light .prof-badge-era   { background: #f5f5f5; border-color: #cccccc; color: #666; }
+body.light .prof-stat-pill   { background: #f8f8f8; border-color: #e0e0e0; color: #666; }
+
+/* ── Discover: Diggers grid ── */
+.disc-diggers-wrap {
+  padding: 16px 0 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+.disc-digger-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: #111;
+  border: 1px solid #1e1e1e;
+  border-radius: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.disc-digger-card:hover { border-color: #C9A22760; background: #161208; }
+.disc-digger-avatar {
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  background: #1e1e1e;
+  border: 1px solid #333;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Oswald', sans-serif;
+  font-size: 18px; font-weight: 700;
+  color: #C9A227;
+  flex-shrink: 0;
+}
+.disc-digger-info { flex: 1; min-width: 0; }
+.disc-digger-name {
+  font-family: 'Oswald', sans-serif;
+  font-size: 15px; font-weight: 600;
+  color: #eee; text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 5px;
+}
+.disc-digger-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 5px; }
+.disc-digger-tag {
+  font-size: 10px; font-family: 'Oswald', sans-serif;
+  padding: 2px 7px; border-radius: 12px;
+  background: #1a1a1a; border: 1px solid #333;
+  color: #C9A227; letter-spacing: 0.3px;
+}
+.disc-digger-genres { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.disc-digger-genre {
+  font-size: 10px; color: #888;
+  padding: 1px 6px; border-radius: 10px;
+  background: #1a1a1a; border: 1px solid #2a2a2a;
+}
+.disc-digger-stats { font-size: 11px; color: #555; display: flex; gap: 10px; }
+.disc-digger-match {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  min-width: 48px; padding: 6px 8px;
+  border-radius: 8px; border: 1px solid transparent;
+  font-family: 'Oswald', sans-serif; font-size: 18px; font-weight: 700;
+  line-height: 1; flex-shrink: 0;
+}
+.disc-digger-match-label { font-size: 8px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8; margin-top: 2px; }
+.disc-digger-match.match-high { color: #4ecdc4; border-color: #4ecdc440; background: #4ecdc410; }
+.disc-digger-match.match-mid  { color: #C9A227; border-color: #C9A22740; background: #C9A22710; }
+.disc-digger-match.match-low  { color: #666;    border-color: #33333380; background: #1a1a1a; }
+body.light .disc-digger-card  { background: #fff; border-color: #eee; }
+body.light .disc-digger-card:hover { border-color: #C9A22780; background: #fffdf5; }
+body.light .disc-digger-avatar { background: #f5f5f5; border-color: #ddd; }
+body.light .disc-digger-name  { color: #333; }
+body.light .disc-digger-tag   { background: #fff8e0; border-color: #e8d890; color: #8a6000; }
+body.light .disc-digger-genre { background: #f5f5f5; border-color: #e0e0e0; color: #888; }
+body.light .disc-digger-stats { color: #aaa; }
+
 /* ── Era decade chart ───────────────────────────────────────────────────── */
 .prof-decade-section {
   padding: 16px 20px 12px;
