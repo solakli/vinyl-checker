@@ -1611,8 +1611,8 @@ app.get('/api/youtube-enrichment/status', function(req, res) {
     try {
         var ytEnrich = require('./lib/youtube-enrichment');
         var status = ytEnrich.getEnrichmentStatus();
+        var YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
         if (req.query.trigger === '1' && !status.running) {
-            var YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
             if (YOUTUBE_API_KEY) {
                 ytEnrich.runYouTubeEnrichment(YOUTUBE_API_KEY).catch(function(e) {
                     console.error('[yt-enrich] Triggered run fatal:', e.message);
@@ -1621,6 +1621,14 @@ app.get('/api/youtube-enrichment/status', function(req, res) {
             } else {
                 status.triggered = false;
                 status.error = 'YOUTUBE_API_KEY not set';
+            }
+        }
+        if (req.query.search === '1') {
+            if (YOUTUBE_API_KEY) {
+                ytEnrich.runVideoIdSearch(YOUTUBE_API_KEY).catch(function(e) {
+                    console.error('[yt-search] Triggered fatal:', e.message);
+                });
+                status.searchTriggered = true;
             }
         }
         res.json(status);
@@ -2727,6 +2735,19 @@ app.listen(PORT, function () {
                 console.error('[yt-enrich] Fatal:', e.message);
             });
         }, 6 * 60 * 60 * 1000);
+
+        // Video ID search: for releases without a Discogs-linked video, search YouTube
+        // 50 searches/run × 100 quota = 5k quota. Runs once/day. 306 items = ~6 days to cover all.
+        setTimeout(function() {
+            ytEnrich.runVideoIdSearch(YOUTUBE_API_KEY).catch(function(e) {
+                console.error('[yt-search] Startup fatal:', e.message);
+            });
+        }, 20 * 60 * 1000); // 20 min after boot (after meta-sync + first enrichment pass)
+        setInterval(function() {
+            ytEnrich.runVideoIdSearch(YOUTUBE_API_KEY).catch(function(e) {
+                console.error('[yt-search] Fatal:', e.message);
+            });
+        }, 24 * 60 * 60 * 1000); // once per day
     } else {
         console.log('[yt-enrich] YOUTUBE_API_KEY not set — YouTube enrichment disabled');
     }
