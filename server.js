@@ -809,9 +809,15 @@ app.get('/api/scan/:username', function (req, res) {
                     var d = db.getDb();
                     var u = d.prepare('SELECT id FROM users WHERE username=?').get(username);
                     if (u) {
-                        // 1. Auto-start release-meta sync if not yet fully synced
-                        var metaSynced = d.prepare('SELECT COUNT(*) as c FROM wantlist w JOIN release_meta rm ON rm.discogs_id=w.discogs_id WHERE w.user_id=? AND w.active=1').get(u.id).c;
-                        var metaTotal  = d.prepare('SELECT COUNT(*) as c FROM wantlist WHERE user_id=? AND active=1 AND discogs_id IS NOT NULL').get(u.id).c;
+                        // 1. Auto-start release-meta sync if wantlist+collection not fully synced
+                        var metaTotal  = d.prepare(`SELECT COUNT(*) as c FROM (
+                            SELECT discogs_id FROM wantlist WHERE user_id=? AND active=1 AND discogs_id IS NOT NULL
+                            UNION SELECT discogs_id FROM collection WHERE user_id=? AND discogs_id IS NOT NULL
+                        )`).get(u.id, u.id).c;
+                        var metaSynced = d.prepare(`SELECT COUNT(*) as c FROM release_meta rm WHERE rm.discogs_id IN (
+                            SELECT discogs_id FROM wantlist WHERE user_id=? AND active=1 AND discogs_id IS NOT NULL
+                            UNION SELECT discogs_id FROM collection WHERE user_id=? AND discogs_id IS NOT NULL
+                        )`).get(u.id, u.id).c;
                         if (metaSynced < metaTotal && !_metaSyncActive[username]) {
                             console.log('[post-scan] Auto-starting meta sync for', username, '(' + metaSynced + '/' + metaTotal + ' synced)');
                             setTimeout(function() { runMetaSync(u.id, username); }, 3000);
@@ -1566,8 +1572,21 @@ app.get('/api/meta-sync/:username', function(req, res) {
         var user = d.prepare('SELECT id FROM users WHERE username=?').get(username);
         if (!user) return res.status(404).json({ error: 'User not found' });
 
-        var total  = d.prepare('SELECT COUNT(*) as c FROM wantlist WHERE user_id=? AND active=1 AND discogs_id IS NOT NULL').get(user.id).c;
-        var synced = d.prepare('SELECT COUNT(*) as c FROM wantlist w JOIN release_meta rm ON rm.discogs_id=w.discogs_id WHERE w.user_id=? AND w.active=1').get(user.id).c;
+        // Count both wantlist + collection items (deduped) and how many have release_meta
+        var total  = d.prepare(`
+            SELECT COUNT(*) as c FROM (
+                SELECT discogs_id FROM wantlist WHERE user_id=? AND active=1 AND discogs_id IS NOT NULL
+                UNION
+                SELECT discogs_id FROM collection WHERE user_id=? AND discogs_id IS NOT NULL
+            )
+        `).get(user.id, user.id).c;
+        var synced = d.prepare(`
+            SELECT COUNT(*) as c FROM release_meta rm WHERE rm.discogs_id IN (
+                SELECT discogs_id FROM wantlist WHERE user_id=? AND active=1 AND discogs_id IS NOT NULL
+                UNION
+                SELECT discogs_id FROM collection WHERE user_id=? AND discogs_id IS NOT NULL
+            )
+        `).get(user.id, user.id).c;
         var running = !!_metaSyncActive[username];
         var pct = total > 0 ? Math.round((synced / total) * 100) : 0;
 
