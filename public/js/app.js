@@ -4373,10 +4373,14 @@ function _buildTasteIntelHtml(p) {
     ? l.recentCount + ' records added in last 60 days'
     : 'Based on last 60 days of collection';
 
-  // ── Store Match column ──
-  var smRows = sm.slice(0,6).map(function(s) {
-    var barW = Math.min(s.matchPct, 100);
-    var barCls = s.matchPct >= 70 ? 'ti-bar-match-hi' : s.matchPct >= 40 ? 'ti-bar-match-mid' : 'ti-bar-match-lo';
+  // ── Store Match column (normalize bars relative to top store) ──
+  var smSlice = sm.slice(0,6);
+  var maxSm = smSlice.length ? smSlice[0].matchPct : 1;
+  var smRows = smSlice.map(function(s) {
+    var barW = maxSm > 0 ? Math.round(s.matchPct / maxSm * 100) : 0;
+    // Color by relative rank rather than absolute pct
+    var rank = smSlice.indexOf(s);
+    var barCls = rank === 0 ? 'ti-bar-match-hi' : rank <= 2 ? 'ti-bar-match-mid' : 'ti-bar-match-lo';
     return '<div class="ti-row">' +
       '<div class="ti-label">' + escapeHtml(s.store) + '</div>' +
       '<div class="ti-bar-wrap"><div class="ti-bar ' + barCls + '" style="width:' + barW + '%"></div></div>' +
