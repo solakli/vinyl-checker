@@ -1630,21 +1630,22 @@ app.get('/api/youtube-enrichment/status', function(req, res) {
     try {
         var ytEnrich = require('./lib/youtube-enrichment');
         var status = ytEnrich.getEnrichmentStatus();
-        var YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
+        var ytKeys = [process.env.YOUTUBE_API_KEY, process.env.YOUTUBE_API_KEY_2, process.env.YOUTUBE_API_KEY_3].filter(Boolean);
+        status.keysLoaded = ytKeys.length;
         if (req.query.trigger === '1' && !status.running) {
-            if (YOUTUBE_API_KEY) {
-                ytEnrich.runYouTubeEnrichment(YOUTUBE_API_KEY).catch(function(e) {
+            if (ytKeys.length) {
+                ytEnrich.runYouTubeEnrichment(ytKeys).catch(function(e) {
                     console.error('[yt-enrich] Triggered run fatal:', e.message);
                 });
                 status.triggered = true;
             } else {
                 status.triggered = false;
-                status.error = 'YOUTUBE_API_KEY not set';
+                status.error = 'No YOUTUBE_API_KEY set';
             }
         }
         if (req.query.search === '1') {
-            if (YOUTUBE_API_KEY) {
-                ytEnrich.runVideoIdSearch(YOUTUBE_API_KEY).catch(function(e) {
+            if (ytKeys.length) {
+                ytEnrich.runVideoIdSearch(ytKeys).catch(function(e) {
                     console.error('[yt-search] Triggered fatal:', e.message);
                 });
                 status.searchTriggered = true;
@@ -2929,38 +2930,46 @@ app.listen(PORT, function () {
     }, 300000);
 
     // YouTube enrichment — fetch view/like counts + comment genre signals for all items with a video ID.
-    // Each item costs 2 quota units (stats + comments); 10,000 units/day free → 5,000 items/day.
+    // Each item costs 2 quota units (stats + comments); 10,000 units/day free per key.
     // Video IDs are populated for FREE during meta-sync from Discogs release details.
-    var YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
-    if (YOUTUBE_API_KEY) {
+    // Multiple keys supported: YOUTUBE_API_KEY, YOUTUBE_API_KEY_2, YOUTUBE_API_KEY_3
+    // Keys round-robin per item — batch size scales automatically (80 × numKeys enrichments/day,
+    // 90 × numKeys searches/day).
+    var ytApiKeys = [
+        process.env.YOUTUBE_API_KEY,
+        process.env.YOUTUBE_API_KEY_2,
+        process.env.YOUTUBE_API_KEY_3
+    ].filter(Boolean);
+
+    if (ytApiKeys.length) {
         var ytEnrich = require('./lib/youtube-enrichment');
-        console.log('[yt-enrich] YouTube enrichment enabled — runs every 6 hours');
+        console.log('[yt-enrich] YouTube enrichment enabled —', ytApiKeys.length, 'key(s) — runs every 6 hours');
         // First run: 15 min after startup so meta-sync can populate video IDs first
         setTimeout(function() {
-            ytEnrich.runYouTubeEnrichment(YOUTUBE_API_KEY).catch(function(e) {
+            ytEnrich.runYouTubeEnrichment(ytApiKeys).catch(function(e) {
                 console.error('[yt-enrich] Startup run fatal:', e.message);
             });
         }, 15 * 60 * 1000);
         setInterval(function() {
-            ytEnrich.runYouTubeEnrichment(YOUTUBE_API_KEY).catch(function(e) {
+            ytEnrich.runYouTubeEnrichment(ytApiKeys).catch(function(e) {
                 console.error('[yt-enrich] Fatal:', e.message);
             });
         }, 6 * 60 * 60 * 1000);
 
-        // Video ID search: for releases without a Discogs-linked video, search YouTube
-        // 50 searches/run × 100 quota = 5k quota. Runs once/day. 306 items = ~6 days to cover all.
+        // Video ID search: for releases without a Discogs-linked video, search YouTube.
+        // 90 searches × numKeys × 100 quota units = 27k/day with 3 keys.
         setTimeout(function() {
-            ytEnrich.runVideoIdSearch(YOUTUBE_API_KEY).catch(function(e) {
+            ytEnrich.runVideoIdSearch(ytApiKeys).catch(function(e) {
                 console.error('[yt-search] Startup fatal:', e.message);
             });
         }, 20 * 60 * 1000); // 20 min after boot (after meta-sync + first enrichment pass)
         setInterval(function() {
-            ytEnrich.runVideoIdSearch(YOUTUBE_API_KEY).catch(function(e) {
+            ytEnrich.runVideoIdSearch(ytApiKeys).catch(function(e) {
                 console.error('[yt-search] Fatal:', e.message);
             });
         }, 24 * 60 * 60 * 1000); // once per day
     } else {
-        console.log('[yt-enrich] YOUTUBE_API_KEY not set — YouTube enrichment disabled');
+        console.log('[yt-enrich] No YOUTUBE_API_KEY set — YouTube enrichment disabled');
     }
 
     // Stock validation — re-checks "in stock" items to catch false positives
