@@ -42,9 +42,10 @@ var ytEnrich = require('../lib/youtube-enrichment');
 function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
 
 async function main() {
-    // All unique discogs_ids across all users that have no youtube_video_id
+    // All unique discogs_ids across all users that have no youtube_video_id.
+    // Use NOT IN to avoid correlated-subquery column-resolution issues in SQLite.
     var rows = d.prepare(`
-        SELECT discogs_id, artist, title FROM (
+        SELECT DISTINCT discogs_id, artist, title FROM (
             SELECT w.discogs_id, w.artist, w.title
             FROM wantlist w
             WHERE w.active = 1 AND w.discogs_id IS NOT NULL
@@ -52,12 +53,11 @@ async function main() {
             SELECT c.discogs_id, c.artist, c.title
             FROM collection c
             WHERE c.discogs_id IS NOT NULL
+        ) items
+        WHERE items.discogs_id NOT IN (
+            SELECT sm.discogs_id FROM streaming_metadata sm
+            WHERE sm.youtube_video_id IS NOT NULL
         )
-        WHERE NOT EXISTS (
-            SELECT 1 FROM streaming_metadata sm
-            WHERE sm.discogs_id = discogs_id AND sm.youtube_video_id IS NOT NULL
-        )
-        GROUP BY discogs_id
         ORDER BY discogs_id
     `).all();
 
