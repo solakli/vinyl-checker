@@ -1630,7 +1630,7 @@ app.get('/api/youtube-enrichment/status', function(req, res) {
     try {
         var ytEnrich = require('./lib/youtube-enrichment');
         var status = ytEnrich.getEnrichmentStatus();
-        var ytKeys = [process.env.YOUTUBE_API_KEY, process.env.YOUTUBE_API_KEY_2, process.env.YOUTUBE_API_KEY_3].filter(Boolean);
+        var ytKeys = (function(){ var ks=[]; if(process.env.YOUTUBE_API_KEY) ks.push(process.env.YOUTUBE_API_KEY); for(var _i=2;_i<=50;_i++){ var _k=process.env['YOUTUBE_API_KEY_'+_i]; if(!_k) break; ks.push(_k); } return ks; })();
         status.keysLoaded = ytKeys.length;
         if (req.query.trigger === '1' && !status.running) {
             if (ytKeys.length) {
@@ -2932,14 +2932,21 @@ app.listen(PORT, function () {
     // YouTube enrichment — fetch view/like counts + comment genre signals for all items with a video ID.
     // Each item costs 2 quota units (stats + comments); 10,000 units/day free per key.
     // Video IDs are populated for FREE during meta-sync from Discogs release details.
-    // Multiple keys supported: YOUTUBE_API_KEY, YOUTUBE_API_KEY_2, YOUTUBE_API_KEY_3
+    // Supports unlimited keys: YOUTUBE_API_KEY, YOUTUBE_API_KEY_2, YOUTUBE_API_KEY_3, ..._N
     // Keys round-robin per item — batch size scales automatically (80 × numKeys enrichments/day,
     // 90 × numKeys searches/day).
-    var ytApiKeys = [
-        process.env.YOUTUBE_API_KEY,
-        process.env.YOUTUBE_API_KEY_2,
-        process.env.YOUTUBE_API_KEY_3
-    ].filter(Boolean);
+    var ytApiKeys = (function() {
+        var keys = [];
+        // Always read the base key first
+        if (process.env.YOUTUBE_API_KEY) keys.push(process.env.YOUTUBE_API_KEY);
+        // Read YOUTUBE_API_KEY_2, _3, _4 ... until we hit a gap
+        for (var _i = 2; _i <= 50; _i++) {
+            var k = process.env['YOUTUBE_API_KEY_' + _i];
+            if (!k) break;
+            keys.push(k);
+        }
+        return keys;
+    })();
 
     if (ytApiKeys.length) {
         var ytEnrich = require('./lib/youtube-enrichment');
