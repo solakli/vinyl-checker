@@ -464,6 +464,7 @@ function initTables() {
     // YouTube enrichment columns
     try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN youtube_comment_data TEXT`); } catch(e) {}
     try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN youtube_enriched_at TEXT`); } catch(e) {}
+    try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN youtube_comment_count INTEGER`); } catch(e) {}
 
     // ── GOLDIE chat sessions ──────────────────────────────────────────────────
     db.exec(`
@@ -851,7 +852,7 @@ function getFullResults(userId) {
                 var gemScore = require('./lib/gem-score');
                 var smRows = d.prepare(
                     'SELECT discogs_id, youtube_video_id, youtube_view_count, youtube_like_count,' +
-                    '  youtube_comment_data, youtube_enriched_at FROM streaming_metadata' +
+                    '  youtube_comment_count, youtube_comment_data, youtube_enriched_at FROM streaming_metadata' +
                     ' WHERE discogs_id IN (' + ph2 + ')'
                 ).all(...discogIds);
                 var rmRows = d.prepare(
