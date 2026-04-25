@@ -6,6 +6,7 @@
  *   1. HTTP agent server  — POST /chat  (streaming Claude responses + tool calls)
  *                           GET  /sessions/:username
  *                           GET  /context/:username
+ *                           POST/GET /mcp  (HTTP MCP endpoint for ChatGPT / any HTTP MCP client)
  *   2. MCP server         — stdio transport (connect from Claude Desktop / claude.ai)
  *
  * Environment:
@@ -16,6 +17,10 @@
  *
  * Run:  node goldie.js
  * MCP:  node goldie.js --mcp   (stdio mode for Claude Desktop)
+ *
+ * ChatGPT MCP integration:
+ *   Configure ChatGPT to use the HTTP MCP endpoint at http://<host>:<GOLDIE_PORT>/mcp
+ *   (Streamable HTTP transport, stateless mode — no session required)
  */
 
 'use strict';
@@ -1649,6 +1654,16 @@ function startHttpServer() {
             return sendJSON(res, 200, { status: 'ok', name: 'GOLDIE' });
         }
 
+        // ── /mcp — HTTP MCP endpoint (ChatGPT and other HTTP MCP clients) ──
+        if (url === '/mcp' && (req.method === 'POST' || req.method === 'GET' || req.method === 'DELETE')) {
+            const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
+            var parsedBody = req.method === 'POST' ? await readBody(req) : null;
+            var mcpTransport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+            await buildMcpServer().connect(mcpTransport);
+            await mcpTransport.handleRequest(req, res, parsedBody);
+            return;
+        }
+
         // ── GET /sessions/:username ────────────────────────────────────────
         var sessMatch = url.match(/^\/sessions\/(.+)$/);
         if (req.method === 'GET' && sessMatch) {
@@ -1708,19 +1723,17 @@ function startHttpServer() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MCP SERVER (stdio — for Claude Desktop)
+// MCP SERVER — shared tool registration
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function startMcpServer() {
+function buildMcpServer() {
     const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
-    const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
     const { z } = require('zod');
 
     const mcp = new McpServer({ name: 'goldie', version: '1.0.0', description: 'Vinyl intelligence agent for vinyl-checker platform' });
 
-    // Register each tool
+    // Register each GOLDIE tool
     TOOLS.forEach(function(tool) {
-        // Convert JSON schema to zod shape (minimal — MCP SDK just needs an object)
         var zodShape = {};
         var props = (tool.input_schema && tool.input_schema.properties) || {};
         Object.entries(props).forEach(function([key, prop]) {
@@ -1731,8 +1744,7 @@ async function startMcpServer() {
             else if (prop.type === 'array') base = z.array(z.string()).optional();
             else base = z.any().optional();
             if (prop.description) base = base.describe(prop.description);
-            var required = (tool.input_schema.required || []).indexOf(key) !== -1;
-            zodShape[key] = required ? base.unwrap ? base : base : base;
+            zodShape[key] = base;
         });
 
         mcp.tool(tool.name, tool.description, zodShape, async function(input) {
@@ -1741,7 +1753,7 @@ async function startMcpServer() {
         });
     });
 
-    // Also expose a chat tool for conversational use
+    // Conversational tool — GOLDIE drives Claude internally
     mcp.tool('goldie_chat', 'Have a conversation with GOLDIE about your vinyl collection. GOLDIE will use its other tools automatically.', {
         message:    z.string().describe('Your message or question'),
         username:   z.string().optional().describe('Discogs username for context'),
@@ -1753,8 +1765,15 @@ async function startMcpServer() {
         return { content: [{ type: 'text', text: text + '\n\n[session: ' + session.id + ']' }] };
     });
 
+    return mcp;
+}
+
+// ── stdio MCP server (for Claude Desktop / claude.ai) ───────────────────────
+async function startMcpServer() {
+    const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
+
     var transport = new StdioServerTransport();
-    await mcp.connect(transport);
+    await buildMcpServer().connect(transport);
     console.error('[GOLDIE] MCP server running on stdio');
 }
 
