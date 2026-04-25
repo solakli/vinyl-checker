@@ -57,8 +57,20 @@ function _buildCardGemStrip(discogsId, inlineGem) {
     viewsHtml = '<span class="cgem-views cgem-views-underground">underground</span>';
   }
 
-  // Genre tags from YouTube comment NLP (max 3)
-  var tagsHtml = (g.genres || []).slice(0, 3).map(function(gn) {
+  // Comment count (high-intent engagement signal)
+  var commentsHtml = '';
+  if (g.commentCount != null && g.commentCount > 0) {
+    commentsHtml = '<span class="cgem-comments">💬 ' + g.commentCount + '</span>';
+  }
+
+  // First DJ mention — club validation signal
+  var djHtml = '';
+  if (g.djs && g.djs.length > 0) {
+    djHtml = '<span class="cgem-dj">🎧 ' + escapeHtml(g.djs[0]) + (g.djs.length > 1 ? ' +' + (g.djs.length - 1) : '') + '</span>';
+  }
+
+  // Genre tags from YouTube comment NLP (max 2 to keep strip tight)
+  var tagsHtml = (g.genres || []).slice(0, 2).map(function(gn) {
     return '<span class="cgem-tag">' + escapeHtml(gn) + '</span>';
   }).join('');
 
@@ -71,6 +83,8 @@ function _buildCardGemStrip(discogsId, inlineGem) {
   return '<div class="card-gem-strip">' +
     '<span class="cgem-badge ' + tc.cls + '">' + tc.icon + ' ' + g.gemScore + '</span>' +
     viewsHtml +
+    commentsHtml +
+    djHtml +
     tagsHtml +
     ytHtml +
   '</div>';
@@ -1481,6 +1495,96 @@ function renderReleaseDetail(data, resultItem) {
     '</div>' +
     ratingHtml +
   '</div></div>';
+
+  // ── Gem Intelligence section ─────────────────────────────────────────────
+  var gd = _gemScoreMap[data.id];
+  if (gd && gd.tier && gd.tier !== 'unscored') {
+    var TIER_MODAL = {
+      hidden_gem:     { icon: '💎', cls: 'cgem-gem',   label: 'Hidden Gem' },
+      club_weapon:    { icon: '🔥', cls: 'cgem-club',  label: 'Club Weapon' },
+      deep_cut:       { icon: '🎯', cls: 'cgem-deep',  label: 'Deep Cut' },
+      known_quantity: { icon: '📣', cls: 'cgem-known', label: 'Known Quantity' },
+    };
+    var gtc = TIER_MODAL[gd.tier];
+    if (gtc) {
+      html += '<div class="modal-section modal-gem-section">';
+      html += '<div class="modal-section-title">Gem Intelligence</div>';
+
+      // Tier + score row
+      html += '<div class="mgem-header">' +
+        '<span class="cgem-badge ' + gtc.cls + '" style="font-size:13px;padding:4px 12px">' + gtc.icon + ' ' + gtc.label + '</span>' +
+        '<span class="mgem-score">Score: <strong>' + gd.gemScore + '</strong>/100</span>' +
+      '</div>';
+
+      // Signal bars
+      var sigs = gd.signals || {};
+      html += '<div class="mgem-signals">';
+      [
+        { key: 'obscurity',  label: 'Obscurity',  tip: 'Low views = underground' },
+        { key: 'engagement', label: 'Engagement', tip: 'Comments + likes relative to views' },
+        { key: 'djSignal',   label: 'DJ Signal',  tip: 'DJ names mentioned in comments' },
+        { key: 'rarity',     label: 'Rarity',     tip: 'Discogs want/have ratio' },
+        { key: 'genreDepth', label: 'Genre Depth',tip: 'Genre richness in comments' },
+      ].forEach(function(s) {
+        var val = sigs[s.key] || 0;
+        html += '<div class="mgem-signal-row" title="' + escapeHtml(s.tip) + '">' +
+          '<span class="mgem-signal-label">' + s.label + '</span>' +
+          '<div class="mgem-bar-wrap"><div class="mgem-bar" style="width:' + val + '%"></div></div>' +
+          '<span class="mgem-signal-val">' + val + '</span>' +
+        '</div>';
+      });
+      html += '</div>';
+
+      // Stats row: views · likes · comments
+      var statsRow = [];
+      if (gd.viewCount != null) {
+        var vv = gd.viewCount >= 1000000 ? (gd.viewCount/1000000).toFixed(1)+'M'
+               : gd.viewCount >= 1000    ? (gd.viewCount/1000).toFixed(1)+'K'
+               : String(gd.viewCount);
+        statsRow.push('<span>👁 ' + vv + ' views</span>');
+      }
+      if (gd.likeCount != null && gd.likeCount > 0) {
+        var ll = gd.likeCount >= 1000 ? (gd.likeCount/1000).toFixed(1)+'K' : String(gd.likeCount);
+        statsRow.push('<span>👍 ' + ll + ' likes</span>');
+      }
+      if (gd.commentCount != null && gd.commentCount > 0) {
+        statsRow.push('<span>💬 ' + gd.commentCount + ' comments</span>');
+      }
+      if (statsRow.length) {
+        html += '<div class="mgem-stats">' + statsRow.join('') + '</div>';
+      }
+
+      // DJ mentions
+      if (gd.djs && gd.djs.length > 0) {
+        html += '<div class="mgem-row"><span class="mgem-row-label">🎧 DJs</span>' +
+          gd.djs.map(function(dj) { return '<span class="cgem-tag">' + escapeHtml(dj) + '</span>'; }).join('') +
+        '</div>';
+      }
+
+      // YouTube genres (from comments)
+      if (gd.genres && gd.genres.length > 0) {
+        html += '<div class="mgem-row"><span class="mgem-row-label">🎵 Scene</span>' +
+          gd.genres.map(function(g) { return '<span class="cgem-tag">' + escapeHtml(g) + '</span>'; }).join('') +
+        '</div>';
+      }
+
+      // Era
+      if (gd.era && gd.era.length > 0) {
+        html += '<div class="mgem-row"><span class="mgem-row-label">📅 Era</span>' +
+          gd.era.map(function(e) { return '<span class="cgem-tag">' + escapeHtml(String(e)) + '</span>'; }).join('') +
+        '</div>';
+      }
+
+      // "Sounds like"
+      if (gd.soundsLike && gd.soundsLike.length > 0) {
+        html += '<div class="mgem-row"><span class="mgem-row-label">🔊 Sounds like</span>' +
+          gd.soundsLike.slice(0,4).map(function(s) { return '<span class="cgem-tag">' + escapeHtml(s) + '</span>'; }).join('') +
+        '</div>';
+      }
+
+      html += '</div>'; // modal-gem-section
+    }
+  }
 
   // Tracklist section
   if (data.tracklistWithVideos && data.tracklistWithVideos.length > 0) {
@@ -3499,6 +3603,8 @@ function loadCollection(forceRefresh) {
       _collectionLoaded = true;
       renderCollectionStats(data.stats);
       renderCollectionGenres();
+      // Load gem scores so collection cards get tier badges
+      fetchGemScores(username);
       renderCollectionGrid();
       // Warn if OAuth token is expired and collection may be incomplete
       if (data.needs_reauth) {
@@ -3660,6 +3766,7 @@ function renderCollectionGrid() {
           year +
         '</div>' +
         '<div class="coll-card-tags">' + genreChips + styleChips + '</div>' +
+        _buildCardGemStrip(item.discogs_id, null) +
         '<div class="coll-card-footer">' +
           formats +
           (rating ? '<span class="coll-rating">' + rating + '</span>' : '') +
