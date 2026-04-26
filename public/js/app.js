@@ -63,14 +63,8 @@ function _buildCardGemStrip(discogsId, inlineGem) {
     commentsHtml = '<span class="cgem-comments">💬 ' + g.commentCount + '</span>';
   }
 
-  // First DJ mention — club validation signal
-  var djHtml = '';
-  if (g.djs && g.djs.length > 0) {
-    djHtml = '<span class="cgem-dj">🎧 ' + escapeHtml(g.djs[0]) + (g.djs.length > 1 ? ' +' + (g.djs.length - 1) : '') + '</span>';
-  }
-
-  // Genre tags from YouTube comment NLP (max 2 to keep strip tight)
-  var tagsHtml = (g.genres || []).slice(0, 2).map(function(gn) {
+  // Genre tags from YouTube comment NLP (max 3)
+  var tagsHtml = (g.genres || []).slice(0, 3).map(function(gn) {
     return '<span class="cgem-tag">' + escapeHtml(gn) + '</span>';
   }).join('');
 
@@ -84,7 +78,6 @@ function _buildCardGemStrip(discogsId, inlineGem) {
     '<span class="cgem-badge ' + tc.cls + '">' + tc.icon + ' ' + g.gemScore + '</span>' +
     viewsHtml +
     commentsHtml +
-    djHtml +
     tagsHtml +
     ytHtml +
   '</div>';
