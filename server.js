@@ -1708,6 +1708,164 @@ app.get('/api/diggers', function (req, res) {
     }
 });
 
+// ─── Label & Artist DNA — legendary label/artist maps ────────────────────────
+const LEGENDARY_LABELS = {
+    // Techno / electronic
+    'Berg Audio':              { icon: '🔺', tag: 'Berg Audio Collector' },
+    'Basic Channel':           { icon: '⬛', tag: 'Basic Channel Devotee' },
+    'Chain Reaction':          { icon: '🔗', tag: 'Chain Reaction Head' },
+    'Tresor':                  { icon: '🏦', tag: 'Tresor Purist' },
+    'Tresor Records':          { icon: '🏦', tag: 'Tresor Purist' },
+    'Clone':                   { icon: '👾', tag: 'Clone Collector' },
+    'L.I.E.S.':               { icon: '⚡', tag: 'L.I.E.S. Devotee' },
+    'Hessle Audio':            { icon: '🎯', tag: 'Hessle Audio Head' },
+    'Ostgut Ton':              { icon: '🐙', tag: 'Ostgut Ton Collector' },
+    'Warp Records':            { icon: '🌀', tag: 'Warp Records Head' },
+    'Warp':                    { icon: '🌀', tag: 'Warp Records Head' },
+    'Perlon':                  { icon: '⚙️', tag: 'Perlon Microhouse Purist' },
+    'Kompakt':                 { icon: '🎛️', tag: 'Kompakt Head' },
+    'Dekmantel':               { icon: '🧷', tag: 'Dekmantel Collector' },
+    'Smallville':              { icon: '🌾', tag: 'Smallville Collector' },
+    'Running Back':            { icon: '🏃', tag: 'Running Back Head' },
+    'Dial':                    { icon: '📞', tag: 'Dial Records Devotee' },
+    'Lobster Theremin':        { icon: '🦞', tag: 'Lobster Theremin Devotee' },
+    'Unknown To The Unknown':  { icon: '❓', tag: 'UTTU Head' },
+    'UTTU':                    { icon: '❓', tag: 'UTTU Head' },
+    'Aus Music':               { icon: '🎶', tag: 'Aus Music Head' },
+    'Public Possession':       { icon: '📢', tag: 'Public Possession Devotee' },
+    'Circus Company':          { icon: '🎪', tag: 'Circus Company Head' },
+    'Hyperdub':                { icon: '🌀', tag: 'Hyperdub Head' },
+    'Dark Entries':            { icon: '🚪', tag: 'Dark Entries Devotee' },
+    'Permanent Vacation':      { icon: '🏖️', tag: 'Permanent Vacation Head' },
+    'International Feel':      { icon: '🌍', tag: 'International Feel Head' },
+    'Music For Dreams':        { icon: '🌙', tag: 'Music For Dreams Head' },
+    'Wolf Music':              { icon: '🐺', tag: 'Wolf Music Collector' },
+    'Shall Not Fade':          { icon: '🌅', tag: 'Shall Not Fade Head' },
+    'Local Talk':              { icon: '🗣️', tag: 'Local Talk Devotee' },
+    'Freerange Records':       { icon: '🌈', tag: 'Freerange Head' },
+    'Emotional Rescue':        { icon: '💊', tag: 'Emotional Rescue Head' },
+    // House / Chicago
+    'Trax Records':            { icon: '🎹', tag: 'Trax Records Historian' },
+    'Trax':                    { icon: '🎹', tag: 'Trax Records Historian' },
+    'Dance Mania':             { icon: '💃', tag: 'Dance Mania Head' },
+    'Prescription':            { icon: '💊', tag: 'Prescription Devotee' },
+    'Relief Records':          { icon: '💊', tag: 'Relief Records Head' },
+    'Planet E':                { icon: '🌍', tag: 'Planet E Devotee' },
+    'KMS Records':             { icon: '🏭', tag: 'KMS Records Head' },
+    'Transmat':                { icon: '📡', tag: 'Transmat Devotee' },
+    'Golf Channel Recordings': { icon: '⛳', tag: 'Golf Channel Head' },
+    'Rush Hour':               { icon: '🚀', tag: 'Rush Hour Devotee' },
+    'Mathematics Recordings':  { icon: '➗', tag: 'Mathematics Devotee' },
+    'Livity Sound':            { icon: '🌿', tag: 'Livity Sound Collector' },
+    // UK / Grime / DnB
+    'Ninja Tune':              { icon: '🥷', tag: 'Ninja Tune Head' },
+    'XL Recordings':           { icon: '🎵', tag: 'XL Recordings Head' },
+    'Hyperdub':                { icon: '🌀', tag: 'Hyperdub Head' },
+    'Mute':                    { icon: '🔕', tag: 'Mute Records Collector' },
+    'Rough Trade':             { icon: '🌿', tag: 'Rough Trade Head' },
+    'Factory':                 { icon: '🏭', tag: 'Factory Records Purist' },
+    'Factory Records':         { icon: '🏭', tag: 'Factory Records Purist' },
+    'Sub Pop':                 { icon: '🌧️', tag: 'Sub Pop Head' },
+    'Matador':                 { icon: '🐂', tag: 'Matador Head' },
+    'Matador Records':         { icon: '🐂', tag: 'Matador Head' },
+    // Jazz / Soul / Funk
+    'Blue Note':               { icon: '🎺', tag: 'Blue Note Purist' },
+    'Blue Note Records':       { icon: '🎺', tag: 'Blue Note Purist' },
+    'Impulse!':                { icon: '🎷', tag: 'Impulse! Head' },
+    'ECM Records':             { icon: '🌊', tag: 'ECM Devotee' },
+    'ECM':                     { icon: '🌊', tag: 'ECM Devotee' },
+    'Prestige':                { icon: '🎷', tag: 'Prestige Records Head' },
+    'Prestige Records':        { icon: '🎷', tag: 'Prestige Records Head' },
+    'Verve Records':           { icon: '🎼', tag: 'Verve Records Head' },
+    'Pacific Jazz':            { icon: '🌊', tag: 'Pacific Jazz Collector' },
+    'Soul Jazz Records':       { icon: '🎷', tag: 'Soul Jazz Devotee' },
+    'Soul Jazz':               { icon: '🎷', tag: 'Soul Jazz Devotee' },
+    'Stax':                    { icon: '🎸', tag: 'Stax Head' },
+    'Atlantic':                { icon: '🌊', tag: 'Atlantic Soul Head' },
+    'Atlantic Records':        { icon: '🌊', tag: 'Atlantic Soul Head' },
+    'Motown':                  { icon: '🎙️', tag: 'Motown Devotee' },
+    'Stones Throw':            { icon: '🪨', tag: 'Stones Throw Head' },
+    'Stones Throw Records':    { icon: '🪨', tag: 'Stones Throw Head' },
+    'Numero Group':            { icon: '🔢', tag: 'Numero Group Archaeologist' },
+    'Now-Again Records':       { icon: '📻', tag: 'Now-Again Devotee' },
+    'R&S Records':             { icon: '🌙', tag: 'R&S Records Head' },
+    'Cocolo':                  { icon: '🥥', tag: 'Cocolo Devotee' },
+};
+
+const ICONIC_ARTISTS = {
+    // House / Chicago legends
+    'Kerri Chandler':        { icon: '🎹', tag: 'Kerri Chandler Fan' },
+    'Larry Heard':           { icon: '🌙', tag: 'Larry Heard Devotee' },
+    'Frankie Knuckles':      { icon: '🎵', tag: 'Frankie Knuckles Fan' },
+    'Ron Hardy':             { icon: '🎹', tag: 'Ron Hardy Devotee' },
+    'Marshall Jefferson':    { icon: '🙌', tag: 'Marshall Jefferson Fan' },
+    'Larry Levan':           { icon: '🏛️', tag: 'Larry Levan Devotee' },
+    'Tony Humphries':        { icon: '🎵', tag: 'Tony Humphries Fan' },
+    'Louie Vega':            { icon: '🎵', tag: 'Louie Vega Fan' },
+    'Theo Parrish':          { icon: '🎷', tag: 'Theo Parrish Fan' },
+    'Moodymann':             { icon: '🌙', tag: 'Moodymann Fan' },
+    'DJ Sprinkles':          { icon: '✨', tag: 'DJ Sprinkles Fan' },
+    // Detroit / Techno
+    'Robert Hood':           { icon: '🏭', tag: 'Robert Hood Devotee' },
+    'Jeff Mills':            { icon: '⚡', tag: 'Jeff Mills Fan' },
+    'Underground Resistance':{ icon: '🏭', tag: 'Underground Resistance Head' },
+    'Model 500':             { icon: '📡', tag: 'Model 500 Fan' },
+    'Drexciya':              { icon: '🌊', tag: 'Drexciya Devotee' },
+    'Carl Craig':            { icon: '🌀', tag: 'Carl Craig Fan' },
+    'Richie Hawtin':         { icon: '⚙️', tag: 'Richie Hawtin Fan' },
+    'Maurizio':              { icon: '⬛', tag: 'Maurizio Collector' },
+    // Berlin / European
+    'Ricardo Villalobos':    { icon: '🎛️', tag: 'Villalobos Fan' },
+    'Isolée':                { icon: '🏝️', tag: 'Isolée Fan' },
+    'DJ Koze':               { icon: '🎭', tag: 'DJ Koze Fan' },
+    'Move D':                { icon: '🌀', tag: 'Move D Fan' },
+    'Andy Stott':            { icon: '🌑', tag: 'Andy Stott Fan' },
+    'Actress':               { icon: '🎭', tag: 'Actress Fan' },
+    'DJ Stingray':           { icon: '🦈', tag: 'DJ Stingray Fan' },
+    'DJ Harvey':             { icon: '☀️', tag: 'DJ Harvey Fan' },
+    // UK electronic
+    'Aphex Twin':            { icon: '👁️', tag: 'Aphex Twin Collector' },
+    'Autechre':              { icon: '🔀', tag: 'Autechre Head' },
+    'Burial':                { icon: '🌧️', tag: 'Burial Fan' },
+    'Four Tet':              { icon: '4️⃣', tag: 'Four Tet Fan' },
+    'Floating Points':       { icon: '💫', tag: 'Floating Points Fan' },
+    'Bicep':                 { icon: '💪', tag: 'Bicep Fan' },
+    'James Blake':           { icon: '🌊', tag: 'James Blake Fan' },
+    'Mala':                  { icon: '🌀', tag: 'Mala Fan' },
+    'Skream':                { icon: '💀', tag: 'Skream Fan' },
+    'Benga':                 { icon: '🎵', tag: 'Benga Fan' },
+    'Goldie':                { icon: '🥇', tag: 'Goldie Fan' },
+    'LTJ Bukem':             { icon: '🌊', tag: 'LTJ Bukem Fan' },
+    'Grooverider':           { icon: '🎵', tag: 'Grooverider Fan' },
+    // Scandinavian
+    'Todd Terje':            { icon: '🕺', tag: 'Todd Terje Fan' },
+    'Prins Thomas':          { icon: '🎵', tag: 'Prins Thomas Fan' },
+    'Fatima Yamaha':         { icon: '🌊', tag: 'Fatima Yamaha Fan' },
+    'Hunee':                 { icon: '🎵', tag: 'Hunee Fan' },
+    // Jazz / Soul
+    'John Coltrane':         { icon: '🎷', tag: 'Coltrane Devotee' },
+    'Miles Davis':           { icon: '🎺', tag: 'Miles Davis Devotee' },
+    'Herbie Hancock':        { icon: '⌨️', tag: 'Herbie Hancock Fan' },
+    'Alice Coltrane':        { icon: '🎹', tag: 'Alice Coltrane Devotee' },
+    'Sun Ra':                { icon: '☀️', tag: 'Sun Ra Fan' },
+    'Charles Mingus':        { icon: '🎸', tag: 'Mingus Fan' },
+    'Ryo Fukui':             { icon: '🗾', tag: 'Ryo Fukui Fan' },
+    'Pharoah Sanders':       { icon: '🎷', tag: 'Pharoah Sanders Fan' },
+    // Hip-hop / beat
+    'Madlib':                { icon: '🎭', tag: 'Madlib Fan' },
+    'J Dilla':               { icon: '⭐', tag: 'J Dilla Fan' },
+    'MF DOOM':               { icon: '🎭', tag: 'DOOM Fan' },
+    'Flying Lotus':          { icon: '🌊', tag: 'Flying Lotus Fan' },
+    'Thundercat':            { icon: '⚡', tag: 'Thundercat Fan' },
+    'Kamasi Washington':     { icon: '🎷', tag: 'Kamasi Washington Fan' },
+    'Gil Scott-Heron':       { icon: '✊', tag: 'Gil Scott-Heron Fan' },
+    // Rush Hour / Amsterdam
+    'Antal':                 { icon: '🎵', tag: 'Antal Fan' },
+    'Young Marco':           { icon: '🎵', tag: 'Young Marco Fan' },
+    'Job Jobse':             { icon: '🎵', tag: 'Job Jobse Fan' },
+    'Mr. G':                 { icon: '🎵', tag: 'Mr. G Fan' },
+};
+
 // ─── User Profile ─────────────────────────────────────────────────────────────
 app.get('/api/profile/:username', function (req, res) {
     try {
@@ -2068,6 +2226,105 @@ app.get('/api/profile/:username', function (req, res) {
                 .sort(function(a, b) { return b.score - a.score; })
                 .slice(0, 4);
 
+            // ── Label & Artist DNA ────────────────────────────────────────────
+            // 1. Count records per label across wantlist + collection
+            var labelCountRows = d.prepare(`
+                SELECT label, COUNT(*) AS cnt
+                FROM (
+                    SELECT label FROM wantlist  WHERE user_id=? AND active=1 AND label IS NOT NULL AND label != '' AND label NOT IN ('Not On Label','Various')
+                    UNION ALL
+                    SELECT label FROM collection WHERE user_id=? AND label IS NOT NULL AND label != '' AND label NOT IN ('Not On Label','Various')
+                )
+                GROUP BY label
+                ORDER BY cnt DESC
+                LIMIT 25
+            `).all(user.id, user.id);
+
+            // 2. Count unique releases per artist (UNION deduped by discogs_id so compilations don't inflate)
+            var artistCountRows = d.prepare(`
+                SELECT artist, COUNT(DISTINCT discogs_id) AS cnt
+                FROM (
+                    SELECT artist, discogs_id FROM wantlist  WHERE user_id=? AND active=1 AND discogs_id IS NOT NULL AND artist IS NOT NULL AND artist NOT IN ('Various','Various Artists','Unknown Artist')
+                    UNION
+                    SELECT artist, discogs_id FROM collection WHERE user_id=? AND discogs_id IS NOT NULL AND artist IS NOT NULL AND artist NOT IN ('Various','Various Artists','Unknown Artist')
+                )
+                GROUP BY artist
+                HAVING cnt >= 2
+                ORDER BY cnt DESC
+                LIMIT 15
+            `).all(user.id, user.id);
+
+            // 3. Build discogs_id → label map so we can join with scoredReleases
+            var idLabelMap = {};
+            d.prepare(`
+                SELECT discogs_id, label FROM wantlist  WHERE user_id=? AND active=1 AND discogs_id IS NOT NULL AND label IS NOT NULL AND label != ''
+                UNION
+                SELECT discogs_id, label FROM collection WHERE user_id=? AND discogs_id IS NOT NULL AND label IS NOT NULL AND label != ''
+            `).all(user.id, user.id)
+            .forEach(function(r) { if (!idLabelMap[r.discogs_id]) idLabelMap[r.discogs_id] = r.label; });
+
+            // 4. Aggregate avg gem score per label and per artist from scored releases
+            var labelGemAgg  = {};  // label  → { total, count, gemCount }
+            var artistGemAgg = {};  // artist → { total, count, gemCount }
+            scoredReleases.forEach(function(r) {
+                var lbl = idLabelMap[r.discogs_id];
+                if (lbl && lbl !== 'Not On Label' && lbl !== 'Various') {
+                    if (!labelGemAgg[lbl]) labelGemAgg[lbl] = { total: 0, count: 0, gemCount: 0 };
+                    labelGemAgg[lbl].total += r.gemScore;
+                    labelGemAgg[lbl].count++;
+                    if (r.tier === 'hidden_gem' || r.tier === 'club_weapon') labelGemAgg[lbl].gemCount++;
+                }
+                var art = r.artist;
+                if (art && art !== 'Various' && art !== 'Various Artists') {
+                    if (!artistGemAgg[art]) artistGemAgg[art] = { total: 0, count: 0, gemCount: 0 };
+                    artistGemAgg[art].total += r.gemScore;
+                    artistGemAgg[art].count++;
+                    if (r.tier === 'hidden_gem' || r.tier === 'club_weapon') artistGemAgg[art].gemCount++;
+                }
+            });
+
+            // 5. Build labelDna array: top labels by count + avg gem score
+            var labelDna = labelCountRows
+                .filter(function(r) { return r.cnt >= 2; })
+                .map(function(r) {
+                    var agg = labelGemAgg[r.label] || { total: 0, count: 0, gemCount: 0 };
+                    return {
+                        label:    r.label,
+                        count:    r.cnt,
+                        avgGem:   agg.count > 0 ? Math.round(agg.total / agg.count) : null,
+                        gemCount: agg.gemCount,
+                    };
+                })
+                .sort(function(a, b) { return b.count - a.count; })
+                .slice(0, 8);
+
+            // 6. Build artistDna array: top multi-release artists + avg gem score
+            var artistDna = artistCountRows
+                .map(function(r) {
+                    var agg = artistGemAgg[r.artist] || { total: 0, count: 0, gemCount: 0 };
+                    return {
+                        artist:   r.artist,
+                        count:    r.cnt,
+                        avgGem:   agg.count > 0 ? Math.round(agg.total / agg.count) : null,
+                        gemCount: agg.gemCount,
+                    };
+                })
+                .sort(function(a, b) { return b.count - a.count; })
+                .slice(0, 6);
+
+            // 7. Generate label + artist archetype tags (matched against legendary maps)
+            var labelArtistTags = [];
+            labelDna.forEach(function(ld) {
+                var match = LEGENDARY_LABELS[ld.label];
+                if (match) labelArtistTags.push({ type: 'label', icon: match.icon, tag: match.tag, detail: ld.label + ' × ' + ld.count, count: ld.count, avgGem: ld.avgGem });
+            });
+            artistDna.forEach(function(ad) {
+                var match = ICONIC_ARTISTS[ad.artist];
+                if (match) labelArtistTags.push({ type: 'artist', icon: match.icon, tag: match.tag, detail: ad.artist + ' × ' + ad.count, count: ad.count, avgGem: ad.avgGem });
+            });
+            labelArtistTags.sort(function(a, b) { return b.count - a.count; });
+            labelArtistTags = labelArtistTags.slice(0, 6);
+
             gemIntel = {
                 undergroundPct:  summary.undergroundPct,
                 avgGemScore:     summary.avgGemScore,
@@ -2082,8 +2339,11 @@ app.get('/api/profile/:username', function (req, res) {
                 topGenres:       summary.topGenres.slice(0, 10),
                 topDjs:          summary.topDjs.slice(0, 6),
                 topEras:         summary.topEras.slice(0, 5),
-                topGems:         topGems,
-                archetypes:      gemArchetypes,
+                topGems:          topGems,
+                archetypes:       gemArchetypes,
+                labelDna:         labelDna,
+                artistDna:        artistDna,
+                labelArtistTags:  labelArtistTags,
             };
         } catch(e) {
             console.error('[profile] gemIntel error:', e.message);
@@ -2977,6 +3237,29 @@ app.listen(PORT, function () {
         }, 24 * 60 * 60 * 1000); // once per day
     } else {
         console.log('[yt-enrich] No YOUTUBE_API_KEY set — YouTube enrichment disabled');
+    }
+
+    // ── Shazam enrichment ──────────────────────────────────────────────────────
+    // Requires RAPIDAPI_KEY in env.
+    // Uses shazam-core (tipsters) for text search + shazam (apidojo) for get-count.
+    // Free tier: ~500 req/month each → runs 25 tracks every 48 hours to stay safe.
+    var rapidApiKey = process.env.RAPIDAPI_KEY;
+    if (rapidApiKey) {
+        var shazamEnrich = require('./lib/shazam-enrichment');
+        console.log('[shazam] Shazam enrichment enabled — 25 tracks every 48 hours');
+        // First run: 30 min after startup
+        setTimeout(function() {
+            shazamEnrich.runShazamEnrichment(db, rapidApiKey, 25).catch(function(e) {
+                console.error('[shazam] Startup run fatal:', e.message);
+            });
+        }, 30 * 60 * 1000);
+        setInterval(function() {
+            shazamEnrich.runShazamEnrichment(db, rapidApiKey, 25).catch(function(e) {
+                console.error('[shazam] Fatal:', e.message);
+            });
+        }, 48 * 60 * 60 * 1000); // every 48 hours
+    } else {
+        console.log('[shazam] No RAPIDAPI_KEY set — Shazam enrichment disabled');
     }
 
     // Stock validation — re-checks "in stock" items to catch false positives

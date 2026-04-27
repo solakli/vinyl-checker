@@ -7273,6 +7273,42 @@ body.light .mgem-bar-wrap { background: rgba(0,0,0,0.08); }
 .gi-two-col { display: grid; grid-template-columns: 1fr 1fr; padding: 16px 20px; gap: 24px; border-top: 1px solid #1f1f1f; }
 .gi-col { }
 
+/* ─── Label & Artist DNA ─── */
+.gi-section-dna { border-top: 1px solid #1f1f1f; }
+.gi-dna-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.gi-dna-tag {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-radius: 20px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.3px; cursor: default;
+}
+.gi-dna-tag-label  { background: rgba(201,162,39,0.15); border: 1px solid rgba(201,162,39,0.35); color: #C9A227; }
+.gi-dna-tag-artist { background: rgba(77,171,247,0.12);  border: 1px solid rgba(77,171,247,0.3);  color: #4dabf7; }
+.gi-dna-icon { font-size: 13px; }
+.gi-dna-gem { margin-left: 4px; padding: 1px 5px; background: rgba(255,255,255,0.1); border-radius: 8px; font-size: 10px; font-weight: 700; opacity: 0.8; }
+.gi-dna-table { margin-bottom: 14px; }
+.gi-dna-table-title { font-size: 9px; font-weight: 700; letter-spacing: 1px; color: #666; text-transform: uppercase; margin-bottom: 8px; }
+.gi-dna-row {
+  display: grid; grid-template-columns: 1fr 70px 60px 28px;
+  align-items: center; gap: 8px;
+  padding: 5px 0; border-bottom: 1px solid #1a1a1a; font-size: 11px;
+}
+.gi-dna-row:last-child { border-bottom: none; }
+.gi-dna-row-legend { background: rgba(201,162,39,0.04); border-radius: 4px; padding: 5px 6px; }
+.gi-dna-name { color: #ddd; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gi-dna-row-legend .gi-dna-name { color: #C9A227; }
+.gi-dna-count { color: #555; font-size: 10px; text-align: right; }
+.gi-dna-bar-wrap { height: 4px; background: #1f1f1f; border-radius: 2px; overflow: hidden; }
+.gi-dna-bar { height: 4px; border-radius: 2px; transition: width 0.6s ease; }
+.gi-dna-score { color: #888; font-size: 10px; text-align: right; font-weight: 600; }
+.gi-dna-table-artist { margin-top: 12px; }
+body.light .gi-section-dna { border-color: #eee; }
+body.light .gi-dna-tag-label  { background: rgba(201,162,39,0.08); }
+body.light .gi-dna-tag-artist { background: rgba(77,171,247,0.06); }
+body.light .gi-dna-row { border-color: #f0f0f0; }
+body.light .gi-dna-name { color: #333; }
+body.light .gi-dna-bar-wrap { background: #e5e5e5; }
+body.light .gi-dna-table-title { color: #999; }
+
 /* Light theme */
 body.light .gi-band { background: linear-gradient(180deg, #f5f5f5 0%, #fff 100%); border-color: #ddd; }
 body.light .gi-header { border-color: #eee; background: rgba(201,162,39,0.04); }

@@ -4677,6 +4677,67 @@ function _buildGemIntelHtml(g) {
     '</div>' +
   '</div>';
 
+  // ── Label & Artist DNA ──
+  var labelArtistHtml = '';
+  var lat = g.labelArtistTags || [];
+  var ldna = g.labelDna || [];
+  var adna = g.artistDna || [];
+
+  if (lat.length > 0) {
+    // Affinity tags (matched legendary labels/artists)
+    labelArtistHtml += '<div class="gi-dna-tags">' +
+      lat.map(function(t) {
+        var cls = t.type === 'label' ? 'gi-dna-tag-label' : 'gi-dna-tag-artist';
+        var gemBadge = t.avgGem != null ? '<span class="gi-dna-gem">' + t.avgGem + '</span>' : '';
+        return '<div class="gi-dna-tag ' + cls + '" title="' + escapeHtml(t.detail) + '">' +
+          '<span class="gi-dna-icon">' + (t.icon || '🎵') + '</span>' +
+          '<span class="gi-dna-label">' + escapeHtml(t.tag) + '</span>' +
+          gemBadge +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
+
+  // Label table: top labels with record count + avg gem score bar
+  if (ldna.length > 0) {
+    labelArtistHtml += '<div class="gi-dna-table">' +
+      '<div class="gi-dna-table-title">TOP LABELS IN YOUR COLLECTION</div>' +
+      ldna.map(function(l) {
+        var gemW = l.avgGem != null ? l.avgGem : 0;
+        var gemCol = gemW >= 65 ? '#C9A227' : gemW >= 45 ? '#4ade80' : '#555';
+        var legendMatch = lat.some(function(t) { return t.type === 'label' && t.detail.startsWith(l.label + ' ×'); });
+        return '<div class="gi-dna-row' + (legendMatch ? ' gi-dna-row-legend' : '') + '">' +
+          '<span class="gi-dna-name">' + escapeHtml(l.label) + (legendMatch ? ' ✦' : '') + '</span>' +
+          '<span class="gi-dna-count">' + l.count + ' records</span>' +
+          (l.avgGem != null ?
+            '<div class="gi-dna-bar-wrap"><div class="gi-dna-bar" style="width:' + gemW + '%;background:' + gemCol + '"></div></div>' +
+            '<span class="gi-dna-score">' + l.avgGem + '</span>'
+            : '<span class="gi-dna-score" style="opacity:.3">—</span>') +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
+
+  // Artist table: top artists with record count
+  if (adna.length > 0) {
+    labelArtistHtml += '<div class="gi-dna-table gi-dna-table-artist">' +
+      '<div class="gi-dna-table-title">YOUR MOST-COLLECTED ARTISTS</div>' +
+      adna.map(function(a) {
+        var gemW = a.avgGem != null ? a.avgGem : 0;
+        var gemCol = gemW >= 65 ? '#C9A227' : gemW >= 45 ? '#4ade80' : '#555';
+        var iconicMatch = lat.some(function(t) { return t.type === 'artist' && t.detail.startsWith(a.artist + ' ×'); });
+        return '<div class="gi-dna-row' + (iconicMatch ? ' gi-dna-row-legend' : '') + '">' +
+          '<span class="gi-dna-name">' + escapeHtml(a.artist) + (iconicMatch ? ' ✦' : '') + '</span>' +
+          '<span class="gi-dna-count">' + a.count + ' releases</span>' +
+          (a.avgGem != null ?
+            '<div class="gi-dna-bar-wrap"><div class="gi-dna-bar" style="width:' + gemW + '%;background:' + gemCol + '"></div></div>' +
+            '<span class="gi-dna-score">' + a.avgGem + '</span>'
+            : '<span class="gi-dna-score" style="opacity:.3">—</span>') +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
+
   return '<div class="gi-band">' +
 
     // Header
@@ -4729,6 +4790,9 @@ function _buildGemIntelHtml(g) {
         djHtml +
       '</div>' +
     '</div>' +
+
+    // Label & Artist DNA
+    (labelArtistHtml ? '<div class="gi-section gi-section-dna"><div class="gi-section-title">🏷️ LABEL & ARTIST DNA</div>' + labelArtistHtml + '</div>' : '') +
 
   '</div>';
 }
