@@ -465,6 +465,20 @@ function initTables() {
     try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN youtube_comment_data TEXT`); } catch(e) {}
     try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN youtube_enriched_at TEXT`); } catch(e) {}
     try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN youtube_comment_count INTEGER`); } catch(e) {}
+    // Shazam enrichment columns (legacy — now sourced via Songstats)
+    try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN shazam_track_key TEXT`); } catch(e) {}
+    try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN shazam_count INTEGER`); } catch(e) {}
+    try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN shazam_enriched_at TEXT`); } catch(e) {}
+    // Songstats enrichment columns
+    try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN songstats_track_id TEXT`); } catch(e) {}
+    try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN songstats_shazams INTEGER`); } catch(e) {}
+    try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN songstats_sc_streams INTEGER`); } catch(e) {}
+    try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN songstats_spotify_streams INTEGER`); } catch(e) {}
+    try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN songstats_beatport_charts INTEGER`); } catch(e) {}
+    try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN songstats_traxsource_charts INTEGER`); } catch(e) {}
+    try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN songstats_tracklist_support INTEGER`); } catch(e) {}
+    try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN songstats_tracklist_unique INTEGER`); } catch(e) {}
+    try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN songstats_enriched_at TEXT`); } catch(e) {}
 
     // ── GOLDIE chat sessions ──────────────────────────────────────────────────
     db.exec(`
@@ -1833,6 +1847,53 @@ function saveStreamingMetadata(discogsId, meta) {
         meta.soundcloudLikes        != null ? meta.soundcloudLikes        : null,
         new Date().toISOString()
     );
+
+    // Shazam fields saved separately (different cadence, don't clobber on every fetch)
+    if (meta.songstatsTrackId !== undefined) {
+        var d3 = getDb();
+        // Ensure row exists
+        d3.prepare(`INSERT OR IGNORE INTO streaming_metadata (discogs_id, fetched_at) VALUES (?,?)`).run(discogsId, new Date().toISOString());
+        d3.prepare(`
+            UPDATE streaming_metadata SET
+                songstats_track_id         = COALESCE(?, songstats_track_id),
+                songstats_shazams          = COALESCE(?, songstats_shazams),
+                songstats_sc_streams       = COALESCE(?, songstats_sc_streams),
+                songstats_spotify_streams  = COALESCE(?, songstats_spotify_streams),
+                songstats_beatport_charts  = COALESCE(?, songstats_beatport_charts),
+                songstats_traxsource_charts= COALESCE(?, songstats_traxsource_charts),
+                songstats_tracklist_support= COALESCE(?, songstats_tracklist_support),
+                songstats_tracklist_unique = COALESCE(?, songstats_tracklist_unique),
+                songstats_enriched_at      = ?
+            WHERE discogs_id = ?
+        `).run(
+            meta.songstatsTrackId          || null,
+            meta.songstatsShazams          != null ? meta.songstatsShazams          : null,
+            meta.songstatsScStreams         != null ? meta.songstatsScStreams         : null,
+            meta.songstatsSpotifyStreams    != null ? meta.songstatsSpotifyStreams    : null,
+            meta.songstatsBeatportCharts   != null ? meta.songstatsBeatportCharts   : null,
+            meta.songstatsTraxsourceCharts != null ? meta.songstatsTraxsourceCharts : null,
+            meta.songstatsTracklistSupport != null ? meta.songstatsTracklistSupport : null,
+            meta.songstatsTracklistUnique  != null ? meta.songstatsTracklistUnique  : null,
+            new Date().toISOString(),
+            discogsId
+        );
+    }
+
+    if (meta.shazamTrackKey != null || meta.shazamCount != null) {
+        var d2 = getDb();
+        d2.prepare(`
+            UPDATE streaming_metadata SET
+                shazam_track_key   = COALESCE(?, shazam_track_key),
+                shazam_count       = COALESCE(?, shazam_count),
+                shazam_enriched_at = ?
+            WHERE discogs_id = ?
+        `).run(
+            meta.shazamTrackKey  || null,
+            meta.shazamCount     != null ? meta.shazamCount : null,
+            new Date().toISOString(),
+            discogsId
+        );
+    }
 }
 
 /**

@@ -3239,27 +3239,27 @@ app.listen(PORT, function () {
         console.log('[yt-enrich] No YOUTUBE_API_KEY set — YouTube enrichment disabled');
     }
 
-    // ── Shazam enrichment ──────────────────────────────────────────────────────
-    // Requires RAPIDAPI_KEY in env.
-    // Uses shazam-core (tipsters) for text search + shazam (apidojo) for get-count.
-    // Free tier: ~500 req/month each → runs 25 tracks every 48 hours to stay safe.
+    // ── Songstats enrichment ───────────────────────────────────────────────────
+    // Provides Shazam count, SoundCloud streams, Beatport/Traxsource DJ charts,
+    // and 1001tracklists appearances per track. Two API calls per track.
+    // Free tier ~100 req/month → 50 tracks. Runs 20 tracks every 72 hours.
     var rapidApiKey = process.env.RAPIDAPI_KEY;
     if (rapidApiKey) {
-        var shazamEnrich = require('./lib/shazam-enrichment');
-        console.log('[shazam] Shazam enrichment enabled — 25 tracks every 48 hours');
-        // First run: 30 min after startup
+        var songstatsEnrich = require('./lib/songstats-enrichment');
+        console.log('[songstats] Songstats enrichment enabled — 20 tracks every 72 hours');
+        // First run: 45 min after startup
         setTimeout(function() {
-            shazamEnrich.runShazamEnrichment(db, rapidApiKey, 25).catch(function(e) {
-                console.error('[shazam] Startup run fatal:', e.message);
+            songstatsEnrich.runSongstatsEnrichment(db, rapidApiKey, 20).catch(function(e) {
+                console.error('[songstats] Startup run fatal:', e.message);
             });
-        }, 30 * 60 * 1000);
+        }, 45 * 60 * 1000);
         setInterval(function() {
-            shazamEnrich.runShazamEnrichment(db, rapidApiKey, 25).catch(function(e) {
-                console.error('[shazam] Fatal:', e.message);
+            songstatsEnrich.runSongstatsEnrichment(db, rapidApiKey, 20).catch(function(e) {
+                console.error('[songstats] Fatal:', e.message);
             });
-        }, 48 * 60 * 60 * 1000); // every 48 hours
+        }, 72 * 60 * 60 * 1000); // every 72 hours
     } else {
-        console.log('[shazam] No RAPIDAPI_KEY set — Shazam enrichment disabled');
+        console.log('[songstats] No RAPIDAPI_KEY set — Songstats enrichment disabled');
     }
 
     // Stock validation — re-checks "in stock" items to catch false positives
