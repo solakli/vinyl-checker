@@ -441,11 +441,10 @@ app.post('/api/mix-to-cart/resolve', async function(req, res) {
     var url = (req.body.url || '').trim();
     if (!url) return res.status(400).json({ error: 'url required' });
     try {
-        var scToken = db.getOAuthToken(req.sessionUser.id, 'soundcloud');
+        // SoundCloud no longer needs OAuth — resolved via RAPIDAPI_KEY (SC_RAPIDAPI_HOST scraper)
         var gToken  = db.getOAuthToken(req.sessionUser.id, 'google');
         var tokens  = {
-            soundcloud: scToken ? scToken.access_token : null,
-            youtube:    gToken  ? gToken.access_token  : null,
+            googleToken:   gToken  ? gToken.access_token  : null,
             youtubeApiKey: process.env.YOUTUBE_API_KEY || null,
         };
         var mixResolver = require('./lib/mix-resolver');

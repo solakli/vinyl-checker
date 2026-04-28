@@ -7333,3 +7333,360 @@ body.light .gi-archetype { border-color: var(--arch-color, var(--gold)); }
   .gi-header { padding: 12px 14px; }
   .gi-section-arch { padding: 12px 14px 0; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   MIX ▷ CART VIEW
+═══════════════════════════════════════════════════════════ */
+
+.mix-wrap {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 32px 20px 60px;
+}
+
+.mix-header {
+  margin-bottom: 28px;
+}
+.mix-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  text-transform: uppercase;
+}
+.mix-title span { color: var(--gold); }
+.mix-sub {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* URL input */
+.mix-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.mix-url-input {
+  flex: 1;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 12px 14px;
+  font-size: 14px;
+  border-radius: 4px;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+.mix-url-input:focus { border-color: var(--gold); }
+.mix-url-input::placeholder { color: var(--text-muted); }
+
+.mix-dig-btn {
+  background: var(--gold);
+  color: #000;
+  border: none;
+  padding: 12px 20px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+.mix-dig-btn:hover   { opacity: 0.85; }
+.mix-dig-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.mix-dig-btn-sm { padding: 10px 16px; font-size: 13px; }
+
+.mix-url-hints {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.mix-hint-pill {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 3px 9px;
+}
+
+.mix-divider {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  margin: 24px 0 16px;
+  position: relative;
+}
+.mix-divider::before, .mix-divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 30%;
+  height: 1px;
+  background: var(--border);
+}
+.mix-divider::before { left: 0; }
+.mix-divider::after  { right: 0; }
+
+/* Manual text */
+.mix-text-section {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.mix-text-input {
+  flex: 1;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 14px;
+  font-size: 13px;
+  font-family: 'Courier New', monospace;
+  border-radius: 4px;
+  resize: vertical;
+  min-height: 90px;
+  outline: none;
+  line-height: 1.5;
+}
+.mix-text-input:focus { border-color: var(--gold); }
+.mix-text-input::placeholder { color: var(--text-muted); }
+
+/* Status / waterfall */
+.mix-status {
+  margin-top: 24px;
+}
+.mix-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+.mix-loading-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+.mix-spinner {
+  width: 20px; height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.mix-error {
+  padding: 14px 16px;
+  background: rgba(255,80,80,0.08);
+  border: 1px solid rgba(255,80,80,0.25);
+  border-radius: 4px;
+  color: #ff8080;
+  font-size: 13px;
+}
+
+/* Result meta */
+.mix-result-meta {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.mix-meta-row {
+  display: flex;
+  gap: 14px;
+  padding: 14px;
+  align-items: flex-start;
+  border-bottom: 1px solid var(--border);
+}
+.mix-artwork {
+  width: 64px; height: 64px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.mix-meta-info { flex: 1; min-width: 0; }
+.mix-meta-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mix-meta-artist {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+.mix-meta-tag {
+  font-size: 11px;
+  color: var(--gold);
+  margin-top: 6px;
+  opacity: 0.8;
+}
+
+/* Waterfall steps */
+.mix-steps {
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.mix-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.mix-step-icon {
+  width: 16px;
+  text-align: center;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.mix-step-name   { color: var(--text-muted); min-width: 160px; }
+.mix-step-detail { color: var(--text-muted); opacity: 0.6; font-size: 11px; }
+
+.mix-step-ok   .mix-step-icon { color: #6bcb77; }
+.mix-step-ok   .mix-step-name { color: var(--text); }
+.mix-step-fail .mix-step-icon { color: #ff8080; }
+.mix-step-none .mix-step-icon { color: var(--text-muted); }
+.mix-step-skip               { opacity: 0.35; }
+
+/* Artist pills */
+.mix-artists-found {
+  padding: 12px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.mix-artists-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+.mix-artist-pill {
+  font-size: 12px;
+  background: rgba(201,162,39,0.1);
+  border: 1px solid rgba(201,162,39,0.25);
+  color: var(--gold);
+  border-radius: 12px;
+  padding: 3px 10px;
+}
+.mix-no-artists {
+  padding: 14px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* Inventory results */
+.mix-results { margin-top: 20px; }
+.mix-searching, .mix-no-stock {
+  padding: 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+.mix-inv-header {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.mix-inv-header strong { color: var(--text); }
+
+.mix-inv-artist {
+  margin-bottom: 20px;
+}
+.mix-inv-artist-name {
+  font-family: 'Oswald', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 8px;
+}
+
+.mix-inv-record {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.mix-inv-record:hover { border-color: var(--gold); background: var(--card-hover); }
+
+.mix-rec-img {
+  width: 40px; height: 40px;
+  border-radius: 3px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.mix-rec-img-empty {
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.mix-rec-info { flex: 1; min-width: 0; }
+.mix-rec-title {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mix-rec-meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 3px;
+  flex-wrap: wrap;
+}
+.mix-rec-store {
+  font-size: 11px;
+  color: var(--gold);
+  font-weight: 600;
+}
+.mix-rec-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.mix-rec-price {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+/* Light theme overrides */
+.light .mix-url-input,
+.light .mix-text-input { background: #f5f5f5; color: #111; border-color: #ddd; }
+.light .mix-url-input:focus,
+.light .mix-text-input:focus { border-color: var(--gold); }
+.light .mix-result-meta { background: #fff; border-color: #e0e0e0; }
+.light .mix-inv-record  { background: #fff; border-color: #e0e0e0; }
+.light .mix-inv-record:hover { border-color: var(--gold); background: #fafafa; }
+.light .mix-hint-pill { background: rgba(0,0,0,0.04); border-color: #ddd; }
+.light .mix-artist-pill { background: rgba(180,140,0,0.08); border-color: rgba(180,140,0,0.2); }
+.light .mix-rec-img-empty { background: #eee; }

@@ -41,6 +41,7 @@
     <a href="#" class="nav-link" data-view="collection" onclick="switchView('collection',this);return false;">My Collection</a>
     <a href="#" class="nav-link" data-view="discover" onclick="switchView('discover',this);return false;">Discover <span class="cart-badge" id="cartBadge" style="display:none">0</span></a>
     <a href="#" class="nav-link" data-view="profile" id="profileNavLink" onclick="switchView('profile',this);return false;" style="display:none">Profile</a>
+    <a href="#" class="nav-link" data-view="mix" onclick="switchView('mix',this);return false;">Mix ▷ Cart</a>
     <button class="goldie-nav-btn" id="goldieNavBtn" onclick="goldieToggle()" title="Ask GOLDIE">
       <svg class="goldie-ai-icon" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <circle cx="10" cy="10" r="2.2" fill="currentColor"/>
@@ -207,6 +208,49 @@
 <div id="view-profile" class="alt-view" style="display:none">
   <div id="profileWrap" class="profile-wrap">
     <div id="profileBody"></div>
+  </div>
+</div>
+
+<!-- ═══ MIX TO CART VIEW ═══ -->
+<div id="view-mix" class="alt-view" style="display:none">
+  <div class="mix-wrap">
+
+    <div class="mix-header">
+      <div class="mix-title">MIX <span>▷</span> CART</div>
+      <div class="mix-sub">Paste a mix URL or SoundCloud profile — we'll dig the tracklist and find what's in stock</div>
+    </div>
+
+    <!-- URL input -->
+    <div class="mix-url-section">
+      <div class="mix-input-row">
+        <input id="mixUrlInput" class="mix-url-input" type="url"
+          placeholder="soundcloud.com/artist/mix-name  ·  youtube.com/…  ·  mixcloud.com/…"
+          onkeydown="if(event.key==='Enter') mixResolveUrl()">
+        <button class="mix-dig-btn" id="mixDigBtn" onclick="mixResolveUrl()">Dig ▷</button>
+      </div>
+      <div class="mix-url-hints">
+        <span class="mix-hint-pill">🎵 SC mix</span>
+        <span class="mix-hint-pill">👤 SC profile → likes</span>
+        <span class="mix-hint-pill">▶ YouTube mix</span>
+        <span class="mix-hint-pill">☁ Mixcloud</span>
+      </div>
+    </div>
+
+    <div class="mix-divider"><span>— or paste a tracklist directly —</span></div>
+
+    <!-- Manual text input -->
+    <div class="mix-text-section">
+      <textarea id="mixTextInput" class="mix-text-input"
+        placeholder="00:00 Drexciya - Bubble Metropolis&#10;06:34 Larry Heard - Can You Feel It&#10;14:12 Kerri Chandler - Rain&#10;..."></textarea>
+      <button class="mix-dig-btn mix-dig-btn-sm" onclick="mixParseText()">Parse ▷</button>
+    </div>
+
+    <!-- Status / waterfall -->
+    <div id="mixStatus" class="mix-status" style="display:none"></div>
+
+    <!-- Results -->
+    <div id="mixResults" class="mix-results" style="display:none"></div>
+
   </div>
 </div>
 

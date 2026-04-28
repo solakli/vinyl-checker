@@ -374,7 +374,12 @@
       "Bash(ssh root@89.117.16.160 \"tail -20 /root/vinyl-checker/vinyl.log\")",
       "Bash(ssh root@89.117.16.160 'cd /root/vinyl-checker && git pull && pm2 restart vinyl-checker && sleep 3 && pm2 logs vinyl-checker --lines 20 --nostream')",
       "Bash(ssh root@89.117.16.160 'cd /root/vinyl-checker && git pull origin master 2>&1 && echo \"--- restarting ---\" && pkill -f \"node server.js\" 2>/dev/null; sleep 1 && PORT=5052 nohup node server.js > vinyl.log 2>&1 & echo \"started PID $!\"')",
-      "Bash(ssh root@89.117.16.160 \"sqlite3 /root/vinyl-checker/vinyl.db '.schema scraper_errors'\")"
+      "Bash(ssh root@89.117.16.160 \"sqlite3 /root/vinyl-checker/vinyl.db '.schema scraper_errors'\")",
+      "WebSearch",
+      "WebFetch(domain:rapidapi.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:help.soundcloud.com)"
     ]
   }
 }
