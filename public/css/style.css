@@ -104,6 +104,35 @@ body {
   border-radius: 2px;
 }
 
+/* ── Persistent optimizer cart pill in navbar ─────────────────────────────── */
+.nav-cart-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(201,162,39,0.12);
+  border: 1px solid rgba(201,162,39,0.35);
+  color: var(--gold);
+  padding: 4px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: 'Oswald', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+.nav-cart-pill:hover { background: rgba(201,162,39,0.2); border-color: var(--gold); }
+.nav-cart-icon { font-size: 13px; }
+.nav-cart-total { font-weight: 600; }
+.nav-cart-cov {
+  font-size: 10px;
+  opacity: 0.7;
+  padding-left: 2px;
+}
+.light .nav-cart-pill { background: rgba(180,140,0,0.08); border-color: rgba(180,140,0,0.3); }
+
 .live-dot {
   width: 6px; height: 6px;
   background: #fff;

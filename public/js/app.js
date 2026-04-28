@@ -659,6 +659,19 @@ async function loadExisting(username) {
   if (_optimizerPollTimer) { clearInterval(_optimizerPollTimer); _optimizerPollTimer = null; }
   _lastOptimizerResult = null;
   _activeOptimizerJobId = null;
+  updateNavCartBadge(null);
+
+  // Restore saved optimizer result for this user (persists across page reloads)
+  try {
+    var saved = localStorage.getItem('gd-optimizer-' + username);
+    if (saved) {
+      var parsed = JSON.parse(saved);
+      if (parsed && parsed.grandTotalUsd != null) {
+        _lastOptimizerResult = parsed;
+        updateSidebarOptimizer(parsed);
+      }
+    }
+  } catch(e) {}
   _discoverCache = null;
   var overlay = document.getElementById('optimizerOverlay');
   if (overlay) overlay.style.display = 'none';
@@ -2214,6 +2227,12 @@ async function disconnectDiscogs() {
   // Clear local state
   isOAuthed = false;
   localStorage.removeItem('gold-digger-username');
+  // Clear saved optimizer result for this user
+  try {
+    var u = getCurrentUsername();
+    if (u) localStorage.removeItem('gd-optimizer-' + u);
+  } catch(e) {}
+  updateNavCartBadge(null);
   // Reset UI to welcome
   document.getElementById('userBar').style.display = 'none';
   document.getElementById('connectDiscogsHeader').style.display = 'none';
@@ -2989,6 +3008,22 @@ function _notifyOptimizerDone() {
 // Store last result so the sidebar "View Cart" button can reopen it
 var _lastOptimizerResult = null;
 
+// ── Sticky navbar cart pill (always visible regardless of active view) ────────
+function updateNavCartBadge(result) {
+  var el = document.getElementById('navCartPill');
+  if (!el) return;
+  if (!result || !result.grandTotalUsd) {
+    el.style.display = 'none';
+    return;
+  }
+  var covPct = result.total > 0 ? Math.round((result.covered / result.total) * 100) : 0;
+  el.style.display = 'inline-flex';
+  el.innerHTML =
+    '<span class="nav-cart-icon">⛏</span>' +
+    '<span class="nav-cart-total">$' + result.grandTotalUsd.toFixed(0) + '</span>' +
+    '<span class="nav-cart-cov">' + covPct + '%</span>';
+}
+
 function viewFullCart() {
   if (!_lastOptimizerResult) { openOptimizer(); return; }
   // Open modal, skip prefs, jump straight to results
@@ -3001,6 +3036,13 @@ function viewFullCart() {
 
 function updateSidebarOptimizer(result) {
   _lastOptimizerResult = result;
+  // Persist across page reloads — keyed per user so switching users clears it
+  try {
+    var u = getCurrentUsername();
+    if (u) localStorage.setItem('gd-optimizer-' + u, JSON.stringify(result));
+  } catch(e) {}
+
+  updateNavCartBadge(result);
 
   var empty = document.getElementById('sidebarEmpty');
   var sidebarRes = document.getElementById('sidebarResults');
@@ -3938,7 +3980,7 @@ function renderDiscover() {
       '</div>' +
       '<div class="disc-cart-row" id="discCartRow" style="display:none">' +
         '<span class="disc-cart-count" id="discCartCount"></span>' +
-        '<button class="disc-clear-btn" onclick="discoverClearCart()">Clear cart</button>' +
+        '<button class="disc-clear-btn" onclick="discoverClearCart()">Clear</button>' +
       '</div>' +
     '</div>' +
     // Tabs
@@ -4374,7 +4416,7 @@ function renderDiscoverItems(s) {
       '<div class="disc-item-discogs">'   + discogsHtml + '</div>' +
       '<div class="disc-item-actions">' + linkHtml +
         '<button class="disc-cart-btn' + (inCart ? ' in-cart' : '') + '" data-key="' + escapeAttr(cartKey) + '" onclick="' + cartClick + '">' +
-          (inCart ? '✓ In Cart' : '+ Cart') + '</button>' +
+          (inCart ? '✓ Saved' : '+ Save') + '</button>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -4454,7 +4496,7 @@ function updateDiscCartRow() {
   if (row) {
     if (count > 0) {
       row.style.display = 'flex';
-      document.getElementById('discCartCount').textContent = count + ' item' + (count !== 1 ? 's' : '') + ' in cart';
+      document.getElementById('discCartCount').textContent = count + ' saved';
     } else {
       row.style.display = 'none';
     }
