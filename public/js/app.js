@@ -5755,7 +5755,7 @@ async function mixResolveUrl() {
   mixShowStatus('loading', null, null);
 
   try {
-    var res = await fetch('/api/mix-to-cart/resolve', {
+    var res = await fetch('api/mix-to-cart/resolve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: url }),
@@ -5793,7 +5793,7 @@ async function mixParseText() {
 
   mixShowStatus('loading', null, null);
   try {
-    var res = await fetch('/api/mix-to-cart/parse-text', {
+    var res = await fetch('api/mix-to-cart/parse-text', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: text })
@@ -5819,7 +5819,7 @@ async function mixSearchInventory(artists, resolveResult) {
   resultsEl.innerHTML = '<div class="mix-searching">Searching ' + artists.length + ' artists across all stores…</div>';
 
   try {
-    var res = await fetch('/api/mix-to-cart/search', {
+    var res = await fetch('api/mix-to-cart/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ artists: artists })
