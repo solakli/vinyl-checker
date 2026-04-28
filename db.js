@@ -349,6 +349,8 @@ function initTables() {
     try { db.exec('ALTER TABLE market_listings ADD COLUMN price_usd REAL'); } catch(e) {}
     // workers_used: how many parallel Chrome workers were used for this scan run (1 or 2)
     try { db.exec('ALTER TABLE scan_runs ADD COLUMN workers_used INTEGER'); } catch(e) {}
+    // us_shipping: estimated US shipping cost per store (added later)
+    try { db.exec('ALTER TABLE store_results ADD COLUMN us_shipping TEXT'); } catch(e) {}
 
     // Collection table — mirrors user's Discogs collection (records they own)
     db.exec(`
@@ -1103,6 +1105,16 @@ function dismissChanges(userId, ids) {
         var placeholders = ids.map(function() { return '?'; }).join(',');
         getDb().prepare('UPDATE scan_changes SET dismissed = 1 WHERE user_id = ? AND id IN (' + placeholders + ')').run(userId, ...ids);
     }
+}
+
+function getAllActiveUsers() {
+    // All users who have at least one active wantlist item (excludes testuser).
+    return getDb().prepare(`
+        SELECT u.* FROM users u
+        WHERE u.username != 'testuser'
+          AND EXISTS (SELECT 1 FROM wantlist w WHERE w.user_id = u.id AND w.active = 1)
+        ORDER BY u.id
+    `).all();
 }
 
 function getUsersDueForRescan() {
@@ -2023,6 +2035,7 @@ module.exports = {
     insertScanChange: insertScanChange,
     getUndismissedChanges: getUndismissedChanges,
     dismissChanges: dismissChanges,
+    getAllActiveUsers: getAllActiveUsers,
     getUsersDueForRescan: getUsersDueForRescan,
     updateUserDailyRescan: updateUserDailyRescan,
     getSessionLastSeen: getSessionLastSeen,

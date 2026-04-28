@@ -1249,6 +1249,11 @@ app.post('/api/trigger', function (req, res) {
             .then(function () { scanner.trackJobRun('validate', true); })
             .catch(function (e) { scanner.trackJobRun('validate', false, e.message); });
         res.json({ triggered: 'validate', at: new Date().toISOString() });
+    } else if (job === 'catalog-match') {
+        scanner.runCatalogMatch()
+            .then(function (r) { scanner.trackJobRun('catalog-match', true); })
+            .catch(function (e) { scanner.trackJobRun('catalog-match', false, e.message); });
+        res.json({ triggered: 'catalog-match', at: new Date().toISOString() });
     } else if (job === 'all') {
         scanner.dailyFullRescan()
             .then(function () { scanner.trackJobRun('daily', true); })
@@ -1260,7 +1265,7 @@ app.post('/api/trigger', function (req, res) {
         }, 5 * 60 * 1000); // validate 5 min after daily starts
         res.json({ triggered: 'daily+validate', at: new Date().toISOString() });
     } else {
-        res.status(400).json({ error: 'unknown job, use: daily, validate, all' });
+        res.status(400).json({ error: 'unknown job, use: daily, validate, catalog-match, all' });
     }
 });
 
@@ -1330,6 +1335,20 @@ async function syncStaleStores() {
             console.error('[sync-store:' + storeKey + '] auto-sync failed:', e.message);
             scanner.trackJobRun && scanner.trackJobRun('sync-store-' + storeKey, false, e.message);
         }
+    }
+
+    // After catalog syncs complete, cross-reference against all wantlists.
+    // This is a pure DB operation (no Puppeteer) so it runs even if Chrome is busy.
+    if (syncedAny) {
+        console.log('[sync-store] Running catalog→wantlist match after sync…');
+        scanner.runCatalogMatch()
+            .then(function (r) {
+                if (r) scanner.trackJobRun && scanner.trackJobRun('catalog-match', true);
+            })
+            .catch(function (e) {
+                console.error('[sync-store] catalog-match failed:', e.message);
+                scanner.trackJobRun && scanner.trackJobRun('catalog-match', false, e.message);
+            });
     }
 }
 
