@@ -1249,6 +1249,11 @@ app.post('/api/trigger', function (req, res) {
             .then(function () { scanner.trackJobRun('validate', true); })
             .catch(function (e) { scanner.trackJobRun('validate', false, e.message); });
         res.json({ triggered: 'validate', at: new Date().toISOString() });
+    } else if (job === 'rolling') {
+        scanner.dailyRollingPuppeteer()
+            .then(function () { scanner.trackJobRun('rolling', true); })
+            .catch(function (e) { scanner.trackJobRun('rolling', false, e.message); });
+        res.json({ triggered: 'rolling', at: new Date().toISOString() });
     } else if (job === 'catalog-match') {
         scanner.runCatalogMatch()
             .then(function (r) { scanner.trackJobRun('catalog-match', true); })
@@ -2487,12 +2492,34 @@ function reapChrome() {
 app.get('/api/changes/:username', function (req, res) {
     try {
         var user = db.getOrCreateUser(req.params.username.trim());
-        // Optionally filter by "since" timestamp
-        var since = req.query.since || null;
+        // If ?since not provided, use the user's last_seen_at so we only show
+        // changes that happened while they were away. The frontend updates
+        // last_seen_at after displaying the banner.
+        var since = req.query.since || user.last_seen_at || null;
         var changes = db.getUndismissedChanges(user.id, since);
-        res.json({ username: req.params.username, changes: changes });
+        // Return last_seen_at so the client knows the cutoff used
+        res.json({
+            username: req.params.username,
+            changes: changes,
+            since: since,
+            lastSeenAt: user.last_seen_at || null
+        });
     } catch (e) {
-        res.json({ username: req.params.username, changes: [] });
+        res.json({ username: req.params.username, changes: [], since: null, lastSeenAt: null });
+    }
+});
+
+// Update last_seen_at — called by the frontend after it has displayed the
+// changes banner, so the NEXT visit starts from this moment forward.
+app.post('/api/changes/seen', function (req, res) {
+    try {
+        var username = (req.body && req.body.username) || (req.sessionUser && req.sessionUser.username);
+        if (!username) return res.status(400).json({ error: 'username required' });
+        var user = db.getOrCreateUser(username);
+        db.touchUserLastSeen(user.id);
+        res.json({ ok: true, lastSeenAt: new Date().toISOString() });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 });
 
@@ -2662,13 +2689,24 @@ app.get('/api/health', function (req, res) {
         var d = db.getDb();
 
         // Users summary
-        var users = d.prepare('SELECT id, username, last_full_scan, last_daily_rescan FROM users').all();
+        var users = d.prepare('SELECT id, username, last_full_scan, last_daily_rescan, last_catalog_match_at, last_seen_at FROM users').all();
         var userSummary = users.map(function (u) {
             var wantlistCount = d.prepare('SELECT COUNT(*) as c FROM wantlist WHERE user_id = ? AND active = 1').get(u.id).c;
             var resultCount = d.prepare('SELECT COUNT(DISTINCT wantlist_id) as c FROM store_results WHERE wantlist_id IN (SELECT id FROM wantlist WHERE user_id = ?)').get(u.id).c;
             var inStockCount = d.prepare('SELECT COUNT(*) as c FROM store_results WHERE in_stock = 1 AND wantlist_id IN (SELECT id FROM wantlist WHERE user_id = ? AND active = 1)').get(u.id).c;
             var changeCount = d.prepare('SELECT COUNT(*) as c FROM scan_changes WHERE user_id = ?').get(u.id).c;
             var undismissedChanges = d.prepare('SELECT COUNT(*) as c FROM scan_changes WHERE user_id = ? AND dismissed = 0').get(u.id).c;
+            // Puppeteer coverage: % of items checked in last 30 days
+            var cov = db.getPuppeteerCoverage ? db.getPuppeteerCoverage(u.id) : null;
+            var coverage = cov ? {
+                total:         cov.total,
+                covered30d:    cov.covered_30d,
+                neverChecked:  cov.never_checked,
+                pctCovered:    cov.total > 0 ? Math.round((cov.covered_30d / cov.total) * 100) : 0,
+                oldestCheck:   cov.oldest_check,
+                newestCheck:   cov.newest_check,
+                alert:         cov.total > 0 && (cov.covered_30d / cov.total) < 0.5 // alert if <50% covered
+            } : null;
             return {
                 id: u.id, username: u.username,
                 wantlistItems: wantlistCount, checkedItems: resultCount,
@@ -2676,7 +2714,10 @@ app.get('/api/health', function (req, res) {
                 undismissedChanges: undismissedChanges,
                 lastFullScan: u.last_full_scan || null,
                 lastDailyRescan: u.last_daily_rescan || null,
-                scanAge: u.last_full_scan ? Math.round((Date.now() - new Date(u.last_full_scan).getTime()) / 3600000) + 'h ago' : 'never'
+                lastCatalogMatch: u.last_catalog_match_at || null,
+                lastSeenAt: u.last_seen_at || null,
+                scanAge: u.last_full_scan ? Math.round((Date.now() - new Date(u.last_full_scan).getTime()) / 3600000) + 'h ago' : 'never',
+                puppeteerCoverage: coverage
             };
         });
 
@@ -3189,21 +3230,30 @@ app.listen(PORT, function () {
             .catch(function (e) { console.error('[sync] Fatal:', e.message); scanner.trackJobRun('sync', false, e.message); });
     }, SYNC_INTERVAL);
 
-    // Daily full rescan scheduler — fires once per day for users not scanned in 23+ hours
-    console.log('[daily] Daily rescan fires once/day per user (23h threshold). ' + (scanner.DAILY_WORKERS || 2) + ' workers × 7 stores');
+    // Rolling Puppeteer scan — fires every ROLLING_INTERVAL (default 3h).
+    // Checks the 50 wantlist items with oldest last_puppeteer_check_at across
+    // all users. Only runs Deejay.de + Juno (2 stores, 7 tabs max).
+    // Full wantlist cycle time ≈ items / 50 × interval (e.g. 300 items = 18h at 3h interval).
+    var ROLLING_INTERVAL = parseInt(process.env.ROLLING_INTERVAL) || (3 * 60 * 60 * 1000); // default 3h
+    console.log('[rolling] Rolling Puppeteer scan every ' + Math.round(ROLLING_INTERVAL/3600000) + 'h × ' + scanner.ROLLING_BATCH + ' items (Deejay.de + Juno)');
     setInterval(function () {
-        scanner.dailyFullRescan()
-            .then(function() { scanner.trackJobRun('daily', true); })
-            .catch(function (e) { console.error('[daily] Fatal:', e.message); scanner.trackJobRun('daily', false, e.message); });
-        // Piggyback on the same cadence to refresh any stale catalog mirrors.
-        syncStaleStores();
+        scanner.dailyRollingPuppeteer()
+            .then(function() { scanner.trackJobRun('rolling', true); })
+            .catch(function (e) { console.error('[rolling] Fatal:', e.message); scanner.trackJobRun('rolling', false, e.message); });
+    }, ROLLING_INTERVAL);
+
+    // Catalog sync + catalog→wantlist match — once per day.
+    // No Puppeteer needed. Runs after catalog mirrors are refreshed.
+    setInterval(function () {
+        syncStaleStores(); // refreshes Further, Gramaphone, Octopus, UVS, Hardwax catalogs
+        // runCatalogMatch fires inside syncStaleStores after any sync completes
     }, DAILY_CHECK_INTERVAL);
 
-    // Also run daily check once on startup (after 5 min delay — gives manual scans priority window)
+    // Also run once on startup (after 5 min — gives manual scans priority window)
     setTimeout(function () {
-        scanner.dailyFullRescan()
-            .then(function() { scanner.trackJobRun('daily', true); })
-            .catch(function (e) { console.error('[daily] Startup check fatal:', e.message); scanner.trackJobRun('daily', false, e.message); });
+        scanner.dailyRollingPuppeteer()
+            .then(function() { scanner.trackJobRun('rolling', true); })
+            .catch(function (e) { console.error('[rolling] Startup check fatal:', e.message); scanner.trackJobRun('rolling', false, e.message); });
         syncStaleStores();
     }, 300000);
 
