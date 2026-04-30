@@ -1137,6 +1137,35 @@ function getItemsDueForPuppeteerCheck(userId, limit) {
     `).all(userId, limit || 50);
 }
 
+/**
+ * Phase A — "Urgent" items: wantlist entries that have NEVER been
+ * Puppeteer-checked (last_puppeteer_check_at IS NULL).
+ *
+ * These are newly added records. We check ALL of them in the next run
+ * regardless of batch size — no cap — so a user who adds 1 record
+ * gets it checked within the next rolling interval (≤ 3 h).
+ */
+function getNewWantlistItems(userId) {
+    return getDb().prepare(`
+        SELECT * FROM wantlist
+        WHERE user_id = ? AND active = 1 AND last_puppeteer_check_at IS NULL
+        ORDER BY id ASC
+    `).all(userId);
+}
+
+/**
+ * Phase B — "Routine" items: already-checked records, oldest first.
+ * Called after urgent items are processed to fill remaining batch capacity.
+ */
+function getOldestCheckedItems(userId, limit) {
+    return getDb().prepare(`
+        SELECT * FROM wantlist
+        WHERE user_id = ? AND active = 1 AND last_puppeteer_check_at IS NOT NULL
+        ORDER BY last_puppeteer_check_at ASC
+        LIMIT ?
+    `).all(userId, limit || 50);
+}
+
 /** Stamp a wantlist item as just Puppeteer-checked. */
 function stampPuppeteerCheck(wantlistId) {
     getDb().prepare('UPDATE wantlist SET last_puppeteer_check_at = ? WHERE id = ?')
@@ -2092,6 +2121,8 @@ module.exports = {
     dismissChanges: dismissChanges,
     getAllActiveUsers: getAllActiveUsers,
     getItemsDueForPuppeteerCheck: getItemsDueForPuppeteerCheck,
+    getNewWantlistItems: getNewWantlistItems,
+    getOldestCheckedItems: getOldestCheckedItems,
     stampPuppeteerCheck: stampPuppeteerCheck,
     getPuppeteerCoverage: getPuppeteerCoverage,
     touchUserLastSeen: touchUserLastSeen,

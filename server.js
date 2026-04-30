@@ -3235,7 +3235,7 @@ app.listen(PORT, function () {
     // all users. Only runs Deejay.de + Juno (2 stores, 7 tabs max).
     // Full wantlist cycle time ≈ items / 50 × interval (e.g. 300 items = 18h at 3h interval).
     var ROLLING_INTERVAL = parseInt(process.env.ROLLING_INTERVAL) || (3 * 60 * 60 * 1000); // default 3h
-    console.log('[rolling] Rolling Puppeteer scan every ' + Math.round(ROLLING_INTERVAL/3600000) + 'h × ' + scanner.ROLLING_BATCH + ' items (Deejay.de + Juno)');
+    console.log('[rolling] Rolling Puppeteer scan every ' + Math.round(ROLLING_INTERVAL/3600000) + 'h × ' + scanner.ROLLING_BATCH + ' routine items/user (Deejay+Juno+Hardwax+Yoyaku, ' + scanner.ROLLING_WORKERS + ' worker' + (scanner.ROLLING_WORKERS > 1 ? 's' : '') + ')');
     setInterval(function () {
         scanner.dailyRollingPuppeteer()
             .then(function() { scanner.trackJobRun('rolling', true); })
