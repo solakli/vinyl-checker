@@ -148,6 +148,14 @@ The platform has a Chrome extension called **Gold Digger** that syncs real Disco
 - Highlight hidden gems (low community_have = hard to find elsewhere)
 - Provide store recommendations (which stores are best for their taste)
 - Show GEM INTELLIGENCE: underground index, hidden gem tier, YouTube view data, DJ validation, YouTube-comment genre tags — use get_gem_intelligence for any question about "hidden gems", "underground records", "my underground index", "DJ validation", or "YouTube data on my records"
+- Find underground/gem records that are currently in stock: use get_gem_store_hits — THE best "buy now" signal, combines gem score + live availability
+- Discover records NOT on the wantlist from catalog stores (Further, Gramaphone, Octopus, UVS) that match taste: use get_catalog_discoveries
+- Get AI-powered artist + record recommendations via Last.fm similarity, cross-referenced with live catalog: use get_taste_recommendations
+
+## Discovery + Catalog Tools
+- **get_gem_store_hits**: Wantlist items that are BOTH gem-scored (hidden_gem / club_weapon) AND in stock right now. Use for "what underground records can I buy today", "which gems are available", "best records to buy now". Ranks by gem score.
+- **get_catalog_discoveries**: Browse 40k+ catalog records (Further, Gramaphone, Octopus, UVS) for items NOT on the wantlist that match the user's taste profile. Use for "what should I discover", "what's at Further that fits my taste", "show me new records". Scores by genre/style overlap with wantlist.
+- **get_taste_recommendations**: Full Last.fm similarity engine — expands from wantlist seed artists, finds similar artists, returns their in-catalog records available to buy. Use for "recommend me music", "what artists would I like", "what should I dig for". Includes blended score + "because you want X" reasons.
 
 ## GEM INTELLIGENCE
 The platform enriches every wantlist + collection item with YouTube data (view count, DJ mentions in comments, genre tags). From this it computes a Gem Score (0-100) and assigns each release a tier:
@@ -418,6 +426,47 @@ const TOOLS = [
             properties: {
                 username: { type: 'string', description: 'Discogs username' },
                 limit:    { type: 'number', description: 'Max top gems to return (default 20, max 50)' }
+            },
+            required: ['username']
+        }
+    },
+    {
+        name: 'get_gem_store_hits',
+        description: 'Find hidden gems and club weapons on the wantlist that are currently IN STOCK at any store. The ultimate "buy now" list — records that are underground (low YouTube views), DJ-validated (mentioned in comments), or deep cuts, that happen to be available right now. Use this when the user asks "what underground records can I buy today", "which of my gems are in stock", or "best records to buy now". Returns gem score, tier, view count, DJs mentioned, and which store has it.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                username:  { type: 'string', description: 'Discogs username' },
+                tiers:     { type: 'array', items: { type: 'string' }, description: 'Gem tiers to include: hidden_gem, club_weapon, deep_cut (default: hidden_gem and club_weapon)' },
+                min_score: { type: 'number', description: 'Minimum gem score 0–100 (default 35)' },
+                limit:     { type: 'number', description: 'Max results (default 15)' }
+            },
+            required: ['username']
+        }
+    },
+    {
+        name: 'get_catalog_discoveries',
+        description: 'Browse the full catalog inventory of Further Records, Gramaphone, Octopus Records NYC, and Underground Vinyl for records NOT on the user\'s wantlist that match their taste. Uses the user\'s genre/style profile to score each available record. Great for "what should I discover today", "what\'s in stock at Further that fits my taste", or "show me records I haven\'t heard of". Returns taste-match score, price, and store.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                username:  { type: 'string', description: 'Discogs username' },
+                store:     { type: 'string', description: 'Limit to one catalog store: "Further Records", "Gramaphone", "Octopus Records NYC", "Underground Vinyl" (optional — all 4 if omitted)' },
+                genre:     { type: 'string', description: 'Filter by genre/style keyword (optional, e.g. "Techno", "House", "Ambient")' },
+                max_price: { type: 'number', description: 'Max price in USD (optional)' },
+                limit:     { type: 'number', description: 'Max results (default 20, max 50)' }
+            },
+            required: ['username']
+        }
+    },
+    {
+        name: 'get_taste_recommendations',
+        description: 'Get AI-powered record recommendations based on the user\'s taste profile — uses Last.fm similarity to expand from wantlist seed artists, cross-referenced against catalog store inventory for records available RIGHT NOW. Far richer than suggest_cart: discovers artists outside the user\'s wantlist that they would likely love, scored by Last.fm similarity × taste tag overlap. Use for "what should I dig for", "recommend me records", "what artists are similar to my taste", or "discover new music". Each recommendation says WHY it was suggested (because you want X).',
+        input_schema: {
+            type: 'object',
+            properties: {
+                username: { type: 'string', description: 'Discogs username' },
+                limit:    { type: 'number', description: 'Max recommendations (default 20, max 40)' }
             },
             required: ['username']
         }
@@ -1286,6 +1335,253 @@ function toolGetCollection({ username, query, genre, style, sort, limit }) {
     };
 }
 
+// ─── get_gem_store_hits ───────────────────────────────────────────────────────
+// Cross-reference gem scores with live store availability.
+// Returns wantlist items that are: enriched, above min_score, in tiers, AND in stock.
+function toolGetGemStoreHits({ username, tiers, min_score, limit }) {
+    var d = db.getDb();
+    var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
+    if (!user) return { error: 'User not found: ' + username };
+
+    tiers    = tiers && tiers.length ? tiers : ['hidden_gem', 'club_weapon'];
+    min_score = min_score != null ? min_score : 35;
+    limit    = Math.min(limit || 15, 40);
+
+    // Get all wantlist items with streaming_metadata + in-stock store results
+    var rows = d.prepare(`
+        SELECT w.id as wantlist_id, w.discogs_id, w.artist, w.title, w.year,
+               sm.youtube_view_count, sm.youtube_like_count, sm.youtube_comment_data,
+               sm.youtube_enriched_at, sm.youtube_video_id,
+               rm.community_have, rm.community_want,
+               GROUP_CONCAT(DISTINCT sr.store) as stores_in_stock,
+               GROUP_CONCAT(DISTINCT sr.matches) as all_matches
+        FROM wantlist w
+        JOIN store_results sr ON sr.wantlist_id = w.id AND sr.in_stock = 1 AND sr.link_only = 0
+        JOIN streaming_metadata sm ON sm.discogs_id = w.discogs_id
+        LEFT JOIN release_meta rm ON rm.discogs_id = w.discogs_id
+        WHERE w.user_id = ? AND w.active = 1 AND sm.youtube_enriched_at IS NOT NULL
+        GROUP BY w.id
+    `).all(user.id);
+
+    var gemScore;
+    try { gemScore = require('./lib/gem-score'); } catch(e) {
+        return { error: 'gem-score module unavailable: ' + e.message };
+    }
+
+    var results = [];
+    rows.forEach(function(row) {
+        var scored = gemScore.scoreRelease(row, { community_have: row.community_have, community_want: row.community_want });
+        if (scored.gemScore < min_score) return;
+        if (tiers.indexOf(scored.tier || 'unscored') === -1) return;
+
+        var commentData = {};
+        try { commentData = JSON.parse(row.youtube_comment_data || '{}'); } catch(e) {}
+
+        // Best price across in-stock stores
+        var bestPrice = null;
+        try {
+            var stores = (row.stores_in_stock || '').split(',');
+            // matches is a concat — just pick first parseable price
+            var firstMatch = JSON.parse((row.all_matches || '[]'));
+            if (firstMatch.length) bestPrice = firstMatch[0].price;
+        } catch(e) {}
+
+        results.push({
+            artist:       row.artist,
+            title:        row.title,
+            year:         row.year,
+            tier:         scored.tier,
+            gemScore:     scored.gemScore,
+            viewCount:    row.youtube_view_count || 0,
+            youtube_url:  row.youtube_video_id ? 'https://youtube.com/watch?v=' + row.youtube_video_id : null,
+            djs:          (commentData.djs || []).slice(0, 4),
+            genres:       (commentData.genres || []).slice(0, 3),
+            stores:       (row.stores_in_stock || '').split(',').filter(Boolean),
+            best_price:   bestPrice,
+            community_have: row.community_have,
+            breakdown:    scored.breakdown || null
+        });
+    });
+
+    results.sort(function(a, b) { return b.gemScore - a.gemScore; });
+    results = results.slice(0, limit);
+
+    return {
+        username: username,
+        count:    results.length,
+        tiers:    tiers,
+        hits:     results,
+        tip:      results.length === 0
+            ? 'No enriched gems in stock right now. The enrichment job runs every 6 hours — more records will be scored over time.'
+            : null
+    };
+}
+
+// ─── get_catalog_discoveries ──────────────────────────────────────────────────
+// Browse store_inventory (catalog stores) for records NOT on user's wantlist,
+// scored by genre/style taste match.
+function toolGetCatalogDiscoveries({ username, store, genre, max_price, limit }) {
+    var d = db.getDb();
+    var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
+    if (!user) return { error: 'User not found: ' + username };
+    limit = Math.min(limit || 20, 50);
+
+    // Build genre+style frequency map from wantlist + collection
+    var allItems = d.prepare('SELECT genres, styles FROM wantlist WHERE user_id=? AND active=1').all(user.id)
+        .concat(d.prepare('SELECT genres, styles FROM collection WHERE user_id=?').all(user.id));
+    var freqMap = {};
+    allItems.forEach(function(w) {
+        (w.genres || '').split('|').concat((w.styles || '').split('|')).forEach(function(t) {
+            t = t.trim().toLowerCase();
+            if (t) freqMap[t] = (freqMap[t] || 0) + 1;
+        });
+    });
+    var maxFreq = Math.max(1, Math.max.apply(null, Object.values(freqMap)));
+
+    // Get wantlist artist+title set for exclusion (normalized)
+    var wantlistArtists = new Set();
+    d.prepare('SELECT artist FROM wantlist WHERE user_id=? AND active=1').all(user.id).forEach(function(w) {
+        wantlistArtists.add((w.artist || '').toLowerCase().trim());
+    });
+
+    // Query catalog inventory
+    var CATALOG_STORES = ['Further Records', 'Gramaphone', 'Octopus Records NYC', 'Underground Vinyl'];
+    var storeFilter = store ? [store] : CATALOG_STORES;
+    var storePlaceholders = storeFilter.map(function() { return '?'; }).join(',');
+
+    var genreFilter = genre ? '%' + genre.toLowerCase() + '%' : null;
+    var priceFilter = max_price || null;
+
+    var invRows = d.prepare(
+        'SELECT id, store, artist, title, label, catno, tags, price_usd, currency, url, image_url' +
+        ' FROM store_inventory' +
+        ' WHERE store IN (' + storePlaceholders + ')' +
+        ' AND available = 1' +
+        (priceFilter ? ' AND (price_usd IS NULL OR price_usd <= ' + priceFilter + ')' : '') +
+        (genreFilter ? " AND LOWER(tags) LIKE '" + genreFilter.replace(/'/g,"''") + "'" : '') +
+        ' ORDER BY RANDOM() LIMIT 2000'
+    ).all(...storeFilter);
+
+    // Score + exclude wantlist artists
+    var scored = [];
+    invRows.forEach(function(row) {
+        // Exclude if artist is already on wantlist
+        var artistNorm = (row.artist || '').toLowerCase().trim();
+        if (wantlistArtists.has(artistNorm)) return;
+
+        var tags = [];
+        try { tags = JSON.parse(row.tags || '[]'); } catch(e) {}
+
+        // Taste score: sum of freq-weighted tag matches
+        var matchedFreq = 0;
+        tags.forEach(function(tag) {
+            var parts = tag.toLowerCase().split('/');
+            parts.forEach(function(p) {
+                p = p.trim();
+                var f = freqMap[p] || 0;
+                if (f > 0) matchedFreq += f / maxFreq;
+            });
+        });
+        var tasteScore = tags.length > 0 ? Math.min(1, matchedFreq / Math.max(1, tags.length)) : 0;
+        if (tasteScore === 0 && !genre) return; // skip zero-match when no genre override
+
+        scored.push({
+            store:       row.store,
+            artist:      row.artist,
+            title:       row.title,
+            label:       row.label || null,
+            catno:       row.catno || null,
+            tags:        tags.slice(0, 6),
+            price_usd:   row.price_usd ? '$' + row.price_usd.toFixed(2) : null,
+            url:         row.url || null,
+            tasteScore:  Math.round(tasteScore * 100)
+        });
+    });
+
+    scored.sort(function(a, b) { return b.tasteScore - a.tasteScore; });
+    scored = scored.slice(0, limit);
+
+    return {
+        username:       username,
+        stores_checked: storeFilter,
+        count:          scored.length,
+        discoveries:    scored,
+        tip:            scored.length === 0
+            ? 'No catalog matches found. Try a broader genre filter or omit the genre parameter.'
+            : null
+    };
+}
+
+// ─── get_taste_recommendations ────────────────────────────────────────────────
+// Runs the Last.fm recommender and returns artist recs with available catalog records.
+async function toolGetTasteRecommendations({ username, limit }) {
+    var d = db.getDb();
+    var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
+    if (!user) return { error: 'User not found: ' + username };
+    limit = Math.min(limit || 20, 40);
+
+    var recommender;
+    try {
+        recommender = require('./lib/recommender');
+    } catch(e) {
+        return { error: 'Recommender module unavailable: ' + e.message };
+    }
+
+    var result;
+    try {
+        result = await recommender.recommend(username, d, {
+            seedLimit:      30,
+            similarPerSeed: 8,
+            resultLimit:    limit
+        });
+    } catch(e) {
+        return { error: 'Recommender failed: ' + e.message };
+    }
+
+    if (result.error) return { error: result.error, tip: 'Make sure LASTFM_API_KEY is set in .env' };
+
+    // Shape output for GOLDIE: group by recommended artist, list available records
+    var byArtist = {};
+    (result.recommendations || []).forEach(function(rec) {
+        var key = rec.recommendedArtist || rec.artist;
+        if (!byArtist[key]) {
+            byArtist[key] = {
+                artist:       rec.recommendedArtist || rec.artist,
+                because:      rec.because || [],
+                blendedScore: rec.blendedScore,
+                seedCount:    rec.seedCount,
+                records:      []
+            };
+        }
+        byArtist[key].records.push({
+            title:    rec.title,
+            store:    rec.store,
+            price:    rec.priceUsd ? '$' + rec.priceUsd.toFixed(2) : null,
+            tags:     (rec.tags || []).slice(0, 4),
+            url:      rec.url || null,
+            tagScore: Math.round((rec.tagScore || 0) * 100)
+        });
+    });
+
+    var artists = Object.values(byArtist).sort(function(a, b) {
+        if (b.seedCount !== a.seedCount) return b.seedCount - a.seedCount;
+        return b.blendedScore - a.blendedScore;
+    });
+
+    return {
+        username:       username,
+        seeds_used:     (result.seeds || []).slice(0, 10),
+        artist_count:   artists.length,
+        top_genres:     result.genreProfile
+            ? Object.entries(result.genreProfile).slice(0, 10).map(function(e) { return { genre: e[0], count: e[1] }; })
+            : [],
+        recommendations: artists,
+        tip: artists.length === 0
+            ? 'No catalog matches found via Last.fm. The catalog stores may not stock these artists yet, or Last.fm returned no similar artists. Try again later.'
+            : null
+    };
+}
+
 function toolGetGemIntelligence({ username, limit }) {
     var d = db.getDb();
     var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
@@ -1463,7 +1759,10 @@ function runTool(name, input) {
         case 'get_cart':                return toolGetCart(input);
         case 'manage_cart':             return toolManageCart(input);
         case 'get_collection':          return toolGetCollection(input);
-        case 'get_gem_intelligence':    return toolGetGemIntelligence(input);
+        case 'get_gem_intelligence':       return toolGetGemIntelligence(input);
+        case 'get_gem_store_hits':         return toolGetGemStoreHits(input);
+        case 'get_catalog_discoveries':    return toolGetCatalogDiscoveries(input);
+        case 'get_taste_recommendations':  return toolGetTasteRecommendations(input);
         default: return { error: 'Unknown tool: ' + name };
     }
 }
