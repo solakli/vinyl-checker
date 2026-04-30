@@ -691,6 +691,7 @@ async function loadResultsForUser(username) {
     if (res.ok) {
       var data = await res.json();
       if (data.results && data.results.length > 0) {
+        // ── Has cached results ──────────────────────────────────────────
         resultsData = data.results;
         document.getElementById('welcome').style.display = 'none';
         if (!isOAuthed) {
@@ -713,6 +714,12 @@ async function loadResultsForUser(username) {
         }
         // Check for changes after loading results
         fetchChanges(username);
+      } else if (isOAuthed) {
+        // ── OAuth user with no results yet ─────────────────────────────
+        // Show the rescan button in the user bar so they can kick off their first scan.
+        // (First-time flow normally uses autoScanAfterAuth, but this catches edge cases.)
+        document.getElementById('userBarRescan').style.display = 'inline-block';
+        document.getElementById('welcome').style.display = '';
       }
     }
   } catch(e) {

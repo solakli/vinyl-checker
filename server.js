@@ -1364,16 +1364,28 @@ async function syncStaleStores() {
 app.post('/api/deploy', function (req, res) {
     var crypto = require('crypto');
     var { execSync } = require('child_process');
-    var secret = process.env.GITHUB_WEBHOOK_SECRET || '';
+    var webhookSecret = process.env.GITHUB_WEBHOOK_SECRET || '';
+    var cronSecret    = process.env.CRON_SECRET || '';
 
-    // Verify GitHub HMAC signature
-    if (secret) {
+    if (webhookSecret) {
+        // GitHub webhook — verify HMAC signature
         var sig = req.headers['x-hub-signature-256'] || '';
-        var expected = 'sha256=' + crypto.createHmac('sha256', secret).update(req.rawBody || '').digest('hex');
+        var expected = 'sha256=' + crypto.createHmac('sha256', webhookSecret).update(req.rawBody || '').digest('hex');
         if (sig !== expected) {
             console.log('[deploy] Webhook signature mismatch — rejected');
             return res.status(401).json({ error: 'invalid signature' });
         }
+    } else if (cronSecret) {
+        // No webhook secret — fall back to cron secret (manual trigger)
+        var token = req.headers['x-cron-secret'] || req.query.secret || '';
+        if (token !== cronSecret) {
+            console.log('[deploy] No webhook secret configured, cron secret mismatch — rejected');
+            return res.status(401).json({ error: 'unauthorized' });
+        }
+    } else {
+        // Neither secret configured — block entirely to prevent open RCE
+        console.log('[deploy] No GITHUB_WEBHOOK_SECRET or CRON_SECRET configured — rejecting deploy request');
+        return res.status(403).json({ error: 'deploy not configured — set GITHUB_WEBHOOK_SECRET or CRON_SECRET' });
     }
 
     var payload = req.body || {};
@@ -2511,10 +2523,19 @@ app.get('/api/changes/:username', function (req, res) {
 
 // Update last_seen_at — called by the frontend after it has displayed the
 // changes banner, so the NEXT visit starts from this moment forward.
+// Accepts session user OR explicit username — but only allows updating yourself.
 app.post('/api/changes/seen', function (req, res) {
     try {
-        var username = (req.body && req.body.username) || (req.sessionUser && req.sessionUser.username);
+        var requestedUsername = (req.body && req.body.username) || '';
+        var sessionUsername   = req.sessionUser ? req.sessionUser.username : '';
+        // Must either be logged in, or the requested username must match the session
+        var username = sessionUsername || requestedUsername;
         if (!username) return res.status(400).json({ error: 'username required' });
+        // If both provided, must match — prevents resetting another user's timestamp
+        if (sessionUsername && requestedUsername &&
+            sessionUsername.toLowerCase() !== requestedUsername.toLowerCase()) {
+            return res.status(403).json({ error: 'can only update your own last_seen_at' });
+        }
         var user = db.getOrCreateUser(username);
         db.touchUserLastSeen(user.id);
         res.json({ ok: true, lastSeenAt: new Date().toISOString() });
@@ -2601,6 +2622,10 @@ app.post('/api/discogs-listings/:username', function (req, res) {
 // Simple non-SSE endpoint GOLDIE can call to kick off a wantlist + collection sync
 app.post('/api/sync-now/:username', async function (req, res) {
     var username = req.params.username;
+    // Only allow syncing your own wantlist (must be logged in as that user)
+    if (!req.sessionUser || req.sessionUser.username.toLowerCase() !== username.toLowerCase()) {
+        return res.status(403).json({ error: 'can only sync your own wantlist' });
+    }
     var user = db.getOrCreateUser(username);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
