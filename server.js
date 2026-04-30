@@ -1344,17 +1344,17 @@ async function syncStaleStores() {
 
     // After catalog syncs complete, cross-reference against all wantlists.
     // This is a pure DB operation (no Puppeteer) so it runs even if Chrome is busy.
-    if (syncedAny) {
-        console.log('[sync-store] Running catalog→wantlist match after sync…');
-        scanner.runCatalogMatch()
-            .then(function (r) {
-                if (r) scanner.trackJobRun && scanner.trackJobRun('catalog-match', true);
-            })
-            .catch(function (e) {
-                console.error('[sync-store] catalog-match failed:', e.message);
-                scanner.trackJobRun && scanner.trackJobRun('catalog-match', false, e.message);
-            });
-    }
+    // Run unconditionally — even if no store was re-synced today, wantlists may have
+    // changed (new additions/removals) so the catalog match must always run.
+    console.log('[sync-store] Running catalog→wantlist match' + (syncedAny ? ' after sync' : ' (wantlist-only, stores current)') + '…');
+    scanner.runCatalogMatch()
+        .then(function (r) {
+            if (r) scanner.trackJobRun && scanner.trackJobRun('catalog-match', true);
+        })
+        .catch(function (e) {
+            console.error('[sync-store] catalog-match failed:', e.message);
+            scanner.trackJobRun && scanner.trackJobRun('catalog-match', false, e.message);
+        });
 }
 
 // GitHub webhook — auto-deploy on push to master
