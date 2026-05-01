@@ -3336,8 +3336,12 @@ app.listen(PORT, function () {
     // Provides Shazam count, SoundCloud streams, Beatport/Traxsource DJ charts,
     // and 1001tracklists appearances per track. Two API calls per track.
     // Free tier ~100 req/month → 50 tracks. Runs 20 tracks every 72 hours.
+    //
+    // PAUSED: API Hub BASIC quota (100%) exhausted. Set SONGSTATS_ENABLED=true in
+    // .env to re-enable once the plan is upgraded or the quota resets.
     var rapidApiKey = process.env.RAPIDAPI_KEY;
-    if (rapidApiKey) {
+    var songstatsEnabled = process.env.SONGSTATS_ENABLED === 'true';
+    if (rapidApiKey && songstatsEnabled) {
         var songstatsEnrich = require('./lib/songstats-enrichment');
         console.log('[songstats] Songstats enrichment enabled — 20 tracks every 72 hours');
         // First run: 45 min after startup
@@ -3352,7 +3356,7 @@ app.listen(PORT, function () {
             });
         }, 72 * 60 * 60 * 1000); // every 72 hours
     } else {
-        console.log('[songstats] No RAPIDAPI_KEY set — Songstats enrichment disabled');
+        console.log('[songstats] Enrichment disabled (set SONGSTATS_ENABLED=true to re-enable)');
     }
 
     // Stock validation — re-checks "in stock" items to catch false positives
