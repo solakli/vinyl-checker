@@ -1359,7 +1359,7 @@ async function syncStaleStores() {
 
 // GitHub webhook — auto-deploy on push to master
 // Set GITHUB_WEBHOOK_SECRET in ecosystem.config.js env, then add webhook in GitHub repo settings
-// Payload URL: https://stream.ronautradio.la/vinyl/api/deploy
+// Payload URL: https://waxdigger.ai/api/deploy
 // Content type: application/json, Secret: same as GITHUB_WEBHOOK_SECRET
 app.post('/api/deploy', function (req, res) {
     var crypto = require('crypto');

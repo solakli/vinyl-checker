@@ -54,7 +54,7 @@ function save() {
 function updateOpenBtn() {
     var url = serverUrlInput.value.trim().replace(/\/$/, '');
     openAppBtn.onclick = function () {
-        chrome.tabs.create({ url: url || 'https://stream.ronautradio.la/vinyl' });
+        chrome.tabs.create({ url: url || 'https://waxdigger.ai' });
     };
 }
 

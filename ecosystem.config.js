@@ -12,7 +12,7 @@ module.exports = {
             DISCOGS_TOKEN: 'UPiAwrUCQLYhGCppWIVvBDMSScyQuxGyRRyRDSPd',
             DISCOGS_CONSUMER_KEY: 'OVtKjTmXdGeBpsudUyhz',
             DISCOGS_CONSUMER_SECRET: 'XIexsqsiEyJUZjKhyFNBcUGHTVSoPsAV',
-            BASE_URL: 'https://stream.ronautradio.la/vinyl',
+            BASE_URL: 'https://waxdigger.ai',
             // Cron-triggered runs use a secret token so /api/trigger is not public
             CRON_SECRET: 'vc-cron-2026',
             // GitHub webhook secret — must match what you set in GitHub repo settings

@@ -1310,7 +1310,7 @@ function toolGetCollection({ username, query, genre, style, sort, limit }) {
             total_in_collection: 0,
             showing: 0,
             items: [],
-            message: username + ' has no collection synced. They need to hit "Sync Collection" in the app, or visit stream.ronautradio.la/vinyl/api/collection/' + username + '?refresh=1'
+            message: username + ' has no collection synced. They need to hit "Sync Collection" in the app, or visit waxdigger.ai/api/collection/' + username + '?refresh=1'
         };
     }
 

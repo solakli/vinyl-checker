@@ -5,13 +5,13 @@
   "description": "Sync Discogs marketplace prices into the Gold Digger cart optimizer",
   "permissions": ["storage", "cookies", "alarms"],
   "host_permissions": [
-    "https://stream.ronautradio.la/*",
+    "https://waxdigger.ai/*",
     "https://www.discogs.com/*"
   ],
   "content_scripts": [
     {
       "matches": [
-        "https://stream.ronautradio.la/*"
+        "https://waxdigger.ai/*"
       ],
       "js": ["content-script.js"],
       "run_at": "document_idle"
