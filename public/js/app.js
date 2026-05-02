@@ -691,6 +691,7 @@ async function loadResultsForUser(username) {
     if (res.ok) {
       var data = await res.json();
       if (data.results && data.results.length > 0) {
+        // ── Has cached results ──────────────────────────────────────────
         resultsData = data.results;
         document.getElementById('welcome').style.display = 'none';
         if (!isOAuthed) {
@@ -713,6 +714,12 @@ async function loadResultsForUser(username) {
         }
         // Check for changes after loading results
         fetchChanges(username);
+      } else if (isOAuthed) {
+        // ── OAuth user with no results yet ─────────────────────────────
+        // Show the rescan button in the user bar so they can kick off their first scan.
+        // (First-time flow normally uses autoScanAfterAuth, but this catches edge cases.)
+        document.getElementById('userBarRescan').style.display = 'inline-block';
+        document.getElementById('welcome').style.display = '';
       }
     }
   } catch(e) {
@@ -753,10 +760,10 @@ function showPostScanToast(data) {
 
 async function fetchChanges(username) {
   try {
-    // Filter out server-dismissed changes AND changes the user previously dismissed
-    // locally (stored in localStorage for unauthenticated sessions).
     var localDismissed = new Set(JSON.parse(localStorage.getItem('dismissedChanges') || '[]'));
 
+    // The server uses last_seen_at as the default `since` cutoff — so we only
+    // see changes that happened since the user last had the app open.
     var res = await fetch('api/changes/' + encodeURIComponent(username));
     if (!res.ok) return;
     var data = await res.json();
@@ -764,6 +771,13 @@ async function fetchChanges(username) {
     if (changes.length > 0) {
       showChangesBanner(changes);
     }
+    // After fetching (whether or not we showed anything), stamp last_seen_at
+    // so the next visit only shows changes from this point forward.
+    fetch('api/changes/seen', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: username })
+    }).catch(function(){});
   } catch(e) {}
 }
 

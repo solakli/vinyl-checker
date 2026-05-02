@@ -349,6 +349,14 @@ function initTables() {
     try { db.exec('ALTER TABLE market_listings ADD COLUMN price_usd REAL'); } catch(e) {}
     // workers_used: how many parallel Chrome workers were used for this scan run (1 or 2)
     try { db.exec('ALTER TABLE scan_runs ADD COLUMN workers_used INTEGER'); } catch(e) {}
+    // us_shipping: estimated US shipping cost per store (added later)
+    try { db.exec('ALTER TABLE store_results ADD COLUMN us_shipping TEXT'); } catch(e) {}
+    // last_puppeteer_check_at: tracks rolling Puppeteer scan coverage per wantlist item
+    try { db.exec('ALTER TABLE wantlist ADD COLUMN last_puppeteer_check_at TEXT'); } catch(e) {}
+    // last_catalog_match_at: tracks when catalog match last ran per user
+    try { db.exec('ALTER TABLE users ADD COLUMN last_catalog_match_at TEXT'); } catch(e) {}
+    // last_seen_at: when the user last loaded the app (for "what's new since you left")
+    try { db.exec('ALTER TABLE users ADD COLUMN last_seen_at TEXT'); } catch(e) {}
 
     // Collection table — mirrors user's Discogs collection (records they own)
     db.exec(`
@@ -1103,6 +1111,94 @@ function dismissChanges(userId, ids) {
         var placeholders = ids.map(function() { return '?'; }).join(',');
         getDb().prepare('UPDATE scan_changes SET dismissed = 1 WHERE user_id = ? AND id IN (' + placeholders + ')').run(userId, ...ids);
     }
+}
+
+function getAllActiveUsers() {
+    // All users who have at least one active wantlist item (excludes testuser).
+    return getDb().prepare(`
+        SELECT u.* FROM users u
+        WHERE u.username != 'testuser'
+          AND EXISTS (SELECT 1 FROM wantlist w WHERE w.user_id = u.id AND w.active = 1)
+        ORDER BY u.id
+    `).all();
+}
+
+/**
+ * Returns up to `limit` wantlist items for a user sorted by oldest
+ * last_puppeteer_check_at first (NULLs = never checked, come first).
+ * Used by the rolling Puppeteer scanner to pick the next batch.
+ */
+function getItemsDueForPuppeteerCheck(userId, limit) {
+    return getDb().prepare(`
+        SELECT * FROM wantlist
+        WHERE user_id = ? AND active = 1
+        ORDER BY last_puppeteer_check_at ASC NULLS FIRST, id ASC
+        LIMIT ?
+    `).all(userId, limit || 50);
+}
+
+/**
+ * Phase A — "Urgent" items: wantlist entries that have NEVER been
+ * Puppeteer-checked (last_puppeteer_check_at IS NULL).
+ *
+ * These are newly added records. We check ALL of them in the next run
+ * regardless of batch size — no cap — so a user who adds 1 record
+ * gets it checked within the next rolling interval (≤ 3 h).
+ */
+function getNewWantlistItems(userId) {
+    return getDb().prepare(`
+        SELECT * FROM wantlist
+        WHERE user_id = ? AND active = 1 AND last_puppeteer_check_at IS NULL
+        ORDER BY id ASC
+    `).all(userId);
+}
+
+/**
+ * Phase B — "Routine" items: already-checked records, oldest first.
+ * Called after urgent items are processed to fill remaining batch capacity.
+ */
+function getOldestCheckedItems(userId, limit) {
+    return getDb().prepare(`
+        SELECT * FROM wantlist
+        WHERE user_id = ? AND active = 1 AND last_puppeteer_check_at IS NOT NULL
+        ORDER BY last_puppeteer_check_at ASC
+        LIMIT ?
+    `).all(userId, limit || 50);
+}
+
+/** Stamp a wantlist item as just Puppeteer-checked. */
+function stampPuppeteerCheck(wantlistId) {
+    getDb().prepare('UPDATE wantlist SET last_puppeteer_check_at = ? WHERE id = ?')
+        .run(new Date().toISOString(), wantlistId);
+}
+
+/**
+ * Returns Puppeteer coverage stats for a user.
+ * "covered" = checked within the last 30 days.
+ */
+function getPuppeteerCoverage(userId) {
+    var cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+    return getDb().prepare(`
+        SELECT
+            COUNT(*)                                                         AS total,
+            SUM(CASE WHEN last_puppeteer_check_at > ?  THEN 1 ELSE 0 END)  AS covered_30d,
+            SUM(CASE WHEN last_puppeteer_check_at IS NULL THEN 1 ELSE 0 END) AS never_checked,
+            MIN(last_puppeteer_check_at)                                     AS oldest_check,
+            MAX(last_puppeteer_check_at)                                     AS newest_check
+        FROM wantlist WHERE user_id = ? AND active = 1
+    `).get(cutoff, userId);
+}
+
+/** Record when a user last loaded the app (for "what's new since you left"). */
+function touchUserLastSeen(userId) {
+    getDb().prepare('UPDATE users SET last_seen_at = ? WHERE id = ?')
+        .run(new Date().toISOString(), userId);
+}
+
+/** Update last_catalog_match_at for a user. */
+function stampCatalogMatch(userId) {
+    getDb().prepare('UPDATE users SET last_catalog_match_at = ? WHERE id = ?')
+        .run(new Date().toISOString(), userId);
 }
 
 function getUsersDueForRescan() {
@@ -2023,6 +2119,14 @@ module.exports = {
     insertScanChange: insertScanChange,
     getUndismissedChanges: getUndismissedChanges,
     dismissChanges: dismissChanges,
+    getAllActiveUsers: getAllActiveUsers,
+    getItemsDueForPuppeteerCheck: getItemsDueForPuppeteerCheck,
+    getNewWantlistItems: getNewWantlistItems,
+    getOldestCheckedItems: getOldestCheckedItems,
+    stampPuppeteerCheck: stampPuppeteerCheck,
+    getPuppeteerCoverage: getPuppeteerCoverage,
+    touchUserLastSeen: touchUserLastSeen,
+    stampCatalogMatch: stampCatalogMatch,
     getUsersDueForRescan: getUsersDueForRescan,
     updateUserDailyRescan: updateUserDailyRescan,
     getSessionLastSeen: getSessionLastSeen,
