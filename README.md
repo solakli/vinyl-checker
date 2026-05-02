@@ -1,16 +1,66 @@
-# Vinyl Checker
+# Wax Digger
+
+Search 12 stores. See what's in stock. Buy it cheaper.
 
 A self-hosted web app that checks your Discogs wantlist across 12 vinyl stores worldwide and finds the cheapest combination of sellers to buy everything — shipping included.
+
+Live at [waxdigger.ai](https://waxdigger.ai)
 
 ---
 
 ## What it does
 
-1. **Wantlist scanning** — connect your Discogs account (OAuth) and it checks all your wantlist items against every supported store automatically.
+1. **Wantlist scanning** — connect your Discogs account (OAuth) and it checks all your wantlist items against every supported store automatically, with real-time progress updates.
 
-2. **Cart Optimizer** — hit "HIT ME WITH THE BEST CART GOLDY" and it fetches live Discogs marketplace listings for every item on your wantlist, then calculates the cheapest combination of sellers (including shipping to your location) to cover as much of your wantlist as possible.
+2. **Cart Optimizer** — finds the cheapest combination of stores and Discogs marketplace sellers (shipping included) to cover as much of your wantlist as possible.
 
-3. **Daily rescans** — runs in the background and alerts you when something new comes into stock.
+3. **Mix ▷ Cart** — paste any SoundCloud, YouTube, or Mixcloud mix URL and it extracts the tracklist (from description, comments, or audio fingerprinting) then searches the inventory for every track.
+
+4. **Discover** — recommends new artists and releases based on your taste profile, weighted from Last.fm similarity, SoundCloud likes/follows/setlists, YouTube history, and your Discogs wantlist.
+
+5. **My Collection** — browse and filter your Discogs collection with genre breakdown, gem scores, and release metadata.
+
+6. **Daily rescans** — background job checks your wantlist once per day and alerts you when something new comes into stock.
+
+---
+
+---
+
+## Changelog
+
+### May 2026 — UI overhaul & rebrand (Dan)
+
+#### Rebrand: Gold Digger → Wax Digger
+- Renamed app to **Wax Digger** across all UI text, page title, meta tags
+- New logo: vinyl record + pickaxe icon (SVG + PNG asset)
+- AI assistant renamed from GOLDIE → **WAXY**
+- New domain: [waxdigger.ai](https://waxdigger.ai)
+
+#### New colour palette (Chrome/Silver theme)
+- Background: `#080808` / `#111111`
+- Accent: `#A8B8C8` (steel blue-silver) — replaces all gold `#C9A227` references
+- Body font switched to **Inter**; **Oswald** retained for headings, prices, stats only
+- All `font-weight: 300` removed in favour of 400+
+
+#### Navigation restructure
+- **Dashboard tab removed** — its content absorbed into the Wantlist page sidebar
+- Sidebar now shows: stat boxes (In Stock / Wantlist / Stores / Coverage %), Cart Optimizer card, Cheapest Right Now list
+- **Profile tab** made permanently visible in navbar (was conditionally hidden)
+
+#### Wantlist page
+- Results hero always visible once wantlist loads (previously only on `inStock > 0`)
+- **In Stock By Store** summary section added above store filter tiles — proportional bar chart, clickable to solo-filter
+- Store filter label updated to "Filter by store"
+
+#### My Collection page
+- **Your Collection By Genre** chart card added above the record grid — shows genre breakdown with count + percentage, clickable to filter
+
+#### Scanner fix (macOS)
+- `headless: 'new'` → `headless: true` in all Puppeteer launch calls (new headless mode causes socket hang up on macOS)
+- Worker count auto-detects platform: **1 worker on macOS** (avoids 21-tab crash), **3 workers on Linux/server**
+
+#### WAXY chat panel
+- Panel header, welcome message, and input placeholder updated from GOLDIE → WAXY
 
 ---
 

@@ -1,4 +1,4 @@
-/* Gold Digger Frontend */
+/* Wax Digger Frontend */
 
 let resultsData = [];
 let isScanning = false;
@@ -926,14 +926,59 @@ function updateStats() {
     '<div><span class="stat-value">' + total + '</span> wantlist</div>' +
     '<div><span class="stat-value">' + inStock + '</span> in stock</div>';
 
-  // Update store counts
+  updateSidebarStats();
+
+  // ── Results hero — always show once data is loaded ──
+  var hero = document.getElementById('resultsHero');
+  if (hero && total > 0) {
+    var storesWithStock = new Set();
+    resultsData.forEach(function(i) {
+      i.stores.forEach(function(s) { if (s.inStock && !s.linkOnly) storesWithStock.add(s.store); });
+    });
+    var storeCount = storesWithStock.size;
+    document.getElementById('resultsHeroCount').textContent = inStock;
+    document.getElementById('resultsHeroLabel').textContent = inStock === 1 ? 'record in stock' : 'records in stock';
+    document.getElementById('resultsHeroSub').textContent = inStock > 0
+      ? 'across ' + storeCount + (storeCount === 1 ? ' store' : ' stores') + ' — out of ' + total + ' on your wantlist'
+      : total + ' records on your wantlist — none in stock yet';
+    hero.style.display = 'flex';
+  }
+
+  // Update store counts on filter badges
+  var storeCounts = {};
+  resultsData.forEach(function(i) {
+    i.stores.forEach(function(s) {
+      if (s.inStock && !s.linkOnly) storeCounts[s.store] = (storeCounts[s.store] || 0) + 1;
+    });
+  });
   document.querySelectorAll('.store-badge').forEach(function(badge) {
-    var store = badge.dataset.store;
-    var count = resultsData.filter(function(i) {
-      return i.stores.some(function(s) { return s.store === store && s.inStock && !s.linkOnly; });
-    }).length;
+    var count = storeCounts[badge.dataset.store] || 0;
     badge.querySelector('.count').textContent = '(' + count + ')';
   });
+
+  // In Stock By Store summary bars
+  var summaryEl  = document.getElementById('wlStoreSummary');
+  var summaryBars = document.getElementById('wlSummaryBars');
+  var storesWithAny = Object.keys(storeCounts).filter(function(s) { return storeCounts[s] > 0; });
+  if (summaryEl && summaryBars && storesWithAny.length > 0) {
+    var maxCount = Math.max.apply(null, storesWithAny.map(function(s) { return storeCounts[s]; }));
+    summaryBars.innerHTML = storesWithAny
+      .sort(function(a, b) { return storeCounts[b] - storeCounts[a]; })
+      .map(function(store) {
+        var count = storeCounts[store];
+        var barPct = Math.round((count / maxCount) * 100);
+        var logo = storeLogoMap[store] ? '<img src="img/' + storeLogoMap[store] + '" alt="">' : '';
+        var name = escapeHtml(storeDisplayName[store] || store);
+        return '<div class="wl-sbar-row" onclick="filterByStore(\'' + escapeHtml(store) + '\')">' +
+          '<div class="wl-sbar-label">' + logo + name + '</div>' +
+          '<div class="wl-sbar-track"><div class="wl-sbar-fill" style="width:' + barPct + '%"></div></div>' +
+          '<div class="wl-sbar-count">' + count + '</div>' +
+        '</div>';
+      }).join('');
+    summaryEl.style.display = '';
+  } else if (summaryEl) {
+    summaryEl.style.display = 'none';
+  }
 
   // Populate genre/style tags with cross-filtering:
   // - When a genre is active, only count styles from items matching that genre
@@ -2102,6 +2147,17 @@ document.querySelectorAll('.store-badge').forEach(function(el) {
   });
 });
 
+function filterByStore(store) {
+  // Scroll to filter row
+  var filterEl = document.getElementById('wlFilterPills');
+  if (filterEl) filterEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Activate only that store badge, deactivate the rest
+  document.querySelectorAll('.store-badge').forEach(function(el) {
+    el.classList.toggle('active', el.dataset.store === store);
+  });
+  render();
+}
+
 document.getElementById('inStockOnly').addEventListener('click', function() {
   var cb = this.querySelector('input');
   cb.checked = !cb.checked;
@@ -2189,7 +2245,7 @@ function shareWantlist() {
   // Try native share (mobile), fall back to clipboard
   if (navigator.share) {
     navigator.share({
-      title: username + ' — Gold Digger Wantlist',
+      title: username + ' — Wax Digger Wantlist',
       url: shareUrl
     }).catch(function() {});
   } else if (navigator.clipboard) {
@@ -2332,7 +2388,7 @@ async function createYoutubePlaylist() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: username + "'s Vinyl Wantlist",
-        description: 'Auto-generated playlist from Discogs wantlist by Gold Digger. ' + videoIds.length + ' tracks from ' + resultsData.length + ' releases.',
+        description: 'Auto-generated playlist from Discogs wantlist by Wax Digger. ' + videoIds.length + ' tracks from ' + resultsData.length + ' releases.',
         videoIds: videoIds
       })
     });
@@ -2652,7 +2708,7 @@ function triggerDiscogsSync() {
       var banner = document.getElementById('dgSyncBanner') || document.createElement('div');
       banner.id = 'dgSyncBanner';
       banner.className = 'dg-sync-banner error';
-      banner.innerHTML = '⚠ Gold Digger Chrome Extension is not installed. ' +
+      banner.innerHTML = '⚠ Wax Digger Chrome Extension is not installed. ' +
         '<a href="https://github.com/solakli/vinyl-checker#extension" target="_blank" style="color:var(--gold)">Install it here</a> to sync Discogs prices.';
       el.insertBefore(banner, el.firstChild);
     }
@@ -3287,7 +3343,6 @@ function switchView(view, linkEl, opts) {
 
   // Show/hide views
   var isWantlist = view === 'wantlist';
-  document.getElementById('view-dashboard').style.display  = view === 'dashboard'  ? 'block' : 'none';
   document.getElementById('view-collection').style.display = view === 'collection' ? 'block' : 'none';
   document.getElementById('view-discover').style.display   = view === 'discover'   ? 'block' : 'none';
   document.getElementById('view-profile').style.display    = view === 'profile'    ? 'block' : 'none';
@@ -3307,7 +3362,6 @@ function switchView(view, linkEl, opts) {
 
   // Load content (unless caller handles its own loading, e.g. profLoadPublic)
   if (!opts.noLoad) {
-    if (view === 'dashboard')  renderDashboard();
     if (view === 'collection') loadCollection(false);
     if (view === 'discover')   loadDiscover();
     if (view === 'profile')    loadProfile();
@@ -3315,108 +3369,52 @@ function switchView(view, linkEl, opts) {
 }
 
 function renderDashboard() {
-  if (!resultsData || resultsData.length === 0) {
-    document.getElementById('dashStats').innerHTML = '<p style="color:#666;padding:24px">Load your wantlist first.</p>';
-    return;
+  updateSidebarStats();
+}
+
+function updateSidebarStats() {
+  if (!resultsData || resultsData.length === 0) return;
+
+  var total    = resultsData.length;
+  var inStock  = resultsData.filter(function(i) { return i.stores && i.stores.some(function(s) { return s.inStock && !s.linkOnly; }); });
+  var inStockN = inStock.length;
+
+  var storesWithStock = new Set();
+  resultsData.forEach(function(i) {
+    (i.stores || []).forEach(function(s) { if (s.inStock && !s.linkOnly) storesWithStock.add(s.store); });
+  });
+  var storeCount = storesWithStock.size;
+  var pct = total > 0 ? Math.round((inStockN / total) * 100) : 0;
+
+  var sbStats = document.getElementById('sbStats');
+  if (sbStats) {
+    document.getElementById('sbStatStock').textContent  = inStockN;
+    document.getElementById('sbStatTotal').textContent  = total;
+    document.getElementById('sbStatStores').textContent = storeCount;
+    document.getElementById('sbStatPct').textContent    = pct + '%';
+    sbStats.style.display = '';
   }
 
-  var total      = resultsData.length;
-  var inStock    = resultsData.filter(function(i) { return i.stores && i.stores.some(function(s) { return s.inStock; }); });
-  var inStockN   = inStock.length;
-  var withDiscogs= resultsData.filter(function(i) { return i.discogsPrice && i.discogsPrice.lowestPrice; }).length;
-
-  // Cheapest in-stock finds
+  // Cheapest finds list
   var cheapest = inStock.slice().sort(function(a, b) { return getLowestPrice(a) - getLowestPrice(b); }).slice(0, 6);
-
-  // Store breakdown
-  var storeCounts = {};
-  resultsData.forEach(function(i) {
-    (i.stores || []).forEach(function(s) {
-      if (s.inStock && !s.linkOnly) storeCounts[s.store] = (storeCounts[s.store] || 0) + 1;
-    });
-  });
-
-  // Genre breakdown (top 6)
-  var genreCounts = {};
-  resultsData.forEach(function(i) {
-    if (!i.item.genres) return;
-    i.item.genres.split(', ').forEach(function(g) { if (g) genreCounts[g] = (genreCounts[g] || 0) + 1; });
-  });
-  var topGenres = Object.keys(genreCounts).sort(function(a,b){return genreCounts[b]-genreCounts[a];}).slice(0,6);
-
-  // Optimizer summary
-  var optSummary = _lastOptimizerResult
-    ? '<div class="dash-opt-summary">' +
-        '<div class="dash-opt-label">Last Optimizer Run</div>' +
-        '<div class="dash-opt-stats">' +
-          '<span>$' + _lastOptimizerResult.grandTotalUsd.toFixed(2) + ' total</span>' +
-          '<span>' + _lastOptimizerResult.covered + '/' + _lastOptimizerResult.total + ' covered</span>' +
-          '<span>' + _lastOptimizerResult.numSellers + ' sellers</span>' +
-        '</div>' +
-        '<button class="dash-opt-btn" onclick="switchView(\'wantlist\',document.querySelector(\'[data-view=wantlist]\'));setTimeout(viewFullCart,100)">View Cart →</button>' +
-      '</div>'
-    : '<div class="dash-opt-summary empty"><p>Run the optimizer to see your best cart here.</p>' +
-        '<button class="dash-opt-btn" onclick="switchView(\'wantlist\',document.querySelector(\'[data-view=wantlist]\'));setTimeout(openOptimizer,100)">⛏ Dig For Gold</button>' +
-      '</div>';
-
-  // Big stat blocks
-  document.getElementById('dashStats').innerHTML =
-    '<div class="dash-stat-row">' +
-      dashStat(total, 'In Wantlist', '#888') +
-      dashStat(inStockN, 'In Stock Now', '#4caf50') +
-      dashStat(withDiscogs, 'Discogs Prices', '#C9A227') +
-      dashStat(Object.keys(storeCounts).length, 'Stores Found In', '#6a9adf') +
-    '</div>' +
-    optSummary;
-
-  // Best finds
-  document.getElementById('dashInStock').innerHTML =
-    '<div class="dash-section-title">Cheapest In Stock Right Now</div>' +
-    '<div class="dash-finds">' +
-    cheapest.map(function(item) {
+  var sbFinds = document.getElementById('sbFinds');
+  var sbList  = document.getElementById('sbFindsList');
+  if (sbFinds && sbList && cheapest.length > 0) {
+    sbList.innerHTML = cheapest.map(function(item) {
       var price = getLowestPrice(item);
-      var thumb = item.item.thumb ? '<img src="' + escapeHtml(item.item.thumb) + '" alt="">' : '<div class="dash-find-nothumb">♪</div>';
-      return '<div class="dash-find" onclick="openReleaseDetail(' + item.item.id + ')">' +
-        '<div class="dash-find-thumb">' + thumb + '</div>' +
-        '<div class="dash-find-info">' +
-          '<div class="dash-find-artist">' + escapeHtml(item.item.artist) + '</div>' +
-          '<div class="dash-find-title">' + escapeHtml(item.item.title) + '</div>' +
+      var thumb = item.item.thumb
+        ? '<img src="' + escapeHtml(item.item.thumb) + '" alt="">'
+        : '♪';
+      return '<div class="sb-find" onclick="openReleaseDetail(' + item.item.id + ')">' +
+        '<div class="sb-find-thumb">' + thumb + '</div>' +
+        '<div class="sb-find-info">' +
+          '<div class="sb-find-artist">' + escapeHtml(item.item.artist) + '</div>' +
+          '<div class="sb-find-title">' + escapeHtml(item.item.title) + '</div>' +
         '</div>' +
-        '<div class="dash-find-price">$' + price.toFixed(2) + '</div>' +
+        '<div class="sb-find-price">$' + price.toFixed(2) + '</div>' +
       '</div>';
-    }).join('') +
-    '</div>';
-
-  // Store breakdown
-  document.getElementById('dashStores').innerHTML =
-    '<div class="dash-section-title">In Stock By Store</div>' +
-    '<div class="dash-store-bars">' +
-    Object.keys(storeCounts).sort(function(a,b){return storeCounts[b]-storeCounts[a];}).map(function(store) {
-      var pct = Math.round((storeCounts[store] / total) * 100);
-      var logo = storeLogoMap[store] ? '<img src="img/' + storeLogoMap[store] + '" alt="">' : '';
-      return '<div class="dash-bar-row">' +
-        '<div class="dash-bar-label">' + logo + escapeHtml(storeDisplayName[store] || store) + '</div>' +
-        '<div class="dash-bar-track"><div class="dash-bar-fill" style="width:' + Math.max(pct * 4, 4) + '%"></div></div>' +
-        '<div class="dash-bar-count">' + storeCounts[store] + '</div>' +
-      '</div>';
-    }).join('') +
-    '</div>';
-
-  // Genre breakdown
-  document.getElementById('dashGenres').innerHTML =
-    '<div class="dash-section-title">Your Collection By Genre</div>' +
-    '<div class="dash-genre-chips">' +
-    topGenres.map(function(g) {
-      var pct = Math.round((genreCounts[g] / total) * 100);
-      return '<div class="dash-genre-chip"><span class="dash-genre-name">' + escapeHtml(g) + '</span><span class="dash-genre-count">' + genreCounts[g] + ' · ' + pct + '%</span></div>';
-    }).join('') +
-    '</div>';
-
-  // Discover section — async, loads recommendations from server
-  var discoverWrap = document.getElementById('dashDiscover');
-  if (discoverWrap) {
-    discoverWrap.style.display = '';
-    loadDiscoverSection();
+    }).join('');
+    sbFinds.style.display = '';
   }
 }
 
@@ -3629,6 +3627,8 @@ function loadCollection(forceRefresh) {
   document.getElementById('collCount').textContent = '';
   document.getElementById('collStatsBar').innerHTML = '';
   document.getElementById('collGenreRow').innerHTML = '';
+  var cgc = document.getElementById('collGenreChart');
+  if (cgc) { cgc.style.display = 'none'; cgc.innerHTML = ''; }
 
   var url = 'api/collection/' + encodeURIComponent(username) + (forceRefresh ? '?refresh=1' : '');
 
@@ -3653,6 +3653,7 @@ function loadCollection(forceRefresh) {
       _collectionLoaded = true;
       renderCollectionStats(data.stats);
       renderCollectionGenres();
+      renderCollectionGenreChart();
       // Load gem scores so collection cards get tier badges
       fetchGemScores(username);
       renderCollectionGrid();
@@ -3705,6 +3706,34 @@ function renderCollectionGenres() {
       return '<button class="coll-genre-pill' + (g === _collGenreFilter ? ' active' : '') +
              '" onclick="setCollGenre(\'' + escapeHtml(g) + '\')">' + escapeHtml(g) + ' <span class="coll-pill-count">' + genreCounts[g] + '</span></button>';
     }).join('');
+}
+
+function renderCollectionGenreChart() {
+  var el = document.getElementById('collGenreChart');
+  if (!el || !_collectionData || !_collectionData.length) return;
+
+  var total = _collectionData.length;
+  var genreCounts = {};
+  _collectionData.forEach(function(item) {
+    (item.genres || '').split('|').map(function(g) { return g.trim(); }).filter(Boolean)
+      .forEach(function(g) { genreCounts[g] = (genreCounts[g] || 0) + 1; });
+  });
+
+  var genres = Object.keys(genreCounts).sort(function(a,b) { return genreCounts[b]-genreCounts[a]; }).slice(0, 8);
+  if (!genres.length) { el.style.display = 'none'; return; }
+
+  el.style.display = '';
+  el.innerHTML =
+    '<div class="cgc-title">Your Collection By Genre</div>' +
+    '<div class="cgc-chips">' +
+    genres.map(function(g) {
+      var pct = Math.round((genreCounts[g] / total) * 100);
+      return '<div class="cgc-chip" onclick="setCollGenre(\'' + escapeHtml(g) + '\')">' +
+        '<span class="cgc-name">' + escapeHtml(g) + '</span>' +
+        '<span class="cgc-meta">' + genreCounts[g] + ' · ' + pct + '%</span>' +
+      '</div>';
+    }).join('') +
+    '</div>';
 }
 
 function setCollGenre(genre) {
@@ -3931,7 +3960,7 @@ function loadDiscover() {
   var username = getCurrentUsername();
   if (!username) {
     document.getElementById('discBody').innerHTML =
-      '<div class="disc-empty">Connect your Discogs account to use Discover.</div>';
+      '<div class="disc-empty"><div class="disc-empty-title">Discover</div><div class="disc-empty-sub">Connect your Discogs and we\'ll recommend wax based on your taste.</div></div>';
     return;
   }
   document.getElementById('discBody').innerHTML =
@@ -4288,7 +4317,7 @@ function renderDiscogsSection() {
   if (items.length === 0 && !syncing) {
     var extBtn = _extInstalled
       ? '<button class="disc-discogs-ext-btn" onclick="triggerDiscogsSync()">⛏ Sync Discogs Prices</button>'
-      : '<div class="disc-discogs-ext-hint">Install the Gold Digger Chrome Extension to sync seller prices from your Discogs account.</div>';
+      : '<div class="disc-discogs-ext-hint">Install the Wax Digger Chrome Extension to sync seller prices from your Discogs account.</div>';
     return syncBannerHtml +
       '<div class="disc-discogs-empty">' +
         '<img src="img/discogs.png" style="width:20px;height:20px;opacity:0.5;margin-bottom:10px">' +
