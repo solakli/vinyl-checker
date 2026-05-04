@@ -451,12 +451,12 @@ const TOOLS = [
     },
     {
         name: 'get_catalog_discoveries',
-        description: 'Browse the full catalog inventory of Further Records, Gramaphone, Octopus Records NYC, and Underground Vinyl for records NOT on the user\'s wantlist that match their taste. Uses the user\'s genre/style profile to score each available record. Great for "what should I discover today", "what\'s in stock at Further that fits my taste", or "show me records I haven\'t heard of". Returns taste-match score, price, and store.',
+        description: 'Browse the full catalog inventory of Further Records, Gramaphone, Octopus Records NYC, Underground Vinyl, and Hardwax for records NOT on the user\'s wantlist that match their taste. Uses Engine 1: TF-IDF style scoring, artist/label affinity, style cluster expansion, diversity cap. Each result includes a matchPct and reasons (e.g. "because you want Burial" or "Minimal Techno"). Great for "what should I discover today", "what\'s in stock at Further that fits my taste", "show me deep house at Gramaphone". Note: Octopus has no artist data (style/label only); UVS has no label data (artist/style only).',
         input_schema: {
             type: 'object',
             properties: {
                 username:  { type: 'string', description: 'Discogs username' },
-                store:     { type: 'string', description: 'Limit to one catalog store: "Further Records", "Gramaphone", "Octopus Records NYC", "Underground Vinyl" (optional — all 4 if omitted)' },
+                store:     { type: 'string', description: 'Limit to one store (optional — all if omitted): "Further Records", "Gramaphone", "Octopus Records NYC", "Underground Vinyl", "Hardwax"' },
                 genre:     { type: 'string', description: 'Filter by genre/style keyword (optional, e.g. "Techno", "House", "Ambient")' },
                 max_price: { type: 'number', description: 'Max price in USD (optional)' },
                 limit:     { type: 'number', description: 'Max results (default 20, max 50)' }
@@ -735,8 +735,9 @@ function buildTasteProfile(d, userId) {
     var SKIP_ARTISTS = new Set(['various', 'various artists', 'va', 'v/a', 'v.a.', 'unknown', '']);
 
     all.forEach(function(r) {
-        (r.styles||'').split('|').forEach(function(s){ s=s.trim(); if(s) styles[s]=(styles[s]||0)+1; });
-        (r.genres||'').split('|').forEach(function(g){ g=g.trim(); if(g) genres[g]=(genres[g]||0)+1; });
+        // Wantlist/collection stores genres+styles as comma-separated strings ("Tech House, Breaks")
+        (r.styles||'').split(/,\s*/).forEach(function(s){ s=s.trim(); if(s) styles[s]=(styles[s]||0)+1; });
+        (r.genres||'').split(/,\s*/).forEach(function(g){ g=g.trim(); if(g) genres[g]=(genres[g]||0)+1; });
         if (r.label) {
             r.label.split(/[,/]/).forEach(function(l){
                 l=l.trim().replace(/\s*\d+\s*$/, '').trim();
@@ -1591,98 +1592,117 @@ function toolGetGemStoreHits({ username, tiers, min_score, limit }) {
     };
 }
 
+// ─── Store name ↔ DB slug maps ────────────────────────────────────────────────
+// store_inventory uses lowercase slugs; WAXY tools use display names.
+var STORE_SLUG = {
+    'Further Records':      'further',
+    'Gramaphone':           'gramaphone',
+    'Octopus Records NYC':  'octopus',
+    'Underground Vinyl':    'uvs',
+    'Hardwax':              'hardwax',
+    // accept slugs directly too
+    'further': 'further', 'gramaphone': 'gramaphone',
+    'octopus': 'octopus', 'uvs': 'uvs', 'hardwax': 'hardwax',
+};
+var STORE_DISPLAY = {
+    'further':    'Further Records',
+    'gramaphone': 'Gramaphone',
+    'octopus':    'Octopus Records NYC',
+    'uvs':        'Underground Vinyl',
+    'hardwax':    'Hardwax',
+};
+// Per-store notes about data gaps (so WAXY can caveat its output)
+var STORE_DATA_NOTES = {
+    'octopus': 'Octopus has no artist field — scored on style/label only',
+    'uvs':     'UVS has no label field — scored on artist/style only',
+};
+
 // ─── get_catalog_discoveries ──────────────────────────────────────────────────
-// Browse store_inventory (catalog stores) for records NOT on user's wantlist,
-// scored by genre/style taste match.
+// Delegates to Engine 1 (recommendations.js): full TF-IDF style scoring,
+// artist/label affinity, style cluster expansion, diversity cap.
+// Fixes the old version which (a) used display names as DB slugs → 0 results,
+// (b) did flat tag-frequency overlap with no IDF, label graph, or cluster expansion.
 function toolGetCatalogDiscoveries({ username, store, genre, max_price, limit }) {
-    var d = db.getDb();
-    var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
-    if (!user) return { error: 'User not found: ' + username };
     limit = Math.min(limit || 20, 50);
 
-    // Build genre+style frequency map from wantlist + collection
-    var allItems = d.prepare('SELECT genres, styles FROM wantlist WHERE user_id=? AND active=1').all(user.id)
-        .concat(d.prepare('SELECT genres, styles FROM collection WHERE user_id=?').all(user.id));
-    var freqMap = {};
-    allItems.forEach(function(w) {
-        (w.genres || '').split('|').concat((w.styles || '').split('|')).forEach(function(t) {
-            t = t.trim().toLowerCase();
-            if (t) freqMap[t] = (freqMap[t] || 0) + 1;
+    // Resolve store filter to DB slug
+    var storeSlug = store ? (STORE_SLUG[store] || null) : null;
+    if (store && !storeSlug) {
+        return { error: 'Unknown store: "' + store + '". Valid: Further Records, Gramaphone, Octopus Records NYC, Underground Vinyl, Hardwax' };
+    }
+
+    var rec;
+    try { rec = require('./lib/recommendations'); } catch(e) {
+        return { error: 'Recommendations engine unavailable: ' + e.message };
+    }
+
+    // Run Engine 1 — fetch extra headroom so post-filters still yield enough results
+    var fetchLimit = storeSlug ? limit * 8 : limit * 3;
+    var result;
+    try { result = rec.getRecommendations(username, fetchLimit); } catch(e) {
+        return { error: 'Discovery failed: ' + e.message };
+    }
+
+    if (!result || !result.recommendations || !result.recommendations.length) {
+        return { username, count: 0, discoveries: [],
+            tip: result && result.wantlistSize === 0
+                ? 'Wantlist is empty — sync first.'
+                : 'No catalog matches found.' };
+    }
+
+    var items = result.recommendations;
+
+    // Filter by store slug
+    if (storeSlug) {
+        items = items.filter(function(r) { return r.store === storeSlug; });
+    }
+
+    // Filter by genre tag
+    if (genre) {
+        var gl = genre.toLowerCase();
+        items = items.filter(function(r) {
+            return (r.tags || []).some(function(t) { return t.toLowerCase().includes(gl); });
         });
-    });
-    var maxFreq = Math.max(1, Math.max.apply(null, Object.values(freqMap)));
+    }
 
-    // Get wantlist artist+title set for exclusion (normalized)
-    var wantlistArtists = new Set();
-    d.prepare('SELECT artist FROM wantlist WHERE user_id=? AND active=1').all(user.id).forEach(function(w) {
-        wantlistArtists.add((w.artist || '').toLowerCase().trim());
-    });
+    // Filter by max price
+    if (max_price) {
+        items = items.filter(function(r) { return !r.price || r.price <= max_price; });
+    }
 
-    // Query catalog inventory
-    var CATALOG_STORES = ['Further Records', 'Gramaphone', 'Octopus Records NYC', 'Underground Vinyl'];
-    var storeFilter = store ? [store] : CATALOG_STORES;
-    var storePlaceholders = storeFilter.map(function() { return '?'; }).join(',');
-
-    var genreFilter = genre ? '%' + genre.toLowerCase() + '%' : null;
-    var priceFilter = max_price || null;
-
-    var invRows = d.prepare(
-        'SELECT id, store, artist, title, label, catno, tags, price_usd, currency, url, image_url' +
-        ' FROM store_inventory' +
-        ' WHERE store IN (' + storePlaceholders + ')' +
-        ' AND available = 1' +
-        (priceFilter ? ' AND (price_usd IS NULL OR price_usd <= ' + priceFilter + ')' : '') +
-        (genreFilter ? " AND LOWER(tags) LIKE '" + genreFilter.replace(/'/g,"''") + "'" : '') +
-        ' ORDER BY RANDOM() LIMIT 2000'
-    ).all(...storeFilter);
-
-    // Score + exclude wantlist artists
-    var scored = [];
-    invRows.forEach(function(row) {
-        // Exclude if artist is already on wantlist
-        var artistNorm = (row.artist || '').toLowerCase().trim();
-        if (wantlistArtists.has(artistNorm)) return;
-
-        var tags = [];
-        try { tags = JSON.parse(row.tags || '[]'); } catch(e) {}
-
-        // Taste score: sum of freq-weighted tag matches
-        var matchedFreq = 0;
-        tags.forEach(function(tag) {
-            var parts = tag.toLowerCase().split('/');
-            parts.forEach(function(p) {
-                p = p.trim();
-                var f = freqMap[p] || 0;
-                if (f > 0) matchedFreq += f / maxFreq;
-            });
-        });
-        var tasteScore = tags.length > 0 ? Math.min(1, matchedFreq / Math.max(1, tags.length)) : 0;
-        if (tasteScore === 0 && !genre) return; // skip zero-match when no genre override
-
-        scored.push({
-            store:       row.store,
-            artist:      row.artist,
-            title:       row.title,
-            label:       row.label || null,
-            catno:       row.catno || null,
-            tags:        tags.slice(0, 6),
-            price_usd:   row.price_usd ? '$' + row.price_usd.toFixed(2) : null,
-            url:         row.url || null,
-            tasteScore:  Math.round(tasteScore * 100)
-        });
+    var discoveries = items.slice(0, limit).map(function(r) {
+        return {
+            store:     STORE_DISPLAY[r.store] || r.store,
+            artist:    r.artist,
+            title:     r.title,
+            label:     r.label  || null,
+            catno:     r.catno  || null,
+            tags:      (r.tags  || []).slice(0, 6),
+            price_usd: r.price  ? '$' + Number(r.price).toFixed(2) : null,
+            url:       r.url    || null,
+            matchPct:  r.matchPct,
+            reasons:   r.reasons,   // e.g. ["Minimal Techno", "Hyperdub", "Burial"]
+        };
     });
 
-    scored.sort(function(a, b) { return b.tasteScore - a.tasteScore; });
-    scored = scored.slice(0, limit);
+    // Collect which stores actually appear in results (for transparency)
+    var storesInResults = [...new Set(discoveries.map(function(r) { return r.store; }))];
 
     return {
-        username:       username,
-        stores_checked: storeFilter,
-        count:          scored.length,
-        discoveries:    scored,
-        tip:            scored.length === 0
-            ? 'No catalog matches found. Try a broader genre filter or omit the genre parameter.'
-            : null
+        username,
+        stores_checked:    storeSlug ? [STORE_DISPLAY[storeSlug]] : Object.values(STORE_DISPLAY),
+        stores_in_results: storesInResults,
+        count:             discoveries.length,
+        discoveries,
+        engine_stats: {
+            wantlist_size:  result.wantlistSize,
+            inventory_size: result.inventorySize,
+            compute_ms:     result.computeMs,
+        },
+        data_notes: storeSlug && STORE_DATA_NOTES[storeSlug] ? STORE_DATA_NOTES[storeSlug] : null,
+        tip: discoveries.length === 0
+            ? 'No matches after filtering. Try omitting the store or genre filter.'
+            : null,
     };
 }
 
