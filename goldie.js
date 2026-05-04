@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * GOLDIE — Vinyl Intelligence Agent
+ * WAXY — Vinyl Intelligence Agent
  *
  * Runs as two things simultaneously:
  *   1. HTTP agent server  — POST /chat  (streaming Claude responses + tool calls)
@@ -116,7 +116,7 @@ function computePersonalityTags(genreCounts, styleCounts, totalItems, avgHave, t
 // KNOWLEDGE BASE — GOLDIE's system prompt
 // ═══════════════════════════════════════════════════════════════════════════
 
-const SYSTEM_PROMPT = `You are GOLDIE, an expert vinyl record intelligence agent embedded in a vinyl-checker platform. You help diggers (vinyl collectors) discover, track and buy records.
+const SYSTEM_PROMPT = `You are WAXY, an expert vinyl record intelligence agent embedded in the Wax Digger platform. You help diggers (vinyl collectors) discover, track and buy records.
 
 You have access to a set of tools that query the platform's live database. Always use tools to get fresh data before making recommendations — never guess at prices, stock levels or user taste.
 
@@ -128,7 +128,7 @@ You have access to a set of tools that query the platform's live database. Alway
 - suggest_cart is a lightweight fallback that only sees scraped in-stock items — not Discogs sellers and not real shipping costs.
 
 ## Chrome Extension & Discogs Marketplace Sync
-The platform has a Chrome extension called **Gold Digger** that syncs real Discogs marketplace data:
+The platform has a Chrome extension called **Wax Digger** that syncs real Discogs marketplace data:
 - **Marketplace sync**: scrapes individual seller listings for every wantlist item from Discogs.com, capturing seller username, seller rating, condition (VG+/NM/etc.), price, and ships-from country.
 - **Wantlist sync**: keeps the local DB in sync with the user's Discogs wantlist in real time.
 - This data lets you compare store prices vs Discogs marketplace prices, find the best-rated seller, or filter by condition and shipping origin.
@@ -181,10 +181,15 @@ When a user says "add to cart", "build my cart", or "what should I buy":
 - Both are used for taste profiling. Use get_collection when a user asks "what do I own", "show my collection", or when comparing with another user's collection.
 
 ## Personality
-You are knowledgeable, passionate about vinyl culture, concise. You speak like an experienced record store owner who also knows data. You surface insights ("this press only has 47 collectors worldwide", "98% seller rating ships from Germany — solid buy") and make opinionated recommendations backed by data. Keep responses focused and scannable — use bullet lists when presenting multiple items.
+You are WAXY — sharp, opinionated, deeply embedded in vinyl culture. You speak like a seasoned crate digger who also happens to understand data. Short sentences. No filler. Surface the insight immediately ("only 47 collectors own this worldwide", "98% seller rating ships from Germany — solid buy", "3 DJs mentioned this in comments — it's a weapon").
+
+Make opinionated calls when asked. Don't just list options — tell the user what to do and why. Back everything with data but don't bury the recommendation in caveats.
+
+Keep responses scannable: bullet lists for multiple items, bold for key figures, one-line reasons per record.
 
 When suggesting carts, group by store and include: item name, price, rarity (community_have), and a one-line reason.
 When surfacing Discogs marketplace listings, always show: seller, condition, price, ships-from, and seller rating.
+When showing hidden gems, lead with the gem tier and view count — that's the signal.
 
 Today's date: ${new Date().toISOString().slice(0,10)}`;
 
@@ -297,7 +302,7 @@ const TOOLS = [
     },
     {
         name: 'get_discogs_marketplace',
-        description: 'Query real Discogs marketplace seller listings for a user\'s wantlist items — synced by the Gold Digger Chrome extension. Returns individual seller listings with condition, price, seller rating, and ships-from country. Use this to find the best deal on a specific record, compare Discogs prices vs store prices, or filter by condition/origin. Also returns Discogs summary stats (lowest price, num copies for sale) where available.',
+        description: 'Query real Discogs marketplace seller listings for a user\'s wantlist items — synced by the Wax Digger Chrome extension. Returns individual seller listings with condition, price, seller rating, and ships-from country. Use this to find the best deal on a specific record, compare Discogs prices vs store prices, or filter by condition/origin. Also returns Discogs summary stats (lowest price, num copies for sale) where available.',
         input_schema: {
             type: 'object',
             properties: {
@@ -925,7 +930,7 @@ function toolGetDiscogsMarketplace({ username, query, min_condition, ships_from,
         return {
             listings: [],
             total: 0,
-            message: 'No Discogs marketplace listings found' + (query ? ' for "' + query + '"' : '') + '. Run a marketplace sync from the app or use the Gold Digger Chrome extension to fetch seller data.'
+            message: 'No Discogs marketplace listings found' + (query ? ' for "' + query + '"' : '') + '. Run a marketplace sync from the app or use the Wax Digger Chrome extension to fetch seller data.'
         };
     }
 
@@ -1945,7 +1950,7 @@ function startHttpServer() {
 
         // ── GET /health ────────────────────────────────────────────────────
         if (req.method === 'GET' && url === '/health') {
-            return sendJSON(res, 200, { status: 'ok', name: 'GOLDIE' });
+            return sendJSON(res, 200, { status: 'ok', name: 'WAXY' });
         }
 
         // ── GET /sessions/:username ────────────────────────────────────────
@@ -2015,7 +2020,7 @@ async function startMcpServer() {
     const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
     const { z } = require('zod');
 
-    const mcp = new McpServer({ name: 'goldie', version: '1.0.0', description: 'Vinyl intelligence agent for vinyl-checker platform' });
+    const mcp = new McpServer({ name: 'waxy', version: '1.0.0', description: 'WAXY — Vinyl intelligence agent for Wax Digger platform' });
 
     // Register each tool
     TOOLS.forEach(function(tool) {
@@ -2041,7 +2046,7 @@ async function startMcpServer() {
     });
 
     // Also expose a chat tool for conversational use
-    mcp.tool('goldie_chat', 'Have a conversation with GOLDIE about your vinyl collection. GOLDIE will use its other tools automatically.', {
+    mcp.tool('waxy_chat', 'Have a conversation with WAXY about your vinyl collection. WAXY will use its other tools automatically.', {
         message:    z.string().describe('Your message or question'),
         username:   z.string().optional().describe('Discogs username for context'),
         session_id: z.string().optional().describe('Session ID to continue a conversation')
@@ -2054,7 +2059,7 @@ async function startMcpServer() {
 
     var transport = new StdioServerTransport();
     await mcp.connect(transport);
-    console.error('[GOLDIE] MCP server running on stdio');
+    console.error('[WAXY] MCP server running on stdio');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
