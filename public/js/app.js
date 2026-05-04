@@ -5433,15 +5433,36 @@ function _renderDiggers(diggers, currentUser) {
       var name = typeof g === 'string' ? g : (g.name || '');
       return name ? '<span class="prof-digger-genre">' + escapeHtml(name) + '</span>' : '';
     }).join('');
-    // Taste match badge — handle both object {overall,style,...} and legacy number
+    // Taste match badge + dimension breakdown
     var tm = d.tasteMatch;
     var overall = tm == null ? null : (typeof tm === 'object' ? tm.overall : tm);
+    var matchCls = overall == null ? '' : (overall >= 70 ? 'match-high' : overall >= 40 ? 'match-mid' : 'match-low');
     var matchHtml = '';
     if (overall != null) {
-      var matchCls = overall >= 70 ? 'match-high' : overall >= 40 ? 'match-mid' : 'match-low';
       matchHtml = '<div class="prof-taste-badge ' + matchCls + '">' + overall +
         '<span class="prof-taste-pct-sym">%</span>' +
         '<span class="prof-taste-label">match</span></div>';
+    }
+    // Dimension breakdown bars (top 3 by score)
+    var dimBreakdown = '';
+    if (tm && typeof tm === 'object') {
+      var PDIMS = [
+        { key:'style', label:'Style' }, { key:'era', label:'Era' },
+        { key:'artist', label:'Artist' }, { key:'rarity', label:'Rarity' },
+        { key:'label', label:'Label' }, { key:'underground', label:'Undrgrd' }
+      ];
+      var topDims = PDIMS.filter(function(pd) { return tm[pd.key] != null; })
+                         .sort(function(a, b) { return tm[b.key] - tm[a.key]; })
+                         .slice(0, 3);
+      if (topDims.length) {
+        dimBreakdown = '<div class="prof-digger-dims">' +
+          topDims.map(function(pd) {
+            var v = tm[pd.key];
+            return '<span class="prof-digger-dim-chip ' + matchCls + '">' +
+              pd.label + ' ' + v + '</span>';
+          }).join('') +
+        '</div>';
+      }
     }
     return '<div class="prof-digger-card" onclick="profLoadPublic(\'' + escapeAttr(d.username) + '\')">' +
       '<div class="prof-digger-avatar">' + escapeHtml(d.username.charAt(0).toUpperCase()) + '</div>' +
@@ -5455,6 +5476,7 @@ function _renderDiggers(diggers, currentUser) {
           '<span class="prof-digger-stat dim">' + ageLabel + '</span>' +
         '</div>' +
         (genreHtml ? '<div class="prof-digger-genres">' + genreHtml + '</div>' : '') +
+        dimBreakdown +
       '</div>' +
       matchHtml +
     '</div>';

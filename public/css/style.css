@@ -6517,17 +6517,17 @@ body.light .prof-style-pill { background: #f5f5f5; border-color: #e5e5e5; color:
   font-family: 'Oswald', sans-serif;
   white-space: nowrap;
 }
-.prof-digger-pct {
-  font-family: 'Oswald', sans-serif;
-  font-size: 18px;
-  font-weight: 700;
-  color: #2a2a2a;
-  flex-shrink: 0;
-  transition: color 0.15s;
-  min-width: 44px;
-  text-align: right;
+/* Dimension chips on profile digger cards */
+.prof-digger-dims { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.prof-digger-dim-chip {
+  font-size: 9px; font-family: 'Oswald', sans-serif;
+  padding: 1px 5px; border-radius: 3px;
+  background: #1a1a1a; border: 1px solid #252525;
+  color: #444; white-space: nowrap;
 }
-.prof-digger-card:hover .prof-digger-pct { color: var(--silver); }
+.prof-digger-dim-chip.match-high { background: #4ecdc408; border-color: #4ecdc430; color: #4ecdc4; }
+.prof-digger-dim-chip.match-mid  { background: #C9A22708; border-color: #C9A22730; color: #C9A227; }
+.prof-digger-dim-chip.match-low  { background: #1a1a1a;   border-color: #252525;   color: #444;    }
 
 /* Light mode */
 body.light .prof-diggers-section { background: #fff; border-color: #eee; }
@@ -6536,6 +6536,7 @@ body.light .prof-digger-card:hover { border-color: var(--silver); background: #f
 body.light .prof-digger-avatar   { background: #f0f0f0; border-color: #e0e0e0; }
 body.light .prof-digger-name     { color: #333; }
 body.light .prof-digger-genre    { background: #f0f0f0; border-color: #e5e5e5; color: #aaa; }
+body.light .prof-digger-dim-chip { background: #f5f5f5; border-color: #e5e5e5; color: #aaa; }
 
 /* ─── Profile: Collection panel ─────────────────────────────────────────── */
 .prof-coll-section {
