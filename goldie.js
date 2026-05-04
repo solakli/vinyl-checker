@@ -777,16 +777,26 @@ function buildTasteProfile(d, userId) {
         } catch(e) {}
     }
 
-    // Underground %: from streaming_metadata
+    // Underground %: age-normalised annual view rate (same as gem-score obscurityScore)
     var undergroundPct = null;
     try {
         var smRows = d.prepare(`
-            SELECT sm.youtube_view_count FROM streaming_metadata sm
+            SELECT sm.youtube_view_count, sm.youtube_published_at FROM streaming_metadata sm
             JOIN wantlist w ON w.discogs_id=sm.discogs_id
             WHERE w.user_id=? AND w.active=1 AND sm.youtube_view_count IS NOT NULL
         `).all(userId);
         if (smRows.length) {
-            var ugCount = smRows.filter(function(r){ return r.youtube_view_count < 10000; }).length;
+            var ugCount = smRows.filter(function(r) {
+                var views = r.youtube_view_count;
+                if (r.youtube_published_at) {
+                    var ageYears = Math.max(
+                        (Date.now() - new Date(r.youtube_published_at).getTime()) / (365.25 * 24 * 3600 * 1000),
+                        1 / 12
+                    );
+                    views = views / ageYears;
+                }
+                return views < 5000;    // < 5k views/yr = underground
+            }).length;
             undergroundPct = Math.round(ugCount / smRows.length * 100);
         }
     } catch(e) {}

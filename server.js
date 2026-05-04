@@ -1492,12 +1492,25 @@ function buildTasteProfileForMatch(d, userId) {
     var undergroundPct = null;
     try {
         var smRows = d.prepare(`
-            SELECT sm.youtube_view_count FROM streaming_metadata sm
+            SELECT sm.youtube_view_count, sm.youtube_published_at FROM streaming_metadata sm
             JOIN wantlist w ON w.discogs_id=sm.discogs_id
             WHERE w.user_id=? AND w.active=1 AND sm.youtube_view_count IS NOT NULL
         `).all(userId);
         if (smRows.length) {
-            var ugCount = smRows.filter(function(r){ return r.youtube_view_count < 10000; }).length;
+            // Use age-normalised annual rate (same formula as gem-score obscurityScore).
+            // A 15-yr-old video with 15k views is underground; a 6-month-old with 15k is not.
+            // Threshold: < 5k views/year ≈ obscurityScore >= 50.
+            var ugCount = smRows.filter(function(r) {
+                var views = r.youtube_view_count;
+                if (r.youtube_published_at) {
+                    var ageYears = Math.max(
+                        (Date.now() - new Date(r.youtube_published_at).getTime()) / (365.25 * 24 * 3600 * 1000),
+                        1 / 12
+                    );
+                    views = views / ageYears;   // annualised rate
+                }
+                return views < 5000;            // < 5k/yr = underground
+            }).length;
             undergroundPct = Math.round(ugCount / smRows.length * 100);
         }
     } catch(e) {}
