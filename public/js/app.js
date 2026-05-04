@@ -5421,33 +5421,42 @@ function _renderDiggers(diggers, currentUser) {
   if (!el) return;
   var others = diggers.filter(function(d) { return d.username !== currentUser; });
   if (others.length === 0) { el.innerHTML = '<span class="prof-empty-small">No other diggers yet.</span>'; return; }
+  // Sort by taste match desc
+  others.sort(function(a, b) {
+    var aV = a.tasteMatch ? (typeof a.tasteMatch === 'object' ? a.tasteMatch.overall : a.tasteMatch) : 0;
+    var bV = b.tasteMatch ? (typeof b.tasteMatch === 'object' ? b.tasteMatch.overall : b.tasteMatch) : 0;
+    return bV - aV;
+  });
   el.innerHTML = others.map(function(d) {
-    var pct = d.inStockPct || 0;
     var ageLabel = d.lastScan ? formatRelativeTime(d.lastScan) : 'Never';
-    var genreHtml = d.topGenres.slice(0,3).map(function(g) {
-      return '<span class="prof-digger-genre">' + escapeHtml(g) + '</span>';
+    var genreHtml = (d.topGenres || []).slice(0,3).map(function(g) {
+      var name = typeof g === 'string' ? g : (g.name || '');
+      return name ? '<span class="prof-digger-genre">' + escapeHtml(name) + '</span>' : '';
     }).join('');
-    // Taste match badge (shown when computed)
+    // Taste match badge — handle both object {overall,style,...} and legacy number
+    var tm = d.tasteMatch;
+    var overall = tm == null ? null : (typeof tm === 'object' ? tm.overall : tm);
     var matchHtml = '';
-    if (typeof d.tasteMatch === 'number') {
-      var matchCls = d.tasteMatch >= 70 ? 'match-high' : d.tasteMatch >= 40 ? 'match-mid' : 'match-low';
-      matchHtml = '<div class="prof-taste-badge ' + matchCls + '">' + d.tasteMatch + '<span class="prof-taste-pct-sym">%</span><span class="prof-taste-label">match</span></div>';
+    if (overall != null) {
+      var matchCls = overall >= 70 ? 'match-high' : overall >= 40 ? 'match-mid' : 'match-low';
+      matchHtml = '<div class="prof-taste-badge ' + matchCls + '">' + overall +
+        '<span class="prof-taste-pct-sym">%</span>' +
+        '<span class="prof-taste-label">match</span></div>';
     }
     return '<div class="prof-digger-card" onclick="profLoadPublic(\'' + escapeAttr(d.username) + '\')">' +
       '<div class="prof-digger-avatar">' + escapeHtml(d.username.charAt(0).toUpperCase()) + '</div>' +
       '<div class="prof-digger-info">' +
         '<div class="prof-digger-name">' + escapeHtml(d.username) + '</div>' +
         '<div class="prof-digger-stats">' +
-          '<span class="prof-digger-stat">' + d.wantlist + ' want</span>' +
+          '<span class="prof-digger-stat">' + (d.wantlist || 0) + ' want</span>' +
           '<span class="prof-digger-dot">·</span>' +
-          '<span class="prof-digger-stat gold">' + d.inStock + ' in stock</span>' +
+          '<span class="prof-digger-stat gold">' + (d.inStock || 0) + ' in stock</span>' +
           '<span class="prof-digger-dot">·</span>' +
           '<span class="prof-digger-stat dim">' + ageLabel + '</span>' +
         '</div>' +
         (genreHtml ? '<div class="prof-digger-genres">' + genreHtml + '</div>' : '') +
       '</div>' +
       matchHtml +
-      '<div class="prof-digger-pct">' + pct.toFixed(1) + '%</div>' +
     '</div>';
   }).join('');
 }
