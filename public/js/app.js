@@ -3925,30 +3925,70 @@ function _renderDiscoverDiggerCards(diggers, currentUser, container) {
     container.innerHTML = '<div class="disc-empty">No other diggers yet — invite some friends.</div>';
     return;
   }
-  // Sort by taste match desc
-  others.sort(function(a, b) { return (b.tasteMatch || 0) - (a.tasteMatch || 0); });
+  // Sort by taste match desc (tasteMatch is now an object {overall,...})
+  others.sort(function(a, b) {
+    var aS = a.tasteMatch ? (a.tasteMatch.overall != null ? a.tasteMatch.overall : a.tasteMatch) : 0;
+    var bS = b.tasteMatch ? (b.tasteMatch.overall != null ? b.tasteMatch.overall : b.tasteMatch) : 0;
+    return bS - aS;
+  });
 
   container.innerHTML = others.map(function(d) {
-    var matchCls = (d.tasteMatch >= 70) ? 'match-high' : (d.tasteMatch >= 40) ? 'match-mid' : 'match-low';
-    var matchHtml = typeof d.tasteMatch === 'number'
-      ? '<div class="disc-digger-match ' + matchCls + '">' + d.tasteMatch + '%<span class="disc-digger-match-label">match</span></div>'
+    // Normalise tasteMatch: support both old (number) and new (object) format
+    var tm = d.tasteMatch;
+    var overall = tm == null ? null : (typeof tm === 'object' ? tm.overall : tm);
+    var matchCls = overall == null ? '' : (overall >= 70 ? 'match-high' : overall >= 40 ? 'match-mid' : 'match-low');
+    var matchHtml = overall != null
+      ? '<div class="disc-digger-match ' + matchCls + '">' + overall + '%<span class="disc-digger-match-label">match</span></div>'
       : '';
+
+    // Dimension breakdown bars — show top 3 non-null dims
+    var dimBreakdown = '';
+    if (tm && typeof tm === 'object') {
+      var DIMS = [
+        { key:'style',       label:'Style'   },
+        { key:'era',         label:'Era'     },
+        { key:'artist',      label:'Artist'  },
+        { key:'label',       label:'Label'   },
+        { key:'rarity',      label:'Rarity'  },
+        { key:'underground', label:'Undrgrnd'}
+      ];
+      var availDims = DIMS.filter(function(d) { return tm[d.key] != null; })
+                         .sort(function(a,b) { return tm[b.key] - tm[a.key]; })
+                         .slice(0, 3);
+      if (availDims.length) {
+        dimBreakdown = '<div class="disc-digger-dims">' +
+          availDims.map(function(dim) {
+            var v = tm[dim.key];
+            var barW = Math.round(v * 0.9);  // cap at 90px for design
+            return '<div class="disc-digger-dim">' +
+              '<span class="disc-digger-dim-label">' + dim.label + '</span>' +
+              '<div class="disc-digger-dim-bar"><div class="disc-digger-dim-fill" style="width:' + barW + '%"></div></div>' +
+              '<span class="disc-digger-dim-val">' + v + '</span>' +
+            '</div>';
+          }).join('') +
+        '</div>';
+      }
+    }
+
     var tags = (d.personalityTags || []).slice(0, 2).map(function(t) {
       return '<span class="disc-digger-tag">' + (t.icon || '') + ' ' + escapeHtml(t.label) + '</span>';
     }).join('');
+    // topGenres from new API is a plain string array; old API returned [{name}] objects
     var genres = (d.topGenres || []).slice(0, 3).map(function(g) {
-      return '<span class="disc-digger-genre">' + escapeHtml(g.name) + '</span>';
+      var name = typeof g === 'string' ? g : (g.name || '');
+      return name ? '<span class="disc-digger-genre">' + escapeHtml(name) + '</span>' : '';
     }).join('');
-    return '<div class="disc-digger-card" onclick="profLoadPublic(\'' + escapeAttr(d.username) + '\')">' +
+    return '<div class="disc-digger-card' + (overall != null ? ' has-match ' + matchCls : '') + '" onclick="profLoadPublic(\'' + escapeAttr(d.username) + '\')">' +
       '<div class="disc-digger-avatar">' + escapeHtml(d.username.charAt(0).toUpperCase()) + '</div>' +
       '<div class="disc-digger-info">' +
         '<div class="disc-digger-name">' + escapeHtml(d.username) + '</div>' +
         (tags ? '<div class="disc-digger-tags">' + tags + '</div>' : '') +
         (genres ? '<div class="disc-digger-genres">' + genres + '</div>' : '') +
+        dimBreakdown +
         '<div class="disc-digger-stats">' +
-          '<span>' + (d.wantlistSize || 0) + ' wants</span>' +
+          '<span>' + (d.wantlist || d.wantlistSize || 0) + ' wants</span>' +
           '<span>' + (d.collectionSize || d.collection || 0) + ' owned</span>' +
-          '<span>' + (d.inStockCount || 0) + ' in stock</span>' +
+          '<span>' + (d.inStock || d.inStockCount || 0) + ' in stock</span>' +
         '</div>' +
       '</div>' +
       matchHtml +

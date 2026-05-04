@@ -6831,6 +6831,41 @@ body.light .disc-digger-tag   { background: #fff8e0; border-color: #e8d890; colo
 body.light .disc-digger-genre { background: #f5f5f5; border-color: #e0e0e0; color: #888; }
 body.light .disc-digger-stats { color: #aaa; }
 
+/* ── Digger card — taste match dimension bars ─────────────────────────────── */
+.disc-digger-dims {
+  display: flex; flex-direction: column;
+  gap: 3px;
+  margin: 6px 0 5px;
+}
+.disc-digger-dim {
+  display: flex; align-items: center; gap: 5px;
+}
+.disc-digger-dim-label {
+  font-size: 9px; font-family: 'Oswald', sans-serif;
+  text-transform: uppercase; letter-spacing: 0.4px;
+  color: #444; width: 42px; flex-shrink: 0;
+}
+.disc-digger-dim-bar {
+  flex: 1; height: 3px;
+  background: #1e1e1e; border-radius: 2px;
+  overflow: hidden;
+}
+.disc-digger-dim-fill {
+  height: 100%; border-radius: 2px;
+  background: linear-gradient(90deg, #C9A22780, #C9A227);
+  transition: width 0.3s ease;
+}
+.disc-digger-dim-val {
+  font-size: 9px; color: #555;
+  width: 22px; text-align: right; flex-shrink: 0;
+}
+/* Highlight the fill colour based on card match class */
+.disc-digger-card.has-match.match-high .disc-digger-dim-fill { background: linear-gradient(90deg, #4ecdc460, #4ecdc4); }
+.disc-digger-card.has-match.match-mid  .disc-digger-dim-fill { background: linear-gradient(90deg, #C9A22760, #C9A227); }
+body.light .disc-digger-dim-label { color: #bbb; }
+body.light .disc-digger-dim-bar   { background: #eee; }
+body.light .disc-digger-dim-val   { color: #bbb; }
+
 /* ── Taste Intelligence band (Hunting / Keeping / Leaning / Store Match) ── */
 .ti-band {
   display: grid;

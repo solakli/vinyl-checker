@@ -1438,32 +1438,127 @@ app.get('/api/scan-status/:username', function (req, res) {
 });
 
 // ─── Taste-match helper ────────────────────────────────────────────────────
-function computeTasteMatch(items1, items2) {
-    // Build genre + style Sets for each user
-    var g1 = new Set(), s1 = new Set(), a1 = new Set();
-    var g2 = new Set(), s2 = new Set(), a2 = new Set();
-    items1.forEach(function(w) {
-        (w.genres||'').split('|').forEach(function(x){ x=x.trim(); if(x) g1.add(x); });
-        (w.styles||'').split('|').forEach(function(x){ x=x.trim(); if(x) s1.add(x); });
-        var a = (w.artist||'').trim();
-        if (a && a !== 'Various' && a !== 'Various Artists') a1.add(a);
+// ── Taste profile builder (wantlist + collection) ─────────────────────────────
+function buildTasteProfileForMatch(d, userId) {
+    var want = d.prepare('SELECT discogs_id,genres,styles,label,year,artist FROM wantlist WHERE user_id=? AND active=1').all(userId);
+    var coll = d.prepare('SELECT discogs_id,genres,styles,label,year,artist FROM collection WHERE user_id=?').all(userId);
+    var all  = want.concat(coll);
+
+    var styles = {}, genres = {}, labels = {}, artists = {};
+    var decades = { '60s':0,'70s':0,'80s':0,'90s':0,'00s':0,'10s':0,'20s':0 };
+    var SKIP = new Set(['various','various artists','va','v/a','v.a.','unknown','']);
+
+    all.forEach(function(r) {
+        (r.styles||'').split(/,\s*/).forEach(function(s){ s=s.trim(); if(s) styles[s]=(styles[s]||0)+1; });
+        (r.genres||'').split(/,\s*/).forEach(function(g){ g=g.trim(); if(g) genres[g]=(genres[g]||0)+1; });
+        if (r.label) {
+            r.label.split(/[,/]/).forEach(function(l){
+                l=l.trim().replace(/\s*\d+\s*$/,'').trim();
+                if (l && l.length > 1) labels[l]=(labels[l]||0)+1;
+            });
+        }
+        if (r.artist) {
+            var a = r.artist.toLowerCase().replace(/\s*[-–]\s*(ep|lp|12["']|single).*$/i,'').trim();
+            if (a && !SKIP.has(a)) artists[a]=(artists[a]||0)+1;
+        }
+        if (r.year) {
+            var yr = parseInt(r.year);
+            if      (yr>=1960&&yr<1970) decades['60s']++;
+            else if (yr>=1970&&yr<1980) decades['70s']++;
+            else if (yr>=1980&&yr<1990) decades['80s']++;
+            else if (yr>=1990&&yr<2000) decades['90s']++;
+            else if (yr>=2000&&yr<2010) decades['00s']++;
+            else if (yr>=2010&&yr<2020) decades['10s']++;
+            else if (yr>=2020)          decades['20s']++;
+        }
     });
-    items2.forEach(function(w) {
-        (w.genres||'').split('|').forEach(function(x){ x=x.trim(); if(x) g2.add(x); });
-        (w.styles||'').split('|').forEach(function(x){ x=x.trim(); if(x) s2.add(x); });
-        var a = (w.artist||'').trim();
-        if (a && a !== 'Various' && a !== 'Various Artists') a2.add(a);
-    });
-    function jaccard(A, B) {
-        if (A.size === 0 && B.size === 0) return 0;
-        var inter = 0;
-        A.forEach(function(x) { if (B.has(x)) inter++; });
-        var union = A.size + B.size - inter;
-        return union === 0 ? 0 : inter / union;
+
+    var discogsIds = want.map(function(w){ return w.discogs_id; }).filter(Boolean);
+    var medianHave = null;
+    if (discogsIds.length) {
+        try {
+            var haveRows = d.prepare(
+                'SELECT community_have FROM release_meta WHERE discogs_id IN (' +
+                discogsIds.slice(0,200).map(function(){ return '?'; }).join(',') +
+                ') AND community_have IS NOT NULL'
+            ).all(...discogsIds.slice(0,200));
+            if (haveRows.length) {
+                var sorted = haveRows.map(function(r){ return r.community_have; }).sort(function(a,b){ return a-b; });
+                medianHave = sorted[Math.floor(sorted.length/2)];
+            }
+        } catch(e) {}
     }
-    // Weighted: genres 40%, styles 45%, artists 15%
-    var score = jaccard(g1, g2) * 0.40 + jaccard(s1, s2) * 0.45 + jaccard(a1, a2) * 0.15;
-    return Math.round(score * 100);
+
+    var undergroundPct = null;
+    try {
+        var smRows = d.prepare(`
+            SELECT sm.youtube_view_count FROM streaming_metadata sm
+            JOIN wantlist w ON w.discogs_id=sm.discogs_id
+            WHERE w.user_id=? AND w.active=1 AND sm.youtube_view_count IS NOT NULL
+        `).all(userId);
+        if (smRows.length) {
+            var ugCount = smRows.filter(function(r){ return r.youtube_view_count < 10000; }).length;
+            undergroundPct = Math.round(ugCount / smRows.length * 100);
+        }
+    } catch(e) {}
+
+    return { styles, genres, labels, artists, decades, medianHave, undergroundPct };
+}
+
+// ── Taste match helpers ────────────────────────────────────────────────────────
+function _cosineSim(vecA, vecB) {
+    var keys = new Set(Object.keys(vecA).concat(Object.keys(vecB)));
+    var dot=0, magA=0, magB=0;
+    keys.forEach(function(k) {
+        var a=vecA[k]||0, b=vecB[k]||0;
+        dot+=a*b; magA+=a*a; magB+=b*b;
+    });
+    return (!magA||!magB) ? 0 : dot/(Math.sqrt(magA)*Math.sqrt(magB));
+}
+function _jaccardLabels(labA, labB) {
+    var s1=new Set(Object.keys(labA)), s2=new Set(Object.keys(labB));
+    var inter=0; s1.forEach(function(x){ if(s2.has(x)) inter++; });
+    var union=s1.size+s2.size-inter;
+    return union>0 ? inter/union : 0;
+}
+function _rarityAlign(medA, medB) {
+    if (medA==null||medB==null) return null;
+    var logA=Math.log(Math.max(medA,1)), logB=Math.log(Math.max(medB,1));
+    return Math.max(0, 1-Math.abs(logA-logB)/Math.log(50000));
+}
+function _undergroundAlign(pA, pB) {
+    if (pA==null||pB==null) return null;
+    return 1-Math.abs(pA-pB)/100;
+}
+
+// Returns { overall, style, artist, era, rarity, label, underground }
+// pA/pB are profiles from buildTasteProfileForMatch
+function computeTasteMatch(pA, pB) {
+    var styleSim  = _cosineSim(pA.styles,  pB.styles);
+    var artistSim = _cosineSim(pA.artists, pB.artists);
+    var eraS      = _cosineSim(pA.decades, pB.decades);
+    var rarityS   = _rarityAlign(pA.medianHave, pB.medianHave);
+    var labelS    = _jaccardLabels(pA.labels, pB.labels);
+    var ugS       = _undergroundAlign(pA.undergroundPct, pB.undergroundPct);
+
+    var weights = { style:0.30, artist:0.15, era:0.20, rarity:0.15, label:0.10, underground:0.10 };
+    var score=0, totalW=0;
+    score += styleSim  * weights.style;    totalW += weights.style;
+    score += artistSim * weights.artist;   totalW += weights.artist;
+    score += eraS      * weights.era;      totalW += weights.era;
+    if (rarityS  != null) { score += rarityS  * weights.rarity;     totalW += weights.rarity; }
+    score += labelS    * weights.label;    totalW += weights.label;
+    if (ugS      != null) { score += ugS      * weights.underground; totalW += weights.underground; }
+
+    return {
+        overall:     totalW > 0 ? Math.round(score/totalW*100) : 0,
+        style:       Math.round(styleSim  * 100),
+        artist:      Math.round(artistSim * 100),
+        era:         Math.round(eraS      * 100),
+        rarity:      rarityS  != null ? Math.round(rarityS  * 100) : null,
+        label:       Math.round(labelS    * 100),
+        underground: ugS      != null ? Math.round(ugS      * 100) : null
+    };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1697,31 +1792,20 @@ app.get('/api/diggers', function (req, res) {
     try {
         var d = db.getDb();
         var forUser = (req.query.forUser || '').trim();
-        // Pre-load forUser's items for taste-match (if requested)
-        var forUserItems = null;
+        // Pre-build forUser's taste profile for multi-dim match
+        var forProfile = null;
         if (forUser) {
-            var fu = d.prepare('SELECT id FROM users WHERE username=?').get(forUser);
-            if (fu) {
-                // Combine wantlist + collection for taste match
-                var fuWant = d.prepare('SELECT genres, styles, artist FROM wantlist WHERE user_id=? AND active=1').all(fu.id);
-                var fuColl = d.prepare('SELECT genres, styles, artist FROM collection WHERE user_id=?').all(fu.id);
-                forUserItems = fuWant.concat(fuColl);
-            }
+            var fu = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(forUser);
+            if (fu) forProfile = buildTasteProfileForMatch(d, fu.id);
         }
         var users = d.prepare('SELECT id, username, last_full_scan FROM users ORDER BY username').all();
         var result = users.map(function(u) {
             var wantlist  = d.prepare('SELECT COUNT(*) as c FROM wantlist WHERE user_id=? AND active=1').get(u.id).c;
             var inStock   = d.prepare('SELECT COUNT(DISTINCT w.id) as c FROM wantlist w JOIN store_results sr ON sr.wantlist_id=w.id WHERE w.user_id=? AND w.active=1 AND sr.in_stock=1').get(u.id).c;
             var scanCount = d.prepare('SELECT COUNT(*) as c FROM scan_runs WHERE user_id=? AND finished_at IS NOT NULL AND error IS NULL').get(u.id).c;
-            // Combine wantlist + collection for taste signal
-            var wantItems = d.prepare('SELECT genres, styles, artist FROM wantlist WHERE user_id=? AND active=1').all(u.id);
-            var collItems = d.prepare('SELECT genres, styles, artist FROM collection WHERE user_id=?').all(u.id);
-            var items = wantItems.concat(collItems);
-            var genres = {};
-            items.forEach(function(w) {
-                (w.genres||'').split('|').forEach(function(g){ g=g.trim(); if(g) genres[g]=(genres[g]||0)+1; });
-            });
-            var topGenres = Object.keys(genres).sort(function(a,b){return genres[b]-genres[a];}).slice(0,3);
+            // Build full taste profile (used for genre display + match)
+            var profile   = buildTasteProfileForMatch(d, u.id);
+            var topGenres = Object.keys(profile.genres).sort(function(a,b){ return profile.genres[b]-profile.genres[a]; }).slice(0,3);
             var row = {
                 username:  u.username,
                 wantlist:  wantlist,
@@ -1731,9 +1815,9 @@ app.get('/api/diggers', function (req, res) {
                 lastScan:  u.last_full_scan,
                 topGenres: topGenres
             };
-            // Taste match vs forUser
-            if (forUserItems && u.username !== forUser) {
-                row.tasteMatch = computeTasteMatch(forUserItems, items);
+            // Full multi-dimensional taste match vs forUser
+            if (forProfile && u.username.toLowerCase() !== forUser.toLowerCase()) {
+                row.tasteMatch = computeTasteMatch(forProfile, profile);
             }
             return row;
         });
