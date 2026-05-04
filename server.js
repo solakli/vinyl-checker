@@ -2594,16 +2594,22 @@ app.post('/api/discogs-listings/:username', function (req, res) {
         var marketplace = require('./lib/discogs-marketplace');
         Object.keys(byWantlist).forEach(function (wid) {
             var rows = byWantlist[wid].map(function (l) {
+                var cur = l.currency || 'USD';
+                var shipCur = l.shippingCurrency || cur;
                 return {
                     listingId:        l.listingId || null,
                     sellerUsername:   l.sellerUsername || '',
                     sellerRating:     l.sellerRating || null,
                     sellerNumRatings: l.sellerNumRatings || null,
                     priceOriginal:    l.priceOriginal || null,
-                    currency:         l.currency || 'USD',
-                    priceUsd:         marketplace.toUSD(l.priceOriginal || 0, l.currency || 'USD'),
+                    currency:         cur,
+                    priceUsd:         marketplace.toUSD(l.priceOriginal || 0, cur),
                     condition:        l.condition || '',
                     shipsFrom:        marketplace.countryToISO(l.shipsFrom || ''),
+                    // buyer-specific shipping cost sent by extension (null = unknown)
+                    shippingToUsd:    l.shippingPrice != null
+                                          ? marketplace.toUSD(l.shippingPrice, shipCur)
+                                          : null,
                     listingUrl:       l.listingUrl || ''
                 };
             });

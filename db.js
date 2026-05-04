@@ -357,6 +357,8 @@ function initTables() {
     try { db.exec('ALTER TABLE users ADD COLUMN last_catalog_match_at TEXT'); } catch(e) {}
     // last_seen_at: when the user last loaded the app (for "what's new since you left")
     try { db.exec('ALTER TABLE users ADD COLUMN last_seen_at TEXT'); } catch(e) {}
+    // shipping_to_usd: buyer's personalized shipping cost extracted from Discogs marketplace page
+    try { db.exec('ALTER TABLE discogs_listings ADD COLUMN shipping_to_usd REAL'); } catch(e) {}
 
     // Collection table — mirrors user's Discogs collection (records they own)
     db.exec(`
@@ -751,8 +753,9 @@ function saveDiscogsListings(wantlistId, listings) {
     var insert = d.prepare(`
         INSERT INTO discogs_listings
             (wantlist_id, listing_id, seller_username, seller_rating, seller_num_ratings,
-             price_usd, price_original, currency, condition, ships_from, listing_url, fetched_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             price_usd, price_original, currency, condition, ships_from,
+             shipping_to_usd, listing_url, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     var insertMany = d.transaction(function (rows) {
         rows.forEach(function (l) {
@@ -760,7 +763,8 @@ function saveDiscogsListings(wantlistId, listings) {
                 wantlistId, l.listingId || null, l.sellerUsername || '',
                 l.sellerRating || null, l.sellerNumRatings || null,
                 l.priceUsd || null, l.priceOriginal || null, l.currency || 'USD',
-                l.condition || '', l.shipsFrom || '', l.listingUrl || '', now
+                l.condition || '', l.shipsFrom || '',
+                l.shippingToUsd || null, l.listingUrl || '', now
             );
         });
     });

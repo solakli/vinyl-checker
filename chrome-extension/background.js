@@ -139,12 +139,51 @@ function parseHtml(html, wantlistId) {
     var match = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
     if (match) {
         try {
-            var json    = JSON.parse(match[1]);
-            var page    = json && json.props && json.props.pageProps;
+            var json = JSON.parse(match[1]);
+            var page = json && json.props && json.props.pageProps;
             var results = (page && page.listings) ||
-                          (page && page.data && page.data.listings) || [];
-            results.forEach(function (l) {
+                          (page && page.data && page.data.listings) ||
+                          (page && page.initialListings) || [];
+
+            results.forEach(function (l, idx) {
                 if (!l.seller || !l.seller.username) return;
+
+                // ── Debug: log structure of first listing once per page ───────
+                if (idx === 0) {
+                    console.log('[GoldDigger] listing[0] keys:', JSON.stringify(Object.keys(l)));
+                    if (l.seller) console.log('[GoldDigger] listing[0].seller keys:', JSON.stringify(Object.keys(l.seller)));
+                    var shipFields = ['ships_from','shipsFrom','location','shipping_price',
+                                      'shippingPrice','original_shipping_price','shipping'];
+                    var found = {};
+                    shipFields.forEach(function(k) { if (l[k] !== undefined) found[k] = l[k]; });
+                    console.log('[GoldDigger] shipping-related fields:', JSON.stringify(found));
+                }
+
+                // ── ships_from: try every field name Discogs has used ─────────
+                // Discogs REST API uses "ships_from" (full country name e.g. "Germany").
+                // Their Next.js builds have varied this over time.
+                var shipsFrom = l.ships_from         // REST API / older Next.js
+                             || l.location            // some Next.js builds
+                             || l.shipsFrom           // camelCase variant
+                             || (l.seller && (l.seller.location || l.seller.ships_from))
+                             || '';
+
+                // ── shipping price to buyer (personalized — we're authenticated) ─
+                // When logged in, Discogs shows the shipping cost to the buyer's
+                // registered location. This is more accurate than our estimate table.
+                var shipPrice = null;
+                var shipCur   = (l.price && l.price.currency) || 'USD';
+
+                var sp = l.shipping_price || l.shippingPrice || l.original_shipping_price;
+                if (sp && typeof sp === 'object' && sp.value != null) {
+                    shipPrice = sp.value;
+                    shipCur   = sp.currency || shipCur;
+                } else if (sp != null && typeof sp === 'number') {
+                    shipPrice = sp;
+                } else if (typeof l.shipping === 'number') {
+                    shipPrice = l.shipping;
+                }
+
                 listings.push({
                     wantlistId:       wantlistId,
                     listingId:        l.id,
@@ -154,15 +193,19 @@ function parseHtml(html, wantlistId) {
                     priceOriginal:    l.price && l.price.value,
                     currency:         (l.price && l.price.currency) || 'USD',
                     condition:        l.condition || '',
-                    shipsFrom:        l.ships_from || '',
+                    shipsFrom:        shipsFrom,
+                    shippingPrice:    shipPrice,     // actual cost to buyer (null = not on page)
+                    shippingCurrency: shipCur,
                     listingUrl:       'https://www.discogs.com/sell/item/' + l.id
                 });
             });
             if (listings.length) return listings;
-        } catch (e) {}
+        } catch (e) {
+            console.error('[GoldDigger] __NEXT_DATA__ parse error:', e.message);
+        }
     }
 
-    // Fallback: regex on HTML rows
+    // Fallback: regex on HTML rows (legacy Discogs layout)
     var rowRe = /<tr[^>]*class="[^"]*shortcut_navigable[^"]*"[^>]*>([\s\S]*?)<\/tr>/g;
     var row;
     while ((row = rowRe.exec(html)) !== null) {
@@ -173,15 +216,20 @@ function parseHtml(html, wantlistId) {
             var price  = parseFloat(((cell.match(/[\$£€¥]([\d,]+\.?\d*)/) || ['','0'])[1]).replace(/,/g,''));
             var listId = (cell.match(/\/sell\/item\/(\d+)/) || [])[1];
             var cond   = (cell.match(/title="([^"]+)"[^>]*>[^<]*<\/span>\s*<\/td>\s*<td/) || [])[1] || '';
+            // Try to grab ships_from from the row HTML
+            var fromM  = cell.match(/data-country="([^"]+)"/i)
+                      || cell.match(/Ships\s+From[^<]*<[^>]+>\s*([A-Za-z][A-Za-z ]{1,30}?)\s*</i);
             listings.push({
-                wantlistId:     wantlistId,
-                listingId:      listId ? parseInt(listId) : null,
-                sellerUsername: seller,
-                priceOriginal:  price || null,
-                currency:       'USD',
-                condition:      cond.trim(),
-                shipsFrom:      '',
-                listingUrl:     listId ? 'https://www.discogs.com/sell/item/' + listId : ''
+                wantlistId:      wantlistId,
+                listingId:       listId ? parseInt(listId) : null,
+                sellerUsername:  seller,
+                priceOriginal:   price || null,
+                currency:        'USD',
+                condition:       cond.trim(),
+                shipsFrom:       fromM ? fromM[1].trim() : '',
+                shippingPrice:   null,
+                shippingCurrency:'USD',
+                listingUrl:      listId ? 'https://www.discogs.com/sell/item/' + listId : ''
             });
         } catch (e) {}
     }
