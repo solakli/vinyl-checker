@@ -487,6 +487,8 @@ function initTables() {
     try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN songstats_tracklist_support INTEGER`); } catch(e) {}
     try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN songstats_tracklist_unique INTEGER`); } catch(e) {}
     try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN songstats_enriched_at TEXT`); } catch(e) {}
+    // Video age for time-normalised obscurity scoring
+    try { db.exec(`ALTER TABLE streaming_metadata ADD COLUMN youtube_published_at TEXT`); } catch(e) {}
 
     // ── GOLDIE chat sessions ──────────────────────────────────────────────────
     db.exec(`

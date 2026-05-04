@@ -723,13 +723,16 @@ function toolSuggestCart({ username, max_budget, stores, min_items_per_store, pr
 // ── Taste match helpers ───────────────────────────────────────────────────────
 
 function buildTasteProfile(d, userId) {
-    var want = d.prepare('SELECT genres,styles,label,year FROM wantlist WHERE user_id=? AND active=1').all(userId);
-    var coll = d.prepare('SELECT genres,styles,label,year FROM collection WHERE user_id=?').all(userId);
+    var want = d.prepare('SELECT discogs_id,genres,styles,label,year,artist FROM wantlist WHERE user_id=? AND active=1').all(userId);
+    var coll = d.prepare('SELECT discogs_id,genres,styles,label,year,artist FROM collection WHERE user_id=?').all(userId);
     var all  = want.concat(coll);
 
-    var styles = {}, genres = {}, labels = {};
+    var styles = {}, genres = {}, labels = {}, artists = {};
     var decades = { '60s':0,'70s':0,'80s':0,'90s':0,'00s':0,'10s':0,'20s':0 };
     var total = all.length || 1;
+
+    // Artists to skip — too generic to be a taste signal
+    var SKIP_ARTISTS = new Set(['various', 'various artists', 'va', 'v/a', 'v.a.', 'unknown', '']);
 
     all.forEach(function(r) {
         (r.styles||'').split('|').forEach(function(s){ s=s.trim(); if(s) styles[s]=(styles[s]||0)+1; });
@@ -739,6 +742,11 @@ function buildTasteProfile(d, userId) {
                 l=l.trim().replace(/\s*\d+\s*$/, '').trim();
                 if (l && l.length > 1) labels[l]=(labels[l]||0)+1;
             });
+        }
+        if (r.artist) {
+            // Normalise: lowercase, strip trailing "- EP/LP/etc", collapse spaces
+            var a = r.artist.toLowerCase().replace(/\s*[-–]\s*(ep|lp|12["’]|single).*$/i,'').trim();
+            if (a && !SKIP_ARTISTS.has(a)) artists[a]=(artists[a]||0)+1;
         }
         if (r.year) {
             var yr = parseInt(r.year);
@@ -782,7 +790,7 @@ function buildTasteProfile(d, userId) {
         }
     } catch(e) {}
 
-    return { styles, genres, labels, decades, total, medianHave, undergroundPct };
+    return { styles, genres, labels, artists, decades, total, medianHave, undergroundPct };
 }
 
 function cosineSim(vecA, vecB) {
@@ -824,28 +832,32 @@ function undergroundAlign(pctA, pctB) {
 }
 
 function computeTasteMatch(pA, pB) {
-    var styleSim  = cosineSim(pA.styles, pB.styles);
+    var styleSim  = cosineSim(pA.styles,  pB.styles);
+    var artistSim = cosineSim(pA.artists, pB.artists);
     var eraS      = eraSim(pA.decades, pB.decades);
     var rarityS   = rarityAlign(pA.medianHave, pB.medianHave);
     var labelS    = jaccardLabels(pA.labels, pB.labels);
     var ugS       = undergroundAlign(pA.undergroundPct, pB.undergroundPct);
 
-    // Weights — adjust if rarity/underground unavailable
-    var weights = { style: 0.40, era: 0.20, rarity: 0.20, label: 0.10, underground: 0.10 };
+    // Weights — rarity/underground are optional (null if data unavailable, excluded from denominator)
+    // style:30  artist:15  era:20  rarity:15  label:10  underground:10
+    var weights = { style: 0.30, artist: 0.15, era: 0.20, rarity: 0.15, label: 0.10, underground: 0.10 };
     var score = 0, totalW = 0;
-    score += styleSim  * weights.style;       totalW += weights.style;
-    score += eraS      * weights.era;         totalW += weights.era;
-    if (rarityS   != null) { score += rarityS   * weights.rarity;      totalW += weights.rarity; }
-    score += labelS    * weights.label;       totalW += weights.label;
-    if (ugS       != null) { score += ugS       * weights.underground;  totalW += weights.underground; }
+    score += styleSim  * weights.style;    totalW += weights.style;
+    score += artistSim * weights.artist;   totalW += weights.artist;
+    score += eraS      * weights.era;      totalW += weights.era;
+    if (rarityS != null) { score += rarityS * weights.rarity;     totalW += weights.rarity; }
+    score += labelS    * weights.label;    totalW += weights.label;
+    if (ugS     != null) { score += ugS     * weights.underground; totalW += weights.underground; }
     var pct = totalW > 0 ? Math.round(score / totalW * 100) : 0;
 
     return {
         overall:    pct,
-        style:      Math.round(styleSim * 100),
-        era:        Math.round(eraS * 100),
+        style:      Math.round(styleSim  * 100),
+        artist:     Math.round(artistSim * 100),
+        era:        Math.round(eraS      * 100),
         rarity:     rarityS != null ? Math.round(rarityS * 100) : null,
-        label:      Math.round(labelS * 100),
+        label:      Math.round(labelS    * 100),
         underground: ugS != null ? Math.round(ugS * 100) : null
     };
 }
@@ -987,6 +999,14 @@ function toolCompareDiggers({ username1, username2 }) {
     });
     sharedLabels.sort(function(a,b){ return (b.u1+b.u2)-(a.u1+a.u2); });
 
+    // Shared artists
+    var allArtists = new Set([...Object.keys(p1.artists), ...Object.keys(p2.artists)]);
+    var sharedArtists = [];
+    allArtists.forEach(function(a) {
+        if (p1.artists[a] && p2.artists[a]) sharedArtists.push({ artist: a, u1: p1.artists[a], u2: p2.artists[a] });
+    });
+    sharedArtists.sort(function(a,b){ return (b.u1+b.u2)-(a.u1+a.u2); });
+
     // Era breakdown
     var eraBreakdown = Object.keys(p1.decades).map(function(decade) {
         return { decade, [username1]: p1.decades[decade], [username2]: p2.decades[decade] };
@@ -996,7 +1016,8 @@ function toolCompareDiggers({ username1, username2 }) {
         username1, username2,
         taste_match: {
             overall:     match.overall + '%',
-            style:       match.style + '% — how closely their styles align',
+            style:       match.style + '% — style vector cosine similarity',
+            artist:      match.artist + '% — shared artists in their collections',
             era:         match.era + '% — same decades',
             rarity:      match.rarity != null ? match.rarity + '% — both dig deep vs mainstream' : 'n/a (no rarity data)',
             label:       match.label + '% — shared record labels',
@@ -1005,6 +1026,7 @@ function toolCompareDiggers({ username1, username2 }) {
         shared_wantlist_items: shared.length,
         shared_items_sample:   shared.slice(0, 5),
         shared_styles:         sharedStyles.slice(0, 10),
+        shared_artists:        sharedArtists.slice(0, 8),
         shared_labels:         sharedLabels.slice(0, 8),
         era_breakdown:         eraBreakdown,
         u1_rarity_median_have: p1.medianHave,
@@ -1012,7 +1034,9 @@ function toolCompareDiggers({ username1, username2 }) {
         u1_underground_pct:    p1.undergroundPct != null ? p1.undergroundPct + '%' : null,
         u2_underground_pct:    p2.undergroundPct != null ? p2.undergroundPct + '%' : null,
         u1_unique_styles:      Object.entries(p1.styles).filter(function([s]){ return !p2.styles[s]; }).sort(function(a,b){ return b[1]-a[1]; }).slice(0,5).map(function([n,c]){ return { style:n, count:c }; }),
-        u2_unique_styles:      Object.entries(p2.styles).filter(function([s]){ return !p1.styles[s]; }).sort(function(a,b){ return b[1]-a[1]; }).slice(0,5).map(function([n,c]){ return { style:n, count:c }; })
+        u2_unique_styles:      Object.entries(p2.styles).filter(function([s]){ return !p1.styles[s]; }).sort(function(a,b){ return b[1]-a[1]; }).slice(0,5).map(function([n,c]){ return { style:n, count:c }; }),
+        u1_top_artists:        Object.entries(p1.artists).sort(function(a,b){ return b[1]-a[1]; }).slice(0,5).map(function([n,c]){ return { artist:n, count:c }; }),
+        u2_top_artists:        Object.entries(p2.artists).sort(function(a,b){ return b[1]-a[1]; }).slice(0,5).map(function([n,c]){ return { artist:n, count:c }; })
     };
 }
 
