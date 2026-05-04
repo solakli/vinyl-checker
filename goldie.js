@@ -241,7 +241,7 @@ const TOOLS = [
     },
     {
         name: 'get_diggers',
-        description: 'List all diggers on the platform with stats and multi-dimensional taste match vs a target user. Match score blends style cosine similarity (40%), era overlap (20%), rarity alignment (20%), label overlap (10%), and underground alignment (10%). Use when user asks "who has similar taste to me" or "who should I dig with".',
+        description: 'List all diggers on the platform with stats and multi-dimensional taste match vs a target user. Match score blends: style cosine similarity (30%), era overlap (20%), artist overlap (15%), rarity alignment (15%), label overlap (10%), underground alignment (10%). Use when user asks "who has similar taste to me" or "who should I dig with".',
         input_schema: {
             type: 'object',
             properties: {
@@ -290,7 +290,7 @@ const TOOLS = [
     },
     {
         name: 'compare_diggers',
-        description: 'Deep comparison of two diggers with full taste match breakdown: overall %, style similarity, era overlap, rarity alignment, label overlap, underground alignment. Also shows shared wantlist items, shared styles, shared labels, era distribution, and what makes each digger unique. Use for "compare me with X", "how similar am I to X", "do me and X have the same taste".',
+        description: 'Deep comparison of two diggers with full taste match breakdown: overall %, style similarity (30%), era overlap (20%), artist overlap (15%), rarity alignment (15%), label overlap (10%), underground alignment (10%). Also shows shared wantlist items, shared artists, shared styles, shared labels, era distribution, and what makes each digger unique. Use for "compare me with X", "how similar am I to X", "do me and X have the same taste".',
         input_schema: {
             type: 'object',
             properties: {
