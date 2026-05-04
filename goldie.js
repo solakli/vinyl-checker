@@ -241,7 +241,7 @@ const TOOLS = [
     },
     {
         name: 'get_diggers',
-        description: 'List all diggers on the platform with their stats and taste match percentage vs a target user.',
+        description: 'List all diggers on the platform with stats and multi-dimensional taste match vs a target user. Match score blends style cosine similarity (40%), era overlap (20%), rarity alignment (20%), label overlap (10%), and underground alignment (10%). Use when user asks "who has similar taste to me" or "who should I dig with".',
         input_schema: {
             type: 'object',
             properties: {
@@ -290,7 +290,7 @@ const TOOLS = [
     },
     {
         name: 'compare_diggers',
-        description: 'Compare two diggers: shared taste overlap, items both want, recommended records for each based on the other\'s collection.',
+        description: 'Deep comparison of two diggers with full taste match breakdown: overall %, style similarity, era overlap, rarity alignment, label overlap, underground alignment. Also shows shared wantlist items, shared styles, shared labels, era distribution, and what makes each digger unique. Use for "compare me with X", "how similar am I to X", "do me and X have the same taste".',
         input_schema: {
             type: 'object',
             properties: {
@@ -720,35 +720,154 @@ function toolSuggestCart({ username, max_budget, stores, min_items_per_store, pr
     return { carts: carts, total_stores: carts.length, prioritized_by: prioritize };
 }
 
+// ── Taste match helpers ───────────────────────────────────────────────────────
+
+function buildTasteProfile(d, userId) {
+    var want = d.prepare('SELECT genres,styles,label,year FROM wantlist WHERE user_id=? AND active=1').all(userId);
+    var coll = d.prepare('SELECT genres,styles,label,year FROM collection WHERE user_id=?').all(userId);
+    var all  = want.concat(coll);
+
+    var styles = {}, genres = {}, labels = {};
+    var decades = { '60s':0,'70s':0,'80s':0,'90s':0,'00s':0,'10s':0,'20s':0 };
+    var total = all.length || 1;
+
+    all.forEach(function(r) {
+        (r.styles||'').split('|').forEach(function(s){ s=s.trim(); if(s) styles[s]=(styles[s]||0)+1; });
+        (r.genres||'').split('|').forEach(function(g){ g=g.trim(); if(g) genres[g]=(genres[g]||0)+1; });
+        if (r.label) {
+            r.label.split(/[,/]/).forEach(function(l){
+                l=l.trim().replace(/\s*\d+\s*$/, '').trim();
+                if (l && l.length > 1) labels[l]=(labels[l]||0)+1;
+            });
+        }
+        if (r.year) {
+            var yr = parseInt(r.year);
+            if (yr >= 1960 && yr < 1970) decades['60s']++;
+            else if (yr >= 1970 && yr < 1980) decades['70s']++;
+            else if (yr >= 1980 && yr < 1990) decades['80s']++;
+            else if (yr >= 1990 && yr < 2000) decades['90s']++;
+            else if (yr >= 2000 && yr < 2010) decades['00s']++;
+            else if (yr >= 2010 && yr < 2020) decades['10s']++;
+            else if (yr >= 2020) decades['20s']++;
+        }
+    });
+
+    // Rarity: median community_have from release_meta
+    var discogsIds = want.map(function(w){ return w.discogs_id; }).filter(Boolean);
+    var medianHave = null;
+    if (discogsIds.length) {
+        try {
+            var haveRows = d.prepare(
+                'SELECT community_have FROM release_meta WHERE discogs_id IN (' +
+                discogsIds.slice(0,200).map(function(){ return '?'; }).join(',') + ') AND community_have IS NOT NULL'
+            ).all(...discogsIds.slice(0,200));
+            if (haveRows.length) {
+                var sorted = haveRows.map(function(r){ return r.community_have; }).sort(function(a,b){ return a-b; });
+                medianHave = sorted[Math.floor(sorted.length/2)];
+            }
+        } catch(e) {}
+    }
+
+    // Underground %: from streaming_metadata
+    var undergroundPct = null;
+    try {
+        var smRows = d.prepare(`
+            SELECT sm.youtube_view_count FROM streaming_metadata sm
+            JOIN wantlist w ON w.discogs_id=sm.discogs_id
+            WHERE w.user_id=? AND w.active=1 AND sm.youtube_view_count IS NOT NULL
+        `).all(userId);
+        if (smRows.length) {
+            var ugCount = smRows.filter(function(r){ return r.youtube_view_count < 10000; }).length;
+            undergroundPct = Math.round(ugCount / smRows.length * 100);
+        }
+    } catch(e) {}
+
+    return { styles, genres, labels, decades, total, medianHave, undergroundPct };
+}
+
+function cosineSim(vecA, vecB) {
+    var allKeys = new Set([...Object.keys(vecA), ...Object.keys(vecB)]);
+    var dot=0, magA=0, magB=0;
+    allKeys.forEach(function(k) {
+        var a = vecA[k]||0, b = vecB[k]||0;
+        dot  += a*b;
+        magA += a*a;
+        magB += b*b;
+    });
+    if (!magA || !magB) return 0;
+    return dot / (Math.sqrt(magA) * Math.sqrt(magB));
+}
+
+function jaccardLabels(labA, labB) {
+    var s1 = new Set(Object.keys(labA)), s2 = new Set(Object.keys(labB));
+    var inter=0; s1.forEach(function(x){ if(s2.has(x)) inter++; });
+    var union = s1.size + s2.size - inter;
+    return union > 0 ? inter/union : 0;
+}
+
+function eraSim(decA, decB) {
+    return cosineSim(decA, decB);
+}
+
+function rarityAlign(medA, medB) {
+    if (medA == null || medB == null) return null;
+    // Both in same rarity band? Score by closeness of log-scale median
+    var logA = Math.log(Math.max(medA,1)), logB = Math.log(Math.max(medB,1));
+    var maxLog = Math.log(50000);
+    var dist = Math.abs(logA - logB) / maxLog;
+    return Math.max(0, 1 - dist);
+}
+
+function undergroundAlign(pctA, pctB) {
+    if (pctA == null || pctB == null) return null;
+    return 1 - Math.abs(pctA - pctB) / 100;
+}
+
+function computeTasteMatch(pA, pB) {
+    var styleSim  = cosineSim(pA.styles, pB.styles);
+    var eraS      = eraSim(pA.decades, pB.decades);
+    var rarityS   = rarityAlign(pA.medianHave, pB.medianHave);
+    var labelS    = jaccardLabels(pA.labels, pB.labels);
+    var ugS       = undergroundAlign(pA.undergroundPct, pB.undergroundPct);
+
+    // Weights — adjust if rarity/underground unavailable
+    var weights = { style: 0.40, era: 0.20, rarity: 0.20, label: 0.10, underground: 0.10 };
+    var score = 0, totalW = 0;
+    score += styleSim  * weights.style;       totalW += weights.style;
+    score += eraS      * weights.era;         totalW += weights.era;
+    if (rarityS   != null) { score += rarityS   * weights.rarity;      totalW += weights.rarity; }
+    score += labelS    * weights.label;       totalW += weights.label;
+    if (ugS       != null) { score += ugS       * weights.underground;  totalW += weights.underground; }
+    var pct = totalW > 0 ? Math.round(score / totalW * 100) : 0;
+
+    return {
+        overall:    pct,
+        style:      Math.round(styleSim * 100),
+        era:        Math.round(eraS * 100),
+        rarity:     rarityS != null ? Math.round(rarityS * 100) : null,
+        label:      Math.round(labelS * 100),
+        underground: ugS != null ? Math.round(ugS * 100) : null
+    };
+}
+
+// ── Tool functions ────────────────────────────────────────────────────────────
+
 function toolGetDiggers({ for_user }) {
     var d = db.getDb();
-    var forUserItems = null;
+    var forProfile = null;
     if (for_user) {
         var fu = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(for_user);
-        if (fu) {
-            var fWant = d.prepare('SELECT genres,styles,artist FROM wantlist WHERE user_id=? AND active=1').all(fu.id);
-            var fColl = d.prepare('SELECT genres,styles,artist FROM collection WHERE user_id=?').all(fu.id);
-            forUserItems = fWant.concat(fColl);
-        }
+        if (fu) forProfile = buildTasteProfile(d, fu.id);
     }
     var users = d.prepare('SELECT id, username, last_full_scan FROM users ORDER BY username').all();
     return users.map(function(u) {
         var wc = d.prepare('SELECT COUNT(*) as c FROM wantlist WHERE user_id=? AND active=1').get(u.id).c;
         var ic = d.prepare('SELECT COUNT(DISTINCT w.id) as c FROM wantlist w JOIN store_results sr ON sr.wantlist_id=w.id WHERE w.user_id=? AND w.active=1 AND sr.in_stock=1').get(u.id).c;
-        var items = d.prepare('SELECT genres,styles,artist FROM wantlist WHERE user_id=? AND active=1').all(u.id)
-            .concat(d.prepare('SELECT genres,styles,artist FROM collection WHERE user_id=?').all(u.id));
-        var gC = {};
-        items.forEach(function(w){ (w.genres||'').split('|').forEach(function(g){ g=g.trim(); if(g) gC[g]=(gC[g]||0)+1; }); });
-        var topGenres = Object.entries(gC).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([n])=>n);
+        var profile = buildTasteProfile(d, u.id);
+        var topGenres = Object.entries(profile.genres).sort(function(a,b){ return b[1]-a[1]; }).slice(0,3).map(function(e){ return e[0]; });
         var row = { username: u.username, wantlist: wc, inStock: ic, topGenres: topGenres, lastScan: u.last_full_scan };
-        if (forUserItems && u.username !== for_user) {
-            // Simple jaccard on genres
-            var g1 = new Set(), g2 = new Set();
-            forUserItems.forEach(function(w){ (w.genres||'').split('|').forEach(function(g){ g=g.trim(); if(g) g1.add(g); }); });
-            items.forEach(function(w){ (w.genres||'').split('|').forEach(function(g){ g=g.trim(); if(g) g2.add(g); }); });
-            var inter=0; g1.forEach(function(x){ if(g2.has(x)) inter++; });
-            var union=g1.size+g2.size-inter;
-            row.tasteMatch = union > 0 ? Math.round(inter/union*100) : 0;
+        if (forProfile && u.username !== for_user) {
+            row.tasteMatch = computeTasteMatch(forProfile, profile);
         }
         return row;
     });
@@ -838,36 +957,62 @@ function toolCompareDiggers({ username1, username2 }) {
     if (!u1) return { error: username1 + ' not found' };
     if (!u2) return { error: username2 + ' not found' };
 
-    // Shared wantlist items (same discogs_id)
+    var p1 = buildTasteProfile(d, u1.id);
+    var p2 = buildTasteProfile(d, u2.id);
+    var match = computeTasteMatch(p1, p2);
+
+    // Shared wantlist items
     var shared = d.prepare(`
         SELECT w1.artist, w1.title, w1.year,
-               (SELECT GROUP_CONCAT(DISTINCT sr.store) FROM store_results sr WHERE sr.wantlist_id=w1.id AND sr.in_stock=1) as in_stock_u1
+               (SELECT GROUP_CONCAT(DISTINCT sr.store) FROM store_results sr WHERE sr.wantlist_id=w1.id AND sr.in_stock=1) as stores
         FROM wantlist w1
         JOIN wantlist w2 ON w2.discogs_id=w1.discogs_id AND w2.user_id=? AND w2.active=1
         WHERE w1.user_id=? AND w1.active=1
         LIMIT 10
     `).all(u2.id, u1.id);
 
-    // Genre overlap
-    function getGenres(uid) {
-        var items = d.prepare('SELECT genres FROM wantlist WHERE user_id=? AND active=1').all(uid)
-            .concat(d.prepare('SELECT genres FROM collection WHERE user_id=?').all(uid));
-        var gC={};
-        items.forEach(function(w){ (w.genres||'').split('|').forEach(function(g){ g=g.trim(); if(g) gC[g]=(gC[g]||0)+1; }); });
-        return gC;
-    }
-    var g1=getGenres(u1.id), g2=getGenres(u2.id);
-    var allG=new Set([...Object.keys(g1),...Object.keys(g2)]);
-    var sharedGenres=[]; allG.forEach(function(g){ if(g1[g]&&g2[g]) sharedGenres.push({genre:g,u1:g1[g],u2:g2[g]}); });
-    sharedGenres.sort(function(a,b){ return (b.u1+b.u2)-(a.u1+a.u2); });
+    // Shared styles (more specific than genres)
+    var allStyles = new Set([...Object.keys(p1.styles), ...Object.keys(p2.styles)]);
+    var sharedStyles = [];
+    allStyles.forEach(function(s) {
+        if (p1.styles[s] && p2.styles[s]) sharedStyles.push({ style: s, u1: p1.styles[s], u2: p2.styles[s] });
+    });
+    sharedStyles.sort(function(a,b){ return (b.u1+b.u2)-(a.u1+a.u2); });
+
+    // Shared labels
+    var allLabels = new Set([...Object.keys(p1.labels), ...Object.keys(p2.labels)]);
+    var sharedLabels = [];
+    allLabels.forEach(function(l) {
+        if (p1.labels[l] && p2.labels[l]) sharedLabels.push({ label: l, u1: p1.labels[l], u2: p2.labels[l] });
+    });
+    sharedLabels.sort(function(a,b){ return (b.u1+b.u2)-(a.u1+a.u2); });
+
+    // Era breakdown
+    var eraBreakdown = Object.keys(p1.decades).map(function(decade) {
+        return { decade, [username1]: p1.decades[decade], [username2]: p2.decades[decade] };
+    }).filter(function(r) { return r[username1] > 0 || r[username2] > 0; });
 
     return {
-        username1: username1, username2: username2,
+        username1, username2,
+        taste_match: {
+            overall:     match.overall + '%',
+            style:       match.style + '% — how closely their styles align',
+            era:         match.era + '% — same decades',
+            rarity:      match.rarity != null ? match.rarity + '% — both dig deep vs mainstream' : 'n/a (no rarity data)',
+            label:       match.label + '% — shared record labels',
+            underground: match.underground != null ? match.underground + '% — similar underground index' : 'n/a (enrichment pending)'
+        },
         shared_wantlist_items: shared.length,
-        shared_items_sample: shared.slice(0,5),
-        shared_genres: sharedGenres.slice(0,8),
-        u1_unique_genres: Object.entries(g1).filter(([g])=>!g2[g]).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([n,c])=>({genre:n,count:c})),
-        u2_unique_genres: Object.entries(g2).filter(([g])=>!g1[g]).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([n,c])=>({genre:n,count:c}))
+        shared_items_sample:   shared.slice(0, 5),
+        shared_styles:         sharedStyles.slice(0, 10),
+        shared_labels:         sharedLabels.slice(0, 8),
+        era_breakdown:         eraBreakdown,
+        u1_rarity_median_have: p1.medianHave,
+        u2_rarity_median_have: p2.medianHave,
+        u1_underground_pct:    p1.undergroundPct != null ? p1.undergroundPct + '%' : null,
+        u2_underground_pct:    p2.undergroundPct != null ? p2.undergroundPct + '%' : null,
+        u1_unique_styles:      Object.entries(p1.styles).filter(function([s]){ return !p2.styles[s]; }).sort(function(a,b){ return b[1]-a[1]; }).slice(0,5).map(function([n,c]){ return { style:n, count:c }; }),
+        u2_unique_styles:      Object.entries(p2.styles).filter(function([s]){ return !p1.styles[s]; }).sort(function(a,b){ return b[1]-a[1]; }).slice(0,5).map(function([n,c]){ return { style:n, count:c }; })
     };
 }
 
