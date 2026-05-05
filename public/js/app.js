@@ -3971,7 +3971,7 @@ function _renderDiscoverDiggerCards(diggers, currentUser, container) {
     }
 
     var tags = (d.personalityTags || []).slice(0, 2).map(function(t) {
-      return '<span class="disc-digger-tag">' + (t.icon || '') + ' ' + escapeHtml(t.label) + '</span>';
+      return '<span class="disc-digger-tag">' + escapeHtml(t.label) + '</span>';
     }).join('');
     // topGenres from new API is a plain string array; old API returned [{name}] objects
     var genres = (d.topGenres || []).slice(0, 3).map(function(g) {
@@ -5069,19 +5069,18 @@ function renderProfile(p) {
     }
   }
 
-  // ── Personality tags ──
+  // ── Personality tags (no emojis) ──
   var tagsHtml = '';
   if (p.personalityTags && p.personalityTags.length > 0) {
     var tagPills = p.personalityTags.map(function(t) {
       return '<span class="prof-archetype-tag prof-archetype-' + (t.color||'gold') + '">' +
-        (t.icon ? '<span class="prof-archetype-icon">' + t.icon + '</span>' : '') +
         escapeHtml(t.label) +
       '</span>';
     }).join('');
     tagsHtml = '<div class="prof-archetype-row">' + tagPills + '</div>';
   }
 
-  // ── Gem archetypes in hero (top 2, from gemIntel) ──
+  // ── Gem archetypes in hero (top 2, from gemIntel, no emojis) ──
   var gemArchetypeColorMap = {
     gold: '#C9A227', blue: '#4dabf7', green: '#4ade80', red: '#ff6b6b',
     purple: '#be4bdb', teal: '#20c997', orange: '#f97316', yellow: '#ffd43b',
@@ -5091,28 +5090,27 @@ function renderProfile(p) {
     var gemPills = p.gemIntel.archetypes.slice(0, 2).map(function(a, i) {
       var col = gemArchetypeColorMap[a.color] || '#C9A227';
       return '<span class="prof-archetype-tag gi-hero-archetype' + (i === 0 ? ' gi-hero-archetype-primary' : '') + '" style="border-color:' + col + ';color:' + col + ';background:' + col + '14">' +
-        (a.icon ? '<span class="prof-archetype-icon">' + a.icon + '</span>' : '') +
         escapeHtml(a.label) +
       '</span>';
     }).join('');
     tagsHtml = (tagsHtml ? tagsHtml.replace('</div>', gemPills + '</div>') : '<div class="prof-archetype-row">' + gemPills + '</div>');
   }
 
-  // ── Rarity tier badge ──
+  // ── Rarity tier badge (no emojis) ──
   var rarityTierHtml = '';
   if (typeof p.avgHave === 'number' && p.metaSynced > 10) {
-    var rt = p.avgHave < 50  ? { label:'Ultra Rare Digger', icon:'💎', cls:'prof-badge-gold'  } :
-             p.avgHave < 150 ? { label:'Underground',        icon:'🔍', cls:'prof-badge-teal'  } :
-             p.avgHave < 400 ? { label:'Deep Digger',        icon:'⛏', cls:'prof-badge-smoke' } :
-                               { label:'Broad Taste',        icon:'📻', cls:'prof-badge-blue'  };
-    rarityTierHtml = '<span class="prof-badge ' + rt.cls + '">' + rt.icon + ' ' + rt.label + '</span>';
+    var rt = p.avgHave < 50  ? { label:'Ultra Rare Digger', cls:'prof-badge-gold'  } :
+             p.avgHave < 150 ? { label:'Underground',        cls:'prof-badge-teal'  } :
+             p.avgHave < 400 ? { label:'Deep Digger',        cls:'prof-badge-smoke' } :
+                               { label:'Broad Taste',        cls:'prof-badge-blue'  };
+    rarityTierHtml = '<span class="prof-badge ' + rt.cls + '">' + rt.label + '</span>';
   }
 
-  // ── Era badge ──
+  // ── Era badge (no emojis) ──
   var eraBadgeHtml = '';
   if (p.topDecade) {
-    var eraLabels = { '60s':'60s Soul', '70s':'70s Vinyl', '80s':'80s Wave', '90s':'90s Head', '0s':'00s Underground', '10s':'2010s Digger', '20s':'New Wave' };
-    eraBadgeHtml = '<span class="prof-badge prof-badge-era">📅 ' + (eraLabels[p.topDecade] || p.topDecade) + '</span>';
+    var eraLabels = { '60s':'60s Soul', '70s':'70s Vinyl', '80s':'80s Wave', '90s':'90s Head', '00s':'00s Underground', '10s':'2010s Digger', '20s':'20s Head' };
+    eraBadgeHtml = '<span class="prof-badge prof-badge-era">' + (eraLabels[p.topDecade] || p.topDecade) + '</span>';
   }
 
   // ── Rarity % stat ──
@@ -5121,12 +5119,12 @@ function renderProfile(p) {
     rarityStatHtml = '<span class="prof-stat-pill">' + p.rarePct + '% rare <span class="prof-stat-pill-sub">(&lt;200 collectors)</span></span>';
   }
 
-  // ── Collection ratio badge ──
+  // ── Collection ratio badge (no emojis) ──
   var collRatioHtml = '';
   if (p.collectionSize > 0 && p.wantlistSize > 0) {
     var ratio = p.collectionSize / p.wantlistSize;
     var ratioLabel = ratio > 8 ? 'Collector' : ratio > 3 ? 'Keeper' : ratio > 1 ? 'Balanced' : 'Active Buyer';
-    collRatioHtml = '<span class="prof-stat-pill">📦 ' + ratioLabel + ' <span class="prof-stat-pill-sub">(' + p.collectionSize + ' owned)</span></span>';
+    collRatioHtml = '<span class="prof-stat-pill">' + ratioLabel + ' <span class="prof-stat-pill-sub">(' + p.collectionSize + ' owned)</span></span>';
   }
 
   var metaBadgesHtml = (rarityTierHtml || eraBadgeHtml || rarityStatHtml || collRatioHtml)
@@ -5416,8 +5414,15 @@ function _loadDiggers(currentUser) {
     });
 }
 
-// Human-readable reason for why two diggers match, based on top scoring dimensions
-function _tasteMatchReason(tm) {
+// Human-readable reason for why two diggers match.
+// sharedArchetypes: array of label strings both users share (strongest signal)
+// tm: the {overall,style,era,...} object
+function _tasteMatchReason(tm, sharedArchetypes) {
+  // Shared badge is the clearest 1-liner — surfaces it first
+  if (sharedArchetypes && sharedArchetypes.length) {
+    var arch = sharedArchetypes[0].toUpperCase();
+    return 'Both: ' + arch;
+  }
   if (!tm || typeof tm !== 'object') return '';
   var DIM_COPY = {
     era:         { hi: 'Same era taste',      mid: 'Similar eras'         },
@@ -5449,6 +5454,10 @@ function _renderDiggers(diggers, currentUser) {
     var bV = b.tasteMatch ? (typeof b.tasteMatch === 'object' ? b.tasteMatch.overall : b.tasteMatch) : 0;
     return bV - aV;
   });
+  // Current user's archetype labels — for badge overlap in "why" line
+  var myArchetypeLabels = _profileCache && _profileCache.personalityTags
+    ? _profileCache.personalityTags.map(function(t) { return t.label; })
+    : [];
   el.innerHTML = others.map(function(d) {
     var ageLabel = d.lastScan ? formatRelativeTime(d.lastScan) : 'Never';
     var genreHtml = (d.topGenres || []).slice(0,3).map(function(g) {
@@ -5465,6 +5474,11 @@ function _renderDiggers(diggers, currentUser) {
           '<span class="prof-taste-pct-sym">%</span>' +
           '<span class="prof-taste-label">match</span></div>'
       : '';
+
+    // Shared archetype badges — strongest "why you match" signal
+    var sharedArch = myArchetypeLabels.length
+      ? (d.archetypeLabels || []).filter(function(l) { return myArchetypeLabels.indexOf(l) >= 0; })
+      : [];
 
     // Dimension bars — same layout as Discover tab
     var dimBreakdown = '';
@@ -5494,7 +5508,7 @@ function _renderDiggers(diggers, currentUser) {
           }).join('') +
         '</div>';
       }
-      var reason = _tasteMatchReason(tm);
+      var reason = _tasteMatchReason(tm, sharedArch);
       if (reason) whyLine = '<div class="prof-digger-why">' + escapeHtml(reason) + '</div>';
     }
 
