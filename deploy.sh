@@ -1,75 +1,85 @@
 #!/bin/bash
 # Deploy vinyl-checker to Contabo VPS
 # Usage: ./deploy.sh
+# Requires: ~/.ssh/contabo key
 
+set -euo pipefail
+
+SSH_KEY="$HOME/.ssh/contabo"
 VPS="root@89.117.16.160"
-PASS="Caswell123@"
 APP_DIR="/root/vinyl-checker"
 PORT=5052
-CRON_SECRET="vc-cron-2026"
 
-echo "=== Deploying Vinyl Checker to VPS ==="
+SSH="ssh -i $SSH_KEY $VPS"
 
-expect -c "
-set timeout 300
-spawn ssh -o StrictHostKeyChecking=no $VPS
-expect \"password:\"
-send \"${PASS}\r\"
-expect \"#\"
+echo "=== Deploying Vinyl Checker ==="
 
-# Step 1: Install Chromium + PM2
-puts \"\n>>> Installing dependencies (chromium + pm2)...\"
-send \"apt-get update -qq && apt-get install -y -qq chromium-browser 2>/dev/null || apt-get install -y -qq chromium 2>/dev/null; npm install -g pm2 2>&1 | tail -2; echo DEPS_DONE\r\"
-expect -timeout 120 \"DEPS_DONE\"
+# ── 1. Push must already be done (deploy.sh is called after git push) ─────────
+echo ""
+echo ">>> [1/4] Pulling latest code on VPS..."
+$SSH "cd $APP_DIR && git pull"
 
-# Step 2: Clone or pull repo
-puts \"\n>>> Updating code...\"
-send \"if \[ -d $APP_DIR \]; then cd $APP_DIR && git checkout -- . && git pull; else git clone https://github.com/solakli/vinyl-checker.git $APP_DIR; fi; echo REPO_DONE\r\"
-expect \"REPO_DONE\"
+# ── 2. Kill ALL server.js processes, then wait for port to be free ────────────
+echo ""
+echo ">>> [2/4] Stopping old server (all processes)..."
+$SSH "
+  PIDS=\$(pgrep -f 'node.*server\.js' 2>/dev/null || true)
+  if [ -n \"\$PIDS\" ]; then
+    echo \"  Sending TERM to PIDs: \$PIDS\"
+    kill -TERM \$PIDS 2>/dev/null || true
+    sleep 2
+    # Force-kill any survivors
+    SURVIVORS=\$(pgrep -f 'node.*server\.js' 2>/dev/null || true)
+    if [ -n \"\$SURVIVORS\" ]; then
+      echo \"  Force-killing survivors: \$SURVIVORS\"
+      kill -9 \$SURVIVORS 2>/dev/null || true
+    fi
+  else
+    echo '  No server.js processes found'
+  fi
 
-# Step 3: Install npm dependencies
-puts \"\n>>> Installing npm packages...\"
-send \"cd $APP_DIR && npm install --production 2>&1 | tail -3; echo NPM_DONE\r\"
-expect -timeout 120 \"NPM_DONE\"
+  # Wait for port $PORT to be free (up to 10 s)
+  for i in 1 2 3 4 5; do
+    if ss -tlnp | grep -q ':$PORT '; then
+      echo \"  Port $PORT still in use — waiting (\$i/5)...\"
+      sleep 2
+    else
+      break
+    fi
+  done
 
-# Step 4: Stop existing process (pm2 or nohup)
-puts \"\n>>> Stopping old process...\"
-send \"pm2 stop vinyl-checker 2>/dev/null; pm2 delete vinyl-checker 2>/dev/null; pkill -f 'node server.js' 2>/dev/null; sleep 2; echo STOP_DONE\r\"
-expect \"STOP_DONE\"
-
-# Step 5: Start with PM2 using ecosystem config
-puts \"\n>>> Starting with PM2...\"
-send \"cd $APP_DIR && pm2 start ecosystem.config.js && pm2 save && pm2 startup systemd -u root --hp /root 2>&1 | grep -v 'To setup' | tail -5; echo PM2_DONE\r\"
-expect -timeout 30 \"PM2_DONE\"
-
-# Step 6: Set up system cron for daily rescan + validation (belt-and-suspenders)
-puts \"\n>>> Setting up cron jobs...\"
-send \"(crontab -l 2>/dev/null | grep -v vinyl-trigger; echo '0 3 * * * curl -s -X POST http://localhost:$PORT/api/trigger?job=all -H X-Cron-Secret:$CRON_SECRET >> /root/vinyl-cron.log 2>&1'; echo '0 7 * * * curl -s -X POST http://localhost:$PORT/api/trigger?job=validate -H X-Cron-Secret:$CRON_SECRET >> /root/vinyl-cron.log 2>&1') | crontab -; echo CRON_DONE\r\"
-expect \"CRON_DONE\"
-
-# Step 7: Verify
-puts \"\n>>> Verifying...\"
-send \"pm2 list && curl -s http://localhost:$PORT/api/job-health | head -c 200; echo; echo VERIFY_DONE\r\"
-expect \"VERIFY_DONE\"
-
-# Step 8: Configure nginx (skip if already done)
-send \"grep -q vinyl /etc/nginx/nginx.conf && echo NGINX_EXISTS || echo NGINX_NEEDED\r\"
-expect {
-    \"NGINX_EXISTS\" {
-        puts \"nginx already configured\"
-    }
-    \"NGINX_NEEDED\" {
-        send \"sed -i '/location \\/api\\// i \\\\n        # Vinyl Checker\\n        location /vinyl/ {\\n            proxy_pass http://127.0.0.1:$PORT/;\\n            proxy_http_version 1.1;\\n            proxy_set_header Upgrade \\\$http_upgrade;\\n            proxy_set_header Connection \\\"upgrade\\\";\\n            proxy_set_header Host \\\$host;\\n            proxy_set_header X-Real-IP \\\$remote_addr;\\n            proxy_buffering off;\\n            proxy_cache off;\\n            proxy_read_timeout 86400;\\n        }\\n' /etc/nginx/nginx.conf; nginx -t && nginx -s reload; echo NGINX_CONFIGURED\r\"
-        expect \"NGINX_CONFIGURED\"
-    }
-}
-
-send \"echo; echo '=== DEPLOYMENT COMPLETE ==='; echo 'App: https://stream.ronautradio.la/vinyl/'; echo 'Port: $PORT'; echo 'Daily scan: 03:00 UTC via cron'; echo 'Validation: 07:00 UTC via cron'; echo\r\"
-expect \"===\"
-send \"exit\r\"
-expect eof
+  if ss -tlnp | grep -q ':$PORT '; then
+    echo '  ERROR: port $PORT still occupied after 10 s — aborting'
+    exit 1
+  else
+    echo '  Port $PORT is free'
+  fi
 "
 
+# ── 3. Start fresh ────────────────────────────────────────────────────────────
 echo ""
-echo "Done! Test at: https://stream.ronautradio.la/vinyl/"
-echo "Job health: https://stream.ronautradio.la/vinyl/api/job-health"
+echo ">>> [3/4] Starting server..."
+$SSH "cd $APP_DIR && nohup node server.js >> server.log 2>&1 & echo \"  Started PID \$!\""
+
+# ── 4. Verify (give it 5 s to bind) ──────────────────────────────────────────
+echo ""
+echo ">>> [4/4] Verifying..."
+sleep 5
+HTTP=$($SSH "curl -s -o /dev/null -w '%{http_code}' http://localhost:$PORT/ 2>/dev/null || echo 000")
+LISTENING=$($SSH "ss -tlnp | grep ':$PORT ' | awk '{print \$5}'" || echo "")
+
+if [ "$HTTP" = "200" ]; then
+  echo ""
+  echo "  ✓ Listening: $LISTENING"
+  echo "  ✓ HTTP: $HTTP"
+  echo ""
+  echo "=== DEPLOYMENT COMPLETE ==="
+  echo "    https://stream.ronautradio.la/vinyl/"
+else
+  echo ""
+  echo "  ✗ HTTP $HTTP — server did not come up cleanly"
+  echo ""
+  echo "--- Last 30 lines of server.log ---"
+  $SSH "tail -30 $APP_DIR/server.log"
+  exit 1
+fi
