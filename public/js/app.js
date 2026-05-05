@@ -5416,6 +5416,28 @@ function _loadDiggers(currentUser) {
     });
 }
 
+// Human-readable reason for why two diggers match, based on top scoring dimensions
+function _tasteMatchReason(tm) {
+  if (!tm || typeof tm !== 'object') return '';
+  var DIM_COPY = {
+    era:         { hi: 'Same era taste',      mid: 'Similar eras'         },
+    rarity:      { hi: 'Hunt same rarity',    mid: 'Similar rarity taste' },
+    underground: { hi: 'Both go deep',        mid: 'Similar underground%' },
+    style:       { hi: 'Overlapping styles',  mid: 'Some shared styles'   },
+    artist:      { hi: 'Share artists',       mid: 'Some shared artists'  },
+    label:       { hi: 'Same labels',         mid: 'Some shared labels'   }
+  };
+  var order = ['era','rarity','underground','style','artist','label'];
+  var top = order.filter(function(k) { return tm[k] != null && tm[k] >= 60; })
+                 .sort(function(a,b) { return tm[b] - tm[a]; })
+                 .slice(0, 2);
+  if (!top.length) return '';
+  return top.map(function(k) {
+    var v = tm[k];
+    return DIM_COPY[k][v >= 80 ? 'hi' : 'mid'];
+  }).join(' · ');
+}
+
 function _renderDiggers(diggers, currentUser) {
   var el = document.getElementById('diggersGrid');
   if (!el) return;
@@ -5433,41 +5455,56 @@ function _renderDiggers(diggers, currentUser) {
       var name = typeof g === 'string' ? g : (g.name || '');
       return name ? '<span class="prof-digger-genre">' + escapeHtml(name) + '</span>' : '';
     }).join('');
-    // Taste match badge + dimension breakdown
+
+    // Taste match badge
     var tm = d.tasteMatch;
     var overall = tm == null ? null : (typeof tm === 'object' ? tm.overall : tm);
     var matchCls = overall == null ? '' : (overall >= 70 ? 'match-high' : overall >= 40 ? 'match-mid' : 'match-low');
-    var matchHtml = '';
-    if (overall != null) {
-      matchHtml = '<div class="prof-taste-badge ' + matchCls + '">' + overall +
-        '<span class="prof-taste-pct-sym">%</span>' +
-        '<span class="prof-taste-label">match</span></div>';
-    }
-    // Dimension breakdown bars (top 3 by score)
+    var matchHtml = overall != null
+      ? '<div class="prof-taste-badge ' + matchCls + '">' + overall +
+          '<span class="prof-taste-pct-sym">%</span>' +
+          '<span class="prof-taste-label">match</span></div>'
+      : '';
+
+    // Dimension bars — same layout as Discover tab
     var dimBreakdown = '';
+    var whyLine = '';
     if (tm && typeof tm === 'object') {
       var PDIMS = [
-        { key:'style', label:'Style' }, { key:'era', label:'Era' },
-        { key:'artist', label:'Artist' }, { key:'rarity', label:'Rarity' },
-        { key:'label', label:'Label' }, { key:'underground', label:'Undrgrd' }
+        { key:'era',         label:'ERA'      },
+        { key:'rarity',      label:'RARITY'   },
+        { key:'underground', label:'UNDRGRND' },
+        { key:'style',       label:'STYLE'    },
+        { key:'artist',      label:'ARTIST'   },
+        { key:'label',       label:'LABEL'    }
       ];
       var topDims = PDIMS.filter(function(pd) { return tm[pd.key] != null; })
                          .sort(function(a, b) { return tm[b.key] - tm[a.key]; })
                          .slice(0, 3);
       if (topDims.length) {
-        dimBreakdown = '<div class="prof-digger-dims">' +
+        dimBreakdown = '<div class="prof-digger-dim-bars">' +
           topDims.map(function(pd) {
             var v = tm[pd.key];
-            return '<span class="prof-digger-dim-chip ' + matchCls + '">' +
-              pd.label + ' ' + v + '</span>';
+            var barW = Math.round(v * 0.9);
+            return '<div class="prof-digger-dim-row">' +
+              '<span class="prof-digger-dim-lbl">' + pd.label + '</span>' +
+              '<div class="prof-digger-dim-track"><div class="prof-digger-dim-fill ' + matchCls + '" style="width:' + barW + '%"></div></div>' +
+              '<span class="prof-digger-dim-num">' + v + '</span>' +
+            '</div>';
           }).join('') +
         '</div>';
       }
+      var reason = _tasteMatchReason(tm);
+      if (reason) whyLine = '<div class="prof-digger-why">' + escapeHtml(reason) + '</div>';
     }
+
     return '<div class="prof-digger-card" onclick="profLoadPublic(\'' + escapeAttr(d.username) + '\')">' +
       '<div class="prof-digger-avatar">' + escapeHtml(d.username.charAt(0).toUpperCase()) + '</div>' +
       '<div class="prof-digger-info">' +
         '<div class="prof-digger-name">' + escapeHtml(d.username) + '</div>' +
+        (genreHtml ? '<div class="prof-digger-genres">' + genreHtml + '</div>' : '') +
+        dimBreakdown +
+        whyLine +
         '<div class="prof-digger-stats">' +
           '<span class="prof-digger-stat">' + (d.wantlist || 0) + ' want</span>' +
           '<span class="prof-digger-dot">·</span>' +
@@ -5475,8 +5512,6 @@ function _renderDiggers(diggers, currentUser) {
           '<span class="prof-digger-dot">·</span>' +
           '<span class="prof-digger-stat dim">' + ageLabel + '</span>' +
         '</div>' +
-        (genreHtml ? '<div class="prof-digger-genres">' + genreHtml + '</div>' : '') +
-        dimBreakdown +
       '</div>' +
       matchHtml +
     '</div>';

@@ -6517,17 +6517,32 @@ body.light .prof-style-pill { background: #f5f5f5; border-color: #e5e5e5; color:
   font-family: 'Oswald', sans-serif;
   white-space: nowrap;
 }
-/* Dimension chips on profile digger cards */
-.prof-digger-dims { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
-.prof-digger-dim-chip {
-  font-size: 9px; font-family: 'Oswald', sans-serif;
-  padding: 1px 5px; border-radius: 3px;
-  background: #1a1a1a; border: 1px solid #252525;
-  color: #444; white-space: nowrap;
+/* Dimension bar rows on profile digger cards */
+.prof-digger-dim-bars { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
+.prof-digger-dim-row  { display: flex; align-items: center; gap: 5px; }
+.prof-digger-dim-lbl  {
+  font-size: 8px; font-family: 'Oswald', sans-serif; letter-spacing: .04em;
+  color: #444; text-transform: uppercase; width: 52px; flex-shrink: 0;
 }
-.prof-digger-dim-chip.match-high { background: #4ecdc408; border-color: #4ecdc430; color: #4ecdc4; }
-.prof-digger-dim-chip.match-mid  { background: #C9A22708; border-color: #C9A22730; color: #C9A227; }
-.prof-digger-dim-chip.match-low  { background: #1a1a1a;   border-color: #252525;   color: #444;    }
+.prof-digger-dim-track {
+  flex: 1; height: 4px; background: #1e1e1e; border-radius: 2px; overflow: hidden;
+}
+.prof-digger-dim-fill {
+  height: 100%; border-radius: 2px;
+  background: linear-gradient(90deg, #33333360, #555);
+  transition: width .3s ease;
+}
+.prof-digger-dim-fill.match-high { background: linear-gradient(90deg, #4ecdc460, #4ecdc4); }
+.prof-digger-dim-fill.match-mid  { background: linear-gradient(90deg, #C9A22760, #C9A227); }
+.prof-digger-dim-fill.match-low  { background: linear-gradient(90deg, #33333360, #555);   }
+.prof-digger-dim-num {
+  font-size: 9px; font-family: 'Oswald', sans-serif;
+  color: #444; width: 22px; text-align: right; flex-shrink: 0;
+}
+.prof-digger-why {
+  margin-top: 4px; font-size: 9px; font-family: 'Oswald', sans-serif;
+  letter-spacing: .05em; color: #C9A227; text-transform: uppercase;
+}
 
 /* Light mode */
 body.light .prof-diggers-section { background: #fff; border-color: #eee; }
@@ -6536,7 +6551,10 @@ body.light .prof-digger-card:hover { border-color: var(--silver); background: #f
 body.light .prof-digger-avatar   { background: #f0f0f0; border-color: #e0e0e0; }
 body.light .prof-digger-name     { color: #333; }
 body.light .prof-digger-genre    { background: #f0f0f0; border-color: #e5e5e5; color: #aaa; }
-body.light .prof-digger-dim-chip { background: #f5f5f5; border-color: #e5e5e5; color: #aaa; }
+body.light .prof-digger-dim-lbl  { color: #bbb; }
+body.light .prof-digger-dim-track { background: #eee; }
+body.light .prof-digger-dim-num  { color: #bbb; }
+body.light .prof-digger-why      { color: #b8960c; }
 
 /* ─── Profile: Collection panel ─────────────────────────────────────────── */
 .prof-coll-section {
