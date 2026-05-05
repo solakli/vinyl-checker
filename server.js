@@ -3383,11 +3383,60 @@ app.get('/api/discover/:username', function(req, res) {
             console.error('[discover] rec error:', recErr.message);
         }
 
-        // Sort: wantlist (100%) first, then by matchPct desc
+        // 3. Digger recommendations — records from other diggers' wantlists/collections
+        try {
+            var diggerRec = require('./lib/digger-recommendations');
+            var diggerResult = diggerRec.compute(user.id, req.params.username, db.getDb());
+            // Use cache if available (avoids recompute on every discover load)
+            var cachedDigger = db.getDiggerRecommendationsCache(user.id, 6);
+            var diggerRecs = cachedDigger.length > 0 ? cachedDigger : diggerResult;
+            if (cachedDigger.length === 0 && diggerResult.length > 0) {
+                db.saveDiggerRecommendations(user.id, diggerResult);
+            }
+            diggerRecs.slice(0, 40).forEach(function(r) {
+                var key = (r.artist + '|' + r.title).toLowerCase();
+                if (wantlistKeys.has(key)) return; // already shown
+                forYouItems.push({
+                    wantlistId:      null,
+                    discogsId:       r.discogsId || r.discogs_id || null,
+                    artist:          r.artist  || '',
+                    title:           r.title   || '',
+                    year:            r.year    || null,
+                    label:           r.label   || '',
+                    catno:           r.catno   || '',
+                    store:           null,
+                    thumb:           r.thumb   || '',
+                    image:           r.thumb   || '',
+                    genres:          r.genres  || '',
+                    styles:          r.styles  || '',
+                    priceStr:        '',
+                    priceUsd:        null,
+                    discogsLowest:   null,
+                    numForSale:      0,
+                    url:             r.discogsId ? 'https://www.discogs.com/release/' + (r.discogsId || r.discogs_id) : '',
+                    matchPct:        r.tasteScore || r.taste_score || 0,
+                    gemScore:        r.gemScore   || r.gem_score   || null,
+                    combinedScore:   r.combinedScore || r.combined_score || 0,
+                    diggersOwning:   r.diggersOwning  || [],
+                    diggersWanting:  r.diggersWanting || [],
+                    source:          'digger',
+                    inCart:          false,
+                });
+                wantlistKeys.add(key);
+            });
+        } catch(diggerErr) {
+            console.error('[discover] digger-rec error:', diggerErr.message);
+        }
+
+        // Sort: wantlist (100%) first, then interleave catalog + digger recs by score
         forYouItems.sort(function(a, b) {
             if (a.source === 'wantlist' && b.source !== 'wantlist') return -1;
             if (b.source === 'wantlist' && a.source !== 'wantlist') return  1;
-            return b.matchPct - a.matchPct;
+            // For digger recs use combinedScore (includes ownership boost),
+            // for catalog use matchPct — normalise both to 0-100 range
+            var aScore = a.source === 'digger' ? (a.combinedScore || 0) : (a.matchPct || 0);
+            var bScore = b.source === 'digger' ? (b.combinedScore || 0) : (b.matchPct || 0);
+            return bScore - aScore;
         });
 
         // ── Discogs marketplace listings (from Chrome extension sync) ──────────

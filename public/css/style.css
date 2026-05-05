@@ -5513,6 +5513,42 @@ body.light .disc-item-discogs-forsale { color: #aaa; }
   text-transform: uppercase;
 }
 
+/* ─── Digger Recommendation card variant ─── */
+.disc-fy-card-digger { border-color: #1a182a; }
+.disc-fy-card-digger:hover { border-color: #2a2245; }
+
+/* Match % badge — purple tint for digger source */
+.disc-card-art-wrap .disc-match-badge-digger        { background: #1e1630; color: #9b72d4; }
+.disc-card-art-wrap .disc-match-badge-digger.high   { background: #9b72d4; color: #0d0d0d; }
+.disc-card-art-wrap .disc-match-badge-digger.mid    { background: #2e2050; color: #b89ee8; }
+
+/* "DIGGER REC" stamp — bottom-left corner of art */
+.disc-digger-source-badge {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: #9b72d4;
+  background: rgba(0,0,0,0.75);
+  border: 1px solid rgba(155,114,212,0.3);
+  border-radius: 3px;
+  padding: 2px 5px;
+  text-transform: uppercase;
+}
+
+/* Social proof: "Alex owns · Filip wants" */
+.disc-card-digger-social {
+  font-size: 9px;
+  color: #555;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'Inter', sans-serif;
+}
+
 /* ─── Card body (text area) ─── */
 .disc-card-body {
   padding: 8px 10px 10px;

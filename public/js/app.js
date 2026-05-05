@@ -4188,10 +4188,12 @@ function renderForYouTab() {
 }
 
 function renderForYouCard(item) {
-  // Match badge
   var isWantlist = item.source === 'wantlist';
+  var isDigger   = item.source === 'digger';
   var pct = item.matchPct || 0;
-  var badgeClass = isWantlist ? 'disc-match-badge wantlist' : 'disc-match-badge' + (pct >= 85 ? ' high' : pct >= 70 ? ' mid' : '');
+  var badgeClass = isWantlist ? 'disc-match-badge wantlist'
+                 : isDigger   ? 'disc-match-badge disc-match-badge-digger' + (pct >= 70 ? ' high' : pct >= 40 ? ' mid' : '')
+                 : 'disc-match-badge' + (pct >= 85 ? ' high' : pct >= 70 ? ' mid' : '');
   var badgeLabel = isWantlist ? '✓' : pct + '%';
 
   // Art
@@ -4200,22 +4202,53 @@ function renderForYouCard(item) {
       '<div class="disc-card-art-placeholder" style="display:none">♪</div>'
     : '<div class="disc-card-art-placeholder">♪</div>';
 
-  // Genre chip (first style tag)
-  var firstStyle = (item.styles || item.genres || '').split('|')[0].trim();
+  // Genre chip (first style tag — digger cards split on comma, others on pipe)
+  var styleStr = item.styles || item.genres || '';
+  var firstStyle = (isDigger ? styleStr.split(/,\s*/)[0] : styleStr.split('|')[0]).trim();
   var genreChip = firstStyle ? '<span class="disc-card-genre-chip">' + escapeHtml(firstStyle) + '</span>' : '';
 
-  // Store badge
+  // ── DIGGER SOURCE — social proof, no action button ───────────────────────
+  if (isDigger) {
+    var owners  = item.diggersOwning  || [];
+    var wanters = item.diggersWanting || [];
+    // "Alex owns · Filip wants" — owners first, max 2 names total
+    var socialParts = [];
+    owners.slice(0, 1).forEach(function(u)  { socialParts.push(escapeHtml(u) + ' owns');  });
+    wanters.slice(0, 1).forEach(function(u) { socialParts.push(escapeHtml(u) + ' wants'); });
+    var socialHtml = socialParts.length
+      ? '<span class="disc-card-digger-social">' + socialParts.join(' · ') + '</span>'
+      : '';
+
+    var discogsUrl = item.discogsId
+      ? 'https://www.discogs.com/release/' + item.discogsId
+      : null;
+    var linkAttr = discogsUrl ? ' onclick="window.open(\'' + escapeAttr(discogsUrl) + '\',\'_blank\')"' : '';
+    return '<div class="disc-fy-card disc-fy-card-digger"' + linkAttr + '>' +
+      '<div class="disc-card-art-wrap">' +
+        artHtml +
+        '<span class="' + badgeClass + '">' + badgeLabel + '</span>' +
+        '<span class="disc-digger-source-badge">DIGGER REC</span>' +
+      '</div>' +
+      '<div class="disc-card-body">' +
+        '<div class="disc-card-artist">' + escapeHtml(item.artist || '') + '</div>' +
+        '<div class="disc-card-title">'  + escapeHtml(item.title  || '') + '</div>' +
+        '<div class="disc-card-footer">' +
+          genreChip + socialHtml +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  // ── WANTLIST / CATALOG SOURCE — existing rendering ────────────────────────
   var storeCls = storeClassMap[item.store] || '';
   var storeBadge = item.store
     ? '<span class="disc-card-store-badge ' + storeCls + '">' + escapeHtml(storeDisplayName[item.store] || item.store) + '</span>'
     : '';
 
-  // Store price
   var priceHtml = item.priceStr
     ? '<span class="disc-card-price">' + escapeHtml(item.priceStr) + '</span>'
     : (item.priceUsd ? '<span class="disc-card-price">$' + item.priceUsd.toFixed(2) + '</span>' : '');
 
-  // Discogs cheapest listing badge (cross-reference by wantlistId)
   var dgBadge = '';
   if (item.wantlistId && _dgPriceMap[item.wantlistId]) {
     var dl = _dgPriceMap[item.wantlistId];
@@ -4227,11 +4260,10 @@ function renderForYouCard(item) {
       '</span>';
   }
 
-  // Cart button (only for wantlist items that have wantlistId)
   var cartBtn = '';
   if (item.wantlistId) {
-    var cartKey  = String(item.wantlistId) + ':' + item.store;
-    var inCart   = !!_discoverCartSet[cartKey];
+    var cartKey = String(item.wantlistId) + ':' + item.store;
+    var inCart  = !!_discoverCartSet[cartKey];
     cartBtn = '<button class="disc-card-cart-btn' + (inCart ? ' in-cart' : '') + '" data-key="' + escapeAttr(cartKey) + '" ' +
       'onclick="toggleCart(' + item.wantlistId + ',\'' + escapeAttr(item.store) + '\',\'' + escapeAttr(item.priceStr) + '\',' +
       (item.priceUsd !== null ? item.priceUsd : 'null') + ')">' +
@@ -4239,7 +4271,6 @@ function renderForYouCard(item) {
   }
 
   var linkAttr = item.url ? ' onclick="window.open(\'' + escapeAttr(item.url) + '\',\'_blank\')"' : '';
-
   return '<div class="disc-fy-card"' + linkAttr + '>' +
     '<div class="disc-card-art-wrap">' +
       artHtml +
