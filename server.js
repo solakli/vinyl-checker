@@ -1747,6 +1747,214 @@ app.get('/api/meta-sync/:username', function(req, res) {
     }
 });
 
+// ─── Pipeline status + manual trigger ────────────────────────────────────────
+app.get('/api/pipeline/status', function(req, res) {
+    try {
+        var states = db.getPipelineStatus();
+        var queue  = db.getPipelineQueue();
+        // Group by username → stage → state
+        var byUser = {};
+        states.forEach(function(row) {
+            if (!byUser[row.username]) byUser[row.username] = {};
+            byUser[row.username][row.stage] = {
+                status:          row.status,
+                lastRunAt:       row.last_run_at,
+                lastStartedAt:   row.last_started_at,
+                itemsProcessed:  row.items_processed,
+                error:           row.error,
+                consecutiveFails: row.consecutive_fails,
+            };
+        });
+        res.json({
+            stages:     byUser,
+            queue:      queue.map(function(j) {
+                return { id:j.id, stage:j.stage, username:j.username,
+                         priority:j.priority, status:j.status,
+                         createdAt:j.created_at, claimedAt:j.claimed_at };
+            }),
+            queueDepth: queue.length,
+            uptime:     Math.round(process.uptime()),
+            now:        new Date().toISOString(),
+        });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/pipeline/log[?stage=meta_sync&username=osolakli&status=failed&limit=50]
+// Append-only audit trail — every stage run event
+app.get('/api/pipeline/log', function(req, res) {
+    try {
+        var rows = db.getPipelineLog({
+            stage:    req.query.stage    || null,
+            username: req.query.username || null,
+            status:   req.query.status   || null,
+            limit:    parseInt(req.query.limit) || 100,
+        });
+        res.json({ log: rows, count: rows.length });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/pipeline/trigger { stage, username, priority }
+// Lets an admin manually kick a specific stage for a user at high priority
+app.post('/api/pipeline/trigger', function(req, res) {
+    try {
+        var d = db.getDb();
+        var username = (req.body.username || '').trim();
+        var stage    = req.body.stage || 'wantlist_sync';
+        var priority = parseInt(req.body.priority) || 1;
+        if (!username) return res.status(400).json({ error: 'username required' });
+        var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        var jobId = db.enqueuePipelineJob(stage, user.id, priority);
+        res.json({ ok: true, jobId: jobId, stage: stage, username: username });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Discogs wantlist mutations (require OAuth token) ────────────────────────
+
+// POST /api/wantlist/add  { discogsId, artist, title, year, label, catno, thumb, genres, styles }
+app.post('/api/wantlist/add', async function(req, res) {
+    try {
+        var d = db.getDb();
+        var username = (req.body.username || '').trim();
+        if (!username) return res.status(400).json({ error: 'username required' });
+        var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        var token = db.getOAuthToken(user.id, 'discogs');
+        if (!token || !token.access_token) return res.status(403).json({ error: 'Discogs OAuth required — connect your Discogs account first' });
+
+        var releaseId = parseInt(req.body.discogsId);
+        if (!releaseId) return res.status(400).json({ error: 'discogsId required' });
+
+        var actions = require('./lib/discogs-actions');
+        await actions.addToWantlist(token.provider_username || username, releaseId, token.access_token, token.access_secret);
+
+        // Persist locally so next page load reflects it immediately
+        db.syncWantlist(user.id, [{
+            id:          releaseId,
+            artist:      req.body.artist  || '',
+            title:       req.body.title   || '',
+            year:        req.body.year    || null,
+            label:       req.body.label   || '',
+            catno:       req.body.catno   || '',
+            thumb:       req.body.thumb   || '',
+            genres:      req.body.genres  || '',
+            styles:      req.body.styles  || '',
+            searchQuery: ((req.body.artist||'') + ' ' + (req.body.title||'')).trim(),
+            dateAdded:   new Date().toISOString(),
+        }]);
+
+        // Enqueue meta-sync at high priority so rarity/gem data updates promptly
+        db.enqueuePipelineJob('meta_sync', user.id, 2);
+
+        console.log('[wantlist/add]', username, '→ release', releaseId);
+        res.json({ ok: true, discogsId: releaseId });
+    } catch(e) {
+        console.error('[wantlist/add]', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// DELETE /api/wantlist/:username/:discogsId
+app.delete('/api/wantlist/:username/:discogsId', async function(req, res) {
+    try {
+        var d = db.getDb();
+        var username  = req.params.username.trim();
+        var releaseId = parseInt(req.params.discogsId);
+        var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        var token = db.getOAuthToken(user.id, 'discogs');
+        if (!token || !token.access_token) return res.status(403).json({ error: 'Discogs OAuth required' });
+
+        var actions = require('./lib/discogs-actions');
+        await actions.removeFromWantlist(token.provider_username || username, releaseId, token.access_token, token.access_secret);
+        d.prepare('UPDATE wantlist SET active=0 WHERE user_id=? AND discogs_id=?').run(user.id, releaseId);
+
+        res.json({ ok: true, discogsId: releaseId });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/collection/add  { username, discogsId } — adds to collection + removes from wantlist
+app.post('/api/collection/add', async function(req, res) {
+    try {
+        var d = db.getDb();
+        var username  = (req.body.username || '').trim();
+        var releaseId = parseInt(req.body.discogsId);
+        if (!username || !releaseId) return res.status(400).json({ error: 'username + discogsId required' });
+        var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        var token = db.getOAuthToken(user.id, 'discogs');
+        if (!token || !token.access_token) return res.status(403).json({ error: 'Discogs OAuth required' });
+
+        var actions = require('./lib/discogs-actions');
+        // Step 1: add to collection
+        var collResult = await actions.addToCollection(token.provider_username || username, releaseId, token.access_token, token.access_secret);
+        // Step 2: remove from wantlist on Discogs
+        await actions.removeFromWantlist(token.provider_username || username, releaseId, token.access_token, token.access_secret);
+
+        // Step 3: update local DB
+        var wRow = d.prepare('SELECT * FROM wantlist WHERE user_id=? AND discogs_id=?').get(user.id, releaseId);
+        if (wRow) {
+            d.prepare(`
+                INSERT INTO collection (user_id, discogs_id, instance_id, artist, title, year, label, catno, thumb, genres, styles, date_added)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, instance_id) DO NOTHING
+            `).run(user.id, releaseId, collResult.instance_id || null,
+                   wRow.artist, wRow.title, wRow.year, wRow.label, wRow.catno,
+                   wRow.thumb, wRow.genres, wRow.styles, new Date().toISOString());
+            d.prepare('UPDATE wantlist SET active=0 WHERE user_id=? AND discogs_id=?').run(user.id, releaseId);
+        }
+
+        res.json({ ok: true, instanceId: collResult.instance_id });
+    } catch(e) {
+        console.error('[collection/add]', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ─── Digger recommendations ───────────────────────────────────────────────────
+// GET /api/digger-recommendations/:username[?refresh=1&limit=40]
+app.get('/api/digger-recommendations/:username', function(req, res) {
+    try {
+        var username    = req.params.username.trim();
+        var forceRefresh = req.query.refresh === '1';
+        var limit       = Math.min(parseInt(req.query.limit) || 40, 100);
+        var d = db.getDb();
+        var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        // Try cache (6h TTL)
+        if (!forceRefresh) {
+            var cached = db.getDiggerRecommendationsCache(user.id, 6);
+            if (cached.length > 0) {
+                return res.json({
+                    recommendations: cached.slice(0, limit),
+                    cached: true,
+                    computedAt: cached[0].computed_at,
+                });
+            }
+        }
+
+        // Recompute
+        var diggerRecs = require('./lib/digger-recommendations');
+        var result = diggerRecs.compute(user.id, username, d);
+
+        // Persist to cache
+        db.saveDiggerRecommendations(user.id, result);
+
+        res.json({
+            recommendations: result.slice(0, limit),
+            cached: false,
+            computedAt: new Date().toISOString(),
+        });
+    } catch(e) {
+        console.error('[digger-recs]', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ─── Gem Score — taste intelligence per release ───────────────────────────
 app.get('/api/gem-score/:username', function(req, res) {
     try {
@@ -3359,6 +3567,15 @@ app.listen(PORT, function () {
     // Cart optimizer job queue worker
     var optimizerWorker = require('./lib/optimizer-worker');
     optimizerWorker.start();
+
+    // ETL Pipeline worker — replaces ad-hoc setIntervals for meta-sync/YouTube/gem-score
+    var pipelineWorker = require('./lib/pipeline-worker');
+    pipelineWorker.start();
+    // Seed all users into the pipeline 3 minutes after startup (low priority = 9,
+    // so manual scans and optimizer jobs take precedence)
+    setTimeout(function() {
+        pipelineWorker.seedAllUsers(9);
+    }, 3 * 60 * 1000);
 
     // Background sync (incremental — new items only)
     console.log('[sync] Background sync every ' + (SYNC_INTERVAL / 60000).toFixed(0) + ' minutes');

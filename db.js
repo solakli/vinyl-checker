@@ -504,6 +504,89 @@ function initTables() {
         );
         CREATE INDEX IF NOT EXISTS idx_goldie_sessions_user ON goldie_sessions(username, last_active);
     `);
+
+    // ── ETL Pipeline formalization ────────────────────────────────────────────
+    // One row per (stage, user_id) — persistent health ledger
+    try { db.exec(`
+        CREATE TABLE IF NOT EXISTS pipeline_state (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            stage             TEXT    NOT NULL,
+            user_id           INTEGER NOT NULL,
+            status            TEXT    NOT NULL DEFAULT 'idle',
+            last_run_at       TEXT,
+            last_started_at   TEXT,
+            items_processed   INTEGER DEFAULT 0,
+            items_skipped     INTEGER DEFAULT 0,
+            error             TEXT,
+            consecutive_fails INTEGER DEFAULT 0,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            UNIQUE(stage, user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_pipeline_state_user   ON pipeline_state(user_id, stage);
+        CREATE INDEX IF NOT EXISTS idx_pipeline_state_status ON pipeline_state(status);
+        CREATE TABLE IF NOT EXISTS pipeline_jobs (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            stage           TEXT    NOT NULL,
+            user_id         INTEGER NOT NULL,
+            priority        INTEGER NOT NULL DEFAULT 5,
+            status          TEXT    NOT NULL DEFAULT 'pending',
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+            claimed_at      TEXT,
+            completed_at    TEXT,
+            items_processed INTEGER DEFAULT 0,
+            error           TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_pipeline_jobs_pending ON pipeline_jobs(status, priority, created_at);
+        CREATE INDEX IF NOT EXISTS idx_pipeline_jobs_user    ON pipeline_jobs(user_id, stage, status);
+    `); } catch(e) {}
+
+    // ── Pipeline event log — immutable append-only audit trail ───────────────
+    // Every stage run (success or failure) gets a row. Never deleted.
+    // Tells you exactly what ran, when, what it processed, and what broke.
+    try { db.exec(`
+        CREATE TABLE IF NOT EXISTS pipeline_log (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts              TEXT NOT NULL DEFAULT (datetime('now')),
+            stage           TEXT NOT NULL,
+            user_id         INTEGER NOT NULL,
+            username        TEXT NOT NULL,
+            status          TEXT NOT NULL,         -- 'started' | 'done' | 'failed' | 'quota_exhausted'
+            items_processed INTEGER DEFAULT 0,
+            duration_ms     INTEGER,               -- NULL for 'started' rows
+            error           TEXT,
+            detail          TEXT                   -- JSON blob: quota remaining, API keys tried, etc.
+        );
+        CREATE INDEX IF NOT EXISTS idx_pipeline_log_ts    ON pipeline_log(ts DESC);
+        CREATE INDEX IF NOT EXISTS idx_pipeline_log_user  ON pipeline_log(user_id, stage, ts DESC);
+        CREATE INDEX IF NOT EXISTS idx_pipeline_log_stage ON pipeline_log(stage, status, ts DESC);
+    `); } catch(e) {}
+
+    // ── Cross-digger recommendation cache ────────────────────────────────────
+    try { db.exec(`
+        CREATE TABLE IF NOT EXISTS digger_recommendations (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id         INTEGER NOT NULL,
+            discogs_id      INTEGER NOT NULL,
+            artist          TEXT,
+            title           TEXT,
+            year            INTEGER,
+            label           TEXT,
+            catno           TEXT,
+            thumb           TEXT,
+            genres          TEXT DEFAULT '',
+            styles          TEXT DEFAULT '',
+            taste_score     REAL,
+            gem_score       REAL,
+            combined_score  REAL,
+            diggers_wanting TEXT DEFAULT '[]',
+            computed_at     TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            UNIQUE(user_id, discogs_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_digger_recs_user     ON digger_recommendations(user_id, combined_score DESC);
+        CREATE INDEX IF NOT EXISTS idx_digger_recs_computed ON digger_recommendations(user_id, computed_at);
+    `); } catch(e) {}
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2197,4 +2280,184 @@ module.exports = {
     removeFromCart: removeFromCart,
     clearCart: clearCart,
     getCartCount: getCartCount,
+    // ETL Pipeline
+    enqueuePipelineJob: enqueuePipelineJob,
+    claimNextPipelineJob: claimNextPipelineJob,
+    completePipelineJob: completePipelineJob,
+    failPipelineJob: failPipelineJob,
+    updatePipelineState: updatePipelineState,
+    getPipelineStatus: getPipelineStatus,
+    getPipelineQueue: getPipelineQueue,
+    logPipelineEvent: logPipelineEvent,
+    getPipelineLog: getPipelineLog,
+    // Digger recommendations
+    saveDiggerRecommendations: saveDiggerRecommendations,
+    getDiggerRecommendationsCache: getDiggerRecommendationsCache,
 };
+
+// ═══════════════════════════════════════════════════════════
+// ETL PIPELINE — job queue + state tracking
+// ═══════════════════════════════════════════════════════════
+
+// Idempotent enqueue — won't double-queue a stage already pending for this user
+function enqueuePipelineJob(stage, userId, priority) {
+    var d = getDb();
+    priority = priority || 5;
+    var existing = d.prepare(
+        "SELECT id FROM pipeline_jobs WHERE stage=? AND user_id=? AND status='pending'"
+    ).get(stage, userId);
+    if (existing) return existing.id;
+    var info = d.prepare(
+        'INSERT INTO pipeline_jobs (stage, user_id, priority) VALUES (?, ?, ?)'
+    ).run(stage, userId, priority);
+    return info.lastInsertRowid;
+}
+
+// Atomic claim — lower priority number runs first, then FIFO
+function claimNextPipelineJob() {
+    var d = getDb();
+    var job = d.prepare(
+        "SELECT * FROM pipeline_jobs WHERE status='pending' ORDER BY priority ASC, created_at ASC LIMIT 1"
+    ).get();
+    if (!job) return null;
+    var now = new Date().toISOString();
+    d.prepare(
+        "UPDATE pipeline_jobs SET status='running', claimed_at=? WHERE id=? AND status='pending'"
+    ).run(now, job.id);
+    var claimed = d.prepare("SELECT * FROM pipeline_jobs WHERE id=? AND status='running'").get(job.id);
+    return claimed || null;
+}
+
+function completePipelineJob(jobId, stage, userId, result) {
+    var now = new Date().toISOString();
+    var d = getDb();
+    d.prepare(
+        "UPDATE pipeline_jobs SET status='done', completed_at=?, items_processed=? WHERE id=?"
+    ).run(now, result.itemsProcessed || 0, jobId);
+    d.prepare(`
+        INSERT INTO pipeline_state (stage, user_id, status, last_run_at, last_started_at, items_processed, error, consecutive_fails)
+        VALUES (?, ?, 'done', ?, ?, ?, NULL, 0)
+        ON CONFLICT(stage, user_id) DO UPDATE SET
+            status='done', last_run_at=excluded.last_run_at,
+            items_processed=excluded.items_processed, error=NULL, consecutive_fails=0
+    `).run(stage, userId, now, now, result.itemsProcessed || 0);
+}
+
+function failPipelineJob(jobId, stage, userId, errMsg) {
+    var now = new Date().toISOString();
+    var d = getDb();
+    d.prepare(
+        "UPDATE pipeline_jobs SET status='failed', completed_at=?, error=? WHERE id=?"
+    ).run(now, errMsg, jobId);
+    d.prepare(`
+        INSERT INTO pipeline_state (stage, user_id, status, last_run_at, error, consecutive_fails)
+        VALUES (?, ?, 'failed', ?, ?, 1)
+        ON CONFLICT(stage, user_id) DO UPDATE SET
+            status='failed', error=excluded.error,
+            consecutive_fails=pipeline_state.consecutive_fails + 1
+    `).run(stage, userId, now, errMsg);
+}
+
+function updatePipelineState(stage, userId, status) {
+    var now = new Date().toISOString();
+    getDb().prepare(`
+        INSERT INTO pipeline_state (stage, user_id, status, last_started_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(stage, user_id) DO UPDATE SET
+            status=excluded.status, last_started_at=excluded.last_started_at
+    `).run(stage, userId, status, now);
+}
+
+function getPipelineStatus() {
+    return getDb().prepare(`
+        SELECT ps.*, u.username
+        FROM pipeline_state ps
+        JOIN users u ON u.id = ps.user_id
+        ORDER BY u.username, ps.stage
+    `).all();
+}
+
+function getPipelineQueue() {
+    return getDb().prepare(`
+        SELECT pj.*, u.username
+        FROM pipeline_jobs pj
+        JOIN users u ON u.id = pj.user_id
+        WHERE pj.status IN ('pending','running')
+        ORDER BY pj.priority ASC, pj.created_at ASC
+    `).all();
+}
+
+// Append-only event log — called at start, done, and failure of each stage run
+function logPipelineEvent(stage, userId, username, status, opts) {
+    opts = opts || {};
+    getDb().prepare(`
+        INSERT INTO pipeline_log (stage, user_id, username, status, items_processed, duration_ms, error, detail)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+        stage, userId, username, status,
+        opts.itemsProcessed || 0,
+        opts.durationMs     || null,
+        opts.error          || null,
+        opts.detail ? JSON.stringify(opts.detail) : null
+    );
+}
+
+// Fetch last N log entries — optionally filtered by stage or username
+function getPipelineLog(opts) {
+    opts = opts || {};
+    var limit = Math.min(opts.limit || 200, 1000);
+    var where = [];
+    var args  = [];
+    if (opts.stage)    { where.push('stage=?');    args.push(opts.stage);    }
+    if (opts.username) { where.push('username=?'); args.push(opts.username); }
+    if (opts.status)   { where.push('status=?');   args.push(opts.status);   }
+    var sql = 'SELECT * FROM pipeline_log' +
+              (where.length ? ' WHERE ' + where.join(' AND ') : '') +
+              ' ORDER BY ts DESC LIMIT ' + limit;
+    return getDb().prepare(sql).all(...args);
+}
+
+// ═══════════════════════════════════════════════════════════
+// DIGGER RECOMMENDATIONS cache
+// ═══════════════════════════════════════════════════════════
+
+function saveDiggerRecommendations(userId, recs) {
+    var d = getDb();
+    var upsert = d.prepare(`
+        INSERT INTO digger_recommendations
+            (user_id, discogs_id, artist, title, year, label, catno, thumb, genres, styles,
+             taste_score, gem_score, combined_score, diggers_wanting, computed_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+        ON CONFLICT(user_id, discogs_id) DO UPDATE SET
+            taste_score=excluded.taste_score, gem_score=excluded.gem_score,
+            combined_score=excluded.combined_score, diggers_wanting=excluded.diggers_wanting,
+            artist=excluded.artist, title=excluded.title,
+            computed_at=excluded.computed_at
+    `);
+    var insertAll = d.transaction(function(rows) {
+        d.prepare('DELETE FROM digger_recommendations WHERE user_id=?').run(userId);
+        rows.forEach(function(r) {
+            upsert.run(userId, r.discogsId, r.artist, r.title, r.year, r.label,
+                r.catno, r.thumb, r.genres, r.styles,
+                r.tasteScore, r.gemScore, r.combinedScore,
+                JSON.stringify(r.diggersWanting || []));
+        });
+    });
+    insertAll(recs.slice(0, 200));
+}
+
+function getDiggerRecommendationsCache(userId, ttlHours) {
+    var cutoff = new Date(Date.now() - (ttlHours || 6) * 3600 * 1000).toISOString().replace('T', ' ');
+    var rows = getDb().prepare(
+        "SELECT * FROM digger_recommendations WHERE user_id=? AND computed_at > ? ORDER BY combined_score DESC"
+    ).all(userId, cutoff);
+    return rows.map(function(r) {
+        return Object.assign({}, r, {
+            diggersWanting: JSON.parse(r.diggers_wanting || '[]'),
+            tasteScore:     r.taste_score,
+            gemScore:       r.gem_score,
+            combinedScore:  r.combined_score,
+            discogsId:      r.discogs_id,
+        });
+    });
+}
