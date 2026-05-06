@@ -8325,7 +8325,10 @@ body.light .gi-archetype { border-color: var(--arch-color, var(--gold)); }
 .prof-digger-dim-num { font-size: 9px; color: #777; }
 .prof-digger-why     { font-size: 10px; }
 
-/* ── 8. Light mode — ensure same contrast improvements apply ─── */
+/* ── 8. Remove the "CACHED · Last full scan" timestamp from the header ── */
+.timestamp { display: none !important; }
+
+/* ── 9. Light mode — ensure same contrast improvements apply ─── */
 body.light .disc-label        { color: #666; }
 body.light .disc-year         { color: #777; }
 body.light .coll-label        { color: #666; }
@@ -8333,3 +8336,43 @@ body.light .coll-year         { color: #777; }
 body.light .disc-digger-stats { color: #888; }
 body.light .ti-label          { color: #555; }
 body.light .ti-pct            { color: #777; }
+
+/* ── 10. Mobile layout & readability (≤ 480 px / phone) ───────── */
+
+/* 10a. GOLDIE FAB — flip to LEFT side on narrow screens so right-
+        column store "Check →" links are never covered */
+@media (max-width: 480px) {
+  .mobile-goldie-fab {
+    right: auto;
+    left: 12px;
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* 10b. Discover "For You" grid — 2 columns on phone
+        (minmax 130px resolves to 3 cols at 430 px; force 2-col) */
+@media (max-width: 480px) {
+  .disc-card-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* 10c. Collection grid — force 2 columns at phone width */
+@media (max-width: 480px) {
+  .coll-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* 10d. Bottom tab labels — raise from 7 px → 9 px for legibility */
+@media (max-width: 768px) {
+  .mobile-tab-label { font-size: 9px; }
+}
+
+/* 10e. Navbar — shrink rescan button on very narrow screens so it
+        doesn't clip beyond the right viewport edge */
+@media (max-width: 440px) {
+  #userBarRescan { padding: 5px 8px; font-size: 9px; letter-spacing: 0.5px; }
+  .nav-cart-pill { max-width: 110px; font-size: 10px; padding: 4px 8px; }
+}
