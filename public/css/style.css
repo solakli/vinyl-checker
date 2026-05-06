@@ -1092,7 +1092,7 @@ body.light .store-row.link-only-row:hover { border-color: rgba(0,0,0,0.15); }
 }
 
 .welcome-cta:hover {
-  background: #e05500;
+  background: #c0cdd9;
   transform: translateY(-1px);
   box-shadow: 0 8px 24px rgba(168, 184, 200,0.3);
 }
@@ -1250,18 +1250,19 @@ body.light .welcome-go { border-color: rgba(168, 184, 200,0.3); }
 .navbar-gear {
   background: transparent;
   border: none;
-  color: #666;
-  font-size: 16px;
+  color: #555;
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: color 0.15s, transform 0.2s ease;
-  line-height: 1;
   user-select: none;
+  flex-shrink: 0;
 }
-.navbar-gear:hover { color: var(--silver); transform: scale(1.15); }
-/* Hold to reset hint */
-.navbar-gear:active { transform: scale(0.95); }
+.navbar-gear:hover { color: var(--silver); transform: rotate(45deg); }
+.navbar-gear:active { transform: rotate(90deg) scale(0.95); }
 
 /* THEME TOGGLE (legacy fixed-position, hidden now navbar has gear) */
 .theme-toggle {
@@ -2944,6 +2945,7 @@ body.light .opt-shipping-row { background: rgba(0,0,0,0.03); }
 }
 
 .navbar-logo span:first-of-type { color: var(--silver); }
+.navbar-logo-word { color: #fff; }
 
 .navbar-nav {
   display: flex;
@@ -4773,14 +4775,14 @@ body.light .wl-style-pill.active { background: rgba(168, 184, 200,0.12); color: 
 .mobile-tab.active { color: var(--silver); }
 
 .mobile-tab-icon {
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1;
 }
 
 .mobile-tab-label {
-  font-size: 7px;
+  font-size: 6.5px;
   font-weight: 600;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.2px;
   text-transform: uppercase;
   white-space: nowrap;
 }
