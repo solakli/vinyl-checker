@@ -3,83 +3,80 @@
 # Usage: ./deploy.sh
 # Requires: ~/.ssh/contabo key
 
-set -euo pipefail
-
 SSH_KEY="$HOME/.ssh/contabo"
 VPS="root@89.117.16.160"
 APP_DIR="/root/vinyl-checker"
 PORT=5052
 
-SSH="ssh -i $SSH_KEY $VPS"
+SSH="ssh -i $SSH_KEY -o ServerAliveInterval=30 $VPS"
 
 echo "=== Deploying Vinyl Checker ==="
 
-# ── 1. Push must already be done (deploy.sh is called after git push) ─────────
+# ── 1. Pull latest code ────────────────────────────────────────────────────────
 echo ""
 echo ">>> [1/4] Pulling latest code on VPS..."
-$SSH "cd $APP_DIR && git pull"
+$SSH "cd $APP_DIR && git pull" || { echo "✗ git pull failed"; exit 1; }
 
-# ── 2. Kill ALL server.js processes, then wait for port to be free ────────────
+# ── 2. Kill ALL server.js processes (listening + orphans) ─────────────────────
+#      fuser kills the port-holder; pgrep mops up orphans that aren't on any port
 echo ""
-echo ">>> [2/4] Stopping old server (all processes)..."
+echo ">>> [2/4] Stopping server..."
 $SSH "
-  PIDS=\$(pgrep -f 'node.*server\.js' 2>/dev/null || true)
-  if [ -n \"\$PIDS\" ]; then
-    echo \"  Sending TERM to PIDs: \$PIDS\"
-    kill -TERM \$PIDS 2>/dev/null || true
-    sleep 2
-    # Force-kill any survivors
-    SURVIVORS=\$(pgrep -f 'node.*server\.js' 2>/dev/null || true)
-    if [ -n \"\$SURVIVORS\" ]; then
-      echo \"  Force-killing survivors: \$SURVIVORS\"
-      kill -9 \$SURVIVORS 2>/dev/null || true
-    fi
-  else
-    echo '  No server.js processes found'
+  # Kill whatever is holding the port (most reliable — no name ambiguity)
+  PORT_PID=\$(fuser ${PORT}/tcp 2>/dev/null | tr -d ' ' || true)
+  if [ -n \"\$PORT_PID\" ]; then
+    echo '  Killing port holder PID' \$PORT_PID
+    kill -9 \$PORT_PID 2>/dev/null || true
   fi
 
-  # Wait for port $PORT to be free (up to 10 s)
-  for i in 1 2 3 4 5; do
-    if ss -tlnp | grep -q ':$PORT '; then
-      echo \"  Port $PORT still in use — waiting (\$i/5)...\"
-      sleep 2
-    else
-      break
-    fi
-  done
+  # Mop up any orphaned server.js processes (not holding the port)
+  ORPHANS=\$(pgrep -f 'node.*server\.js' 2>/dev/null || true)
+  if [ -n \"\$ORPHANS\" ]; then
+    echo '  Killing orphan PIDs:' \$ORPHANS
+    kill -9 \$ORPHANS 2>/dev/null || true
+  fi
 
-  if ss -tlnp | grep -q ':$PORT '; then
-    echo '  ERROR: port $PORT still occupied after 10 s — aborting'
+  sleep 1
+
+  # Confirm port is clear
+  STILL=\$(fuser ${PORT}/tcp 2>/dev/null | tr -d ' ' || true)
+  if [ -n \"\$STILL\" ]; then
+    echo '  ERROR: port ${PORT} still held by PID' \$STILL
     exit 1
-  else
-    echo '  Port $PORT is free'
   fi
-"
+  echo '  Done — port ${PORT} is free'
+" || { echo "✗ Stop step failed"; exit 1; }
 
-# ── 3. Start fresh ────────────────────────────────────────────────────────────
+# ── 3. Start fresh — use setsid to fully detach from the SSH session ──────────
 echo ""
 echo ">>> [3/4] Starting server..."
-$SSH "cd $APP_DIR && nohup node server.js >> server.log 2>&1 & echo \"  Started PID \$!\""
+$SSH "setsid bash -c 'cd ${APP_DIR} && nohup node server.js >> server.log 2>&1' & echo '  Started'" \
+  || { echo "✗ Start failed"; exit 1; }
 
-# ── 4. Verify (give it 5 s to bind) ──────────────────────────────────────────
+# ── 4. Verify ─────────────────────────────────────────────────────────────────
 echo ""
 echo ">>> [4/4] Verifying..."
-sleep 5
-HTTP=$($SSH "curl -s -o /dev/null -w '%{http_code}' http://localhost:$PORT/ 2>/dev/null || echo 000")
-LISTENING=$($SSH "ss -tlnp | grep ':$PORT ' | awk '{print \$5}'" || echo "")
+ATTEMPTS=0
+HTTP="000"
+while [ "$HTTP" != "200" ] && [ $ATTEMPTS -lt 5 ]; do
+  sleep 2
+  HTTP=$($SSH "curl -s -o /dev/null -w '%{http_code}' http://localhost:$PORT/ 2>/dev/null" 2>/dev/null || echo "000")
+  ATTEMPTS=$((ATTEMPTS+1))
+  [ "$HTTP" != "200" ] && echo "  attempt $ATTEMPTS/5: HTTP $HTTP"
+done
 
 if [ "$HTTP" = "200" ]; then
+  PID=$($SSH "fuser ${PORT}/tcp 2>/dev/null | tr -d ' '" 2>/dev/null || echo "?")
   echo ""
-  echo "  ✓ Listening: $LISTENING"
-  echo "  ✓ HTTP: $HTTP"
+  echo "  ✓ HTTP $HTTP — PID $PID on port $PORT"
   echo ""
   echo "=== DEPLOYMENT COMPLETE ==="
-  echo "    https://stream.ronautradio.la/vinyl/"
+  echo "    https://waxdigger.ai/vinyl/"
 else
   echo ""
-  echo "  ✗ HTTP $HTTP — server did not come up cleanly"
+  echo "  ✗ Server not responding after $((ATTEMPTS*2))s (HTTP $HTTP)"
   echo ""
-  echo "--- Last 30 lines of server.log ---"
-  $SSH "tail -30 $APP_DIR/server.log"
+  echo "--- Last 20 lines of server.log ---"
+  $SSH "tail -20 $APP_DIR/server.log"
   exit 1
 fi

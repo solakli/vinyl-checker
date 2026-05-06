@@ -5544,7 +5544,7 @@ body.light .disc-item-discogs-forsale { color: #aaa; }
 /* Social proof: "Alex owns · Filip wants" */
 .disc-card-digger-social {
   font-size: 9px;
-  color: #555;
+  color: #888;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -8256,29 +8256,29 @@ body.light .gi-archetype { border-color: var(--arch-color, var(--gold)); }
 .coll-year         { color: #777; }
 .coll-format       { color: #777; }
 .coll-stats-bar    { color: #888; }
-.coll-stats-sep    { color: #555; }
+.coll-stats-sep    { color: #666; }  /* raised from #555 */
 .coll-loading,
 .coll-empty        { color: #888; }
 
 /* Digger cards */
 .disc-digger-stats     { color: #888; }
-.disc-digger-dim-label { color: #666; }
+.disc-digger-dim-label { color: #777; }  /* raised from #666 */
 .disc-digger-dim-val   { color: #777; }
 
 /* Taste Intelligence band */
 .ti-label { color: #aaa; }
 .ti-pct   { color: #888; }
-.ti-drift-flat { color: #666; }
+.ti-drift-flat { color: #777; }  /* raised from #666 */
 
 /* Store rows */
-.store-row .not-found { color: #666; }
+.store-row .not-found { color: #999; }  /* raised from #666 — status text must be legible */
 .store-row .shipping  { color: #888; }
 .store-row .link-only { color: #888; }
 
 /* Discogs marketplace */
 .disc-dg-seller { color: #888; }
 .disc-dg-ships  { color: #777; }
-.disc-dg-count  { color: #666; }
+.disc-dg-count  { color: #777; }  /* raised from #666 */
 .disc-discogs-empty-hint  { color: #888; }
 .disc-discogs-empty-title { color: #888; }
 
