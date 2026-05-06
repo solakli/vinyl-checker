@@ -7,7 +7,9 @@
   --border-hover: #333;
   --text: #fff;
   --text-sec: #d0d0d0;
-  --text-muted: #b0b0b0;
+  --text-muted: #aaa;   /* was #b0b0b0 — slightly warmer, same readability */
+  --text-dim: #888;     /* new: for metadata that needs to step back but stay readable */
+  --text-ghost: #666;   /* new: floor for the dimmest readable text */
   --gold: #A8B8C8;
   --gold-soft: rgba(168, 184, 200, 0.12);
   --silver: #A8B8C8;
@@ -8186,3 +8188,148 @@ body.light .gi-archetype { border-color: var(--arch-color, var(--gold)); }
 .light .mix-hint-pill { background: rgba(0,0,0,0.04); border-color: #ddd; }
 .light .mix-artist-pill { background: rgba(150, 168, 188,0.08); border-color: rgba(150, 168, 188,0.2); }
 .light .mix-rec-img-empty { background: #eee; }
+
+/* ═══════════════════════════════════════════════════════════════
+   READABILITY IMPROVEMENTS
+   ─────────────────────────────────────────────────────────────
+   Central audit fixes applied here rather than scattered
+   throughout the file.  Overrides are ordered by component.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 1. Global minimum: nothing readable should be below 10px ── */
+
+.tag-badge .tag-count   { font-size: 10px; }
+.tag-badge .tag-stock   { font-size: 9px; }
+.verify-btn             { font-size: 10px; letter-spacing: 0.5px; }
+.best-price-label       { font-size: 10px; }
+.disc-digger-match-label{ font-size: 9px; }
+.disc-digger-dim-label  { font-size: 10px; }
+.disc-digger-dim-val    { font-size: 10px; }
+.disc-reason            { font-size: 10px; }
+.coll-chip              { font-size: 10px; }
+.coll-format            { font-size: 10px; }
+.coll-rating            { font-size: 11px; }
+.disc-dg-cond           { font-size: 10px; }
+.disc-dg-rating         { font-size: 10px; }
+.disc-dg-ships          { font-size: 10px; }
+.disc-dg-count          { font-size: 10px; }
+.disc-wantlist-badge    { font-size: 9px; }
+.disc-digger-source-badge { font-size: 9px; }
+
+/* ── 2. Core card text — bump all primary artist/title/meta text ── */
+
+/* Horizontal scroll rack cards (Discover) */
+.disc-artist { font-size: 11px; }
+.disc-title  { font-size: 13px; }
+.disc-label  { font-size: 11px; }
+.disc-year   { font-size: 11px; }
+
+/* Collection grid cards */
+.coll-card-artist { font-size: 11px; }
+.coll-card-title  { font-size: 13px; }
+.coll-label       { font-size: 11px; }
+.coll-year        { font-size: 11px; }
+
+/* For You feed cards */
+.disc-card-artist { font-size: 11px; }
+.disc-card-title  { font-size: 12px; line-height: 1.35; }
+
+/* Discogs marketplace cards */
+.disc-dg-artist { font-size: 11px; }
+.disc-dg-title  { font-size: 12px; }
+
+/* Digger cards in Discover */
+.disc-digger-name  { font-size: 14px; }
+.disc-digger-tag   { font-size: 11px; }
+.disc-digger-genre { font-size: 11px; }
+.disc-digger-stats { font-size: 12px; }
+
+/* ── 3. Contrast fixes — raise all near-invisible grays ──────── */
+/* Rule of thumb: text on dark (#0d0d0d–#1e1e1e) needs ≥ #777   */
+
+/* Discover horizontal cards */
+.disc-label  { color: #999; }
+.disc-year   { color: #777; }
+
+/* Collection cards */
+.coll-label        { color: #999; }
+.coll-year         { color: #777; }
+.coll-format       { color: #777; }
+.coll-stats-bar    { color: #888; }
+.coll-stats-sep    { color: #555; }
+.coll-loading,
+.coll-empty        { color: #888; }
+
+/* Digger cards */
+.disc-digger-stats     { color: #888; }
+.disc-digger-dim-label { color: #666; }
+.disc-digger-dim-val   { color: #777; }
+
+/* Taste Intelligence band */
+.ti-label { color: #aaa; }
+.ti-pct   { color: #888; }
+.ti-drift-flat { color: #666; }
+
+/* Store rows */
+.store-row .not-found { color: #666; }
+.store-row .shipping  { color: #888; }
+.store-row .link-only { color: #888; }
+
+/* Discogs marketplace */
+.disc-dg-seller { color: #888; }
+.disc-dg-ships  { color: #777; }
+.disc-dg-count  { color: #666; }
+.disc-discogs-empty-hint  { color: #888; }
+.disc-discogs-empty-title { color: #888; }
+
+/* Tag badges */
+.tag-badge .tag-count { color: var(--text-muted); opacity: 0.8; }
+
+/* ── 4. Opacity — stop hiding content ─────────────────────────── */
+
+/* Out-of-stock wantlist cards: 0.65 → 0.82 */
+.card.no-stock { opacity: 0.82; }
+
+/* Out-of-stock store rows: 0.3 → 0.5 */
+.store-row.out-of-stock         { opacity: 0.5; }
+.store-row.out-of-stock:hover   { opacity: 0.72; }
+
+/* Link-only store rows: 0.6 → 0.72 */
+.store-row.link-only-row        { opacity: 0.72; }
+.store-row.link-only-row:hover  { opacity: 0.9; }
+
+/* ── 5. Line-height and spacing tightness fixes ──────────────── */
+
+/* Card bodies — add a little breathing room */
+.disc-body      { gap: 4px; }
+.coll-card-body { gap: 4px; }
+.disc-dg-body   { gap: 4px; }
+
+/* Change log / changes banner items */
+.changes-item { line-height: 1.45; }
+
+/* Wantlist card meta */
+.card-meta { line-height: 1.5; }
+
+/* ── 6. Wantlist main cards — readable store name sizes ─────── */
+
+/* Some store names were set to 9px — floor at 10px */
+.store-row.phonica .store-name,
+.store-row.hardwax .store-name,
+.store-row.uvs .store-name,
+.store-row.yoyaku .store-name,
+.store-row.gramaphone .store-name { font-size: 10px; }
+
+/* ── 7. Profile & digger bars (prof-digger-*) ────────────────── */
+.prof-digger-dim-lbl { font-size: 9px; color: #777; }
+.prof-digger-dim-num { font-size: 9px; color: #777; }
+.prof-digger-why     { font-size: 10px; }
+
+/* ── 8. Light mode — ensure same contrast improvements apply ─── */
+body.light .disc-label        { color: #666; }
+body.light .disc-year         { color: #777; }
+body.light .coll-label        { color: #666; }
+body.light .coll-year         { color: #777; }
+body.light .disc-digger-stats { color: #888; }
+body.light .ti-label          { color: #555; }
+body.light .ti-pct            { color: #777; }
