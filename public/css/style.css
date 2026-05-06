@@ -8340,8 +8340,10 @@ body.light .ti-pct            { color: #777; }
 /* ── 10. Mobile layout & readability (≤ 480 px / phone) ───────── */
 
 /* 10a. GOLDIE FAB — flip to LEFT side on narrow screens so right-
-        column store "Check →" links are never covered */
-@media (max-width: 480px) {
+        column store "Check →" links are never covered
+        (≤ 520 px covers real iPhones ≤ 430 px CSS + Chrome-resize
+        emulation which reports ~500 px with DPR overhead) */
+@media (max-width: 520px) {
   .mobile-goldie-fab {
     right: auto;
     left: 12px;
@@ -8351,15 +8353,15 @@ body.light .ti-pct            { color: #777; }
 }
 
 /* 10b. Discover "For You" grid — 2 columns on phone
-        (minmax 130px resolves to 3 cols at 430 px; force 2-col) */
-@media (max-width: 480px) {
+        (minmax 130px resolves to 3 cols at 430–500 px; force 2-col) */
+@media (max-width: 520px) {
   .disc-card-grid {
     grid-template-columns: repeat(2, 1fr) !important;
   }
 }
 
 /* 10c. Collection grid — force 2 columns at phone width */
-@media (max-width: 480px) {
+@media (max-width: 520px) {
   .coll-grid {
     grid-template-columns: repeat(2, 1fr) !important;
   }
