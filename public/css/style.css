@@ -8905,3 +8905,20 @@ body.light .disc-seller-count { background: rgba(0,0,0,0.06); color: #666; }
 body.light .disc-seller-total { color: #222; }
 body.light .disc-seller-arrow { color: #ccc; }
 body.light .disc-seller-thumb-ph { background: #f0f0f0; color: #ccc; }
+
+/* Extension nudge on landing page */
+.welcome-ext-nudge {
+  font-size: 11px;
+  color: #444;
+  margin-top: 10px;
+}
+.welcome-ext-nudge a {
+  color: #666;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s;
+}
+.welcome-ext-nudge a:hover { color: var(--silver); }
+body.light .welcome-ext-nudge { color: #aaa; }
+body.light .welcome-ext-nudge a { color: #999; }
+body.light .welcome-ext-nudge a:hover { color: #555; }
