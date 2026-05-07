@@ -8964,9 +8964,53 @@ body.light .disc-seller-thumb-ph { background: #f0f0f0; color: #ccc; }
   background: rgba(168,184,200,0.08);
 }
 
+/* Discogs Marketplace sub-section */
+.welcome-discogs-section {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid #1e1e1e;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.welcome-discogs-header {
+  display: flex;
+  align-items: center;
+}
+.welcome-discogs-desc {
+  font-size: 12px;
+  color: #555;
+  margin: 0;
+}
+.welcome-discogs-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--silver);
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 6px 14px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.welcome-discogs-btn:hover {
+  border-color: var(--silver);
+  background: rgba(168,184,200,0.08);
+  color: #fff;
+}
+
 /* Light mode */
 body.light .welcome-store-chip { background: #f5f5f5; border-color: #e8e8e8; color: #666; }
 body.light .welcome-store-chip:hover { border-color: #ccc; color: #333; }
-body.light .welcome-store-chip-discogs { border-color: rgba(168,184,200,0.3); color: var(--silver); background: rgba(168,184,200,0.04); }
-body.light .welcome-store-chip-discogs:hover { border-color: var(--silver); background: rgba(168,184,200,0.1); color: #333; }
-body.light .welcome-store-ext-tag { background: #eee; border-color: #ddd; color: #aaa; }
+body.light .welcome-discogs-section { border-top-color: #eee; }
+body.light .welcome-discogs-desc { color: #aaa; }
+body.light .welcome-discogs-btn { border-color: #ddd; color: var(--silver); }
+body.light .welcome-discogs-btn:hover { border-color: var(--silver); background: rgba(168,184,200,0.08); color: #333; }
