@@ -4006,6 +4006,7 @@ var _forYouStoreFilter   = 'all';      // 'all' | storeName
 var _inStockVendor       = 'all';      // 'all' | storeName | 'discogs'
 var _discogsSyncState    = null;       // live state from extension: {running, done, total, found, completedAt, error}
 var _dgPriceMap          = {};         // wantlistId → cheapestUsd from discogsListings
+var _discogsView         = 'cards';   // 'cards' | 'sellers'
 
 var _diggersDiscoverCache = null;
 var _diggersDiscoverUser  = null;
@@ -4541,52 +4542,121 @@ function renderDiscogsSection() {
       (!syncing
         ? '<button class="disc-discogs-resync-btn" onclick="triggerDiscogsSync()">↻ Re-sync</button>'
         : '<span class="disc-discogs-syncing">⛏ syncing…</span>') +
+      '<div class="disc-view-toggle">' +
+        '<button class="disc-view-btn' + (_discogsView === 'cards' ? ' active' : '') + '" onclick="setDiscogsView(\'cards\')">Cards</button>' +
+        '<button class="disc-view-btn' + (_discogsView === 'sellers' ? ' active' : '') + '" onclick="setDiscogsView(\'sellers\')">By Seller</button>' +
+      '</div>' +
     '</div>';
 
-  var gridHtml = '<div class="disc-discogs-grid">' +
-    items.map(function(item) {
-      var artHtml = item.thumb
-        ? '<img class="disc-dg-art" src="' + escapeHtml(item.thumb) + '" loading="lazy" alt="" onerror="this.style.display=\'none\';">'
-        : '<div class="disc-dg-art-placeholder">♪</div>';
+  var bodyHtml = _discogsView === 'sellers'
+    ? renderDiscogsBySeller(items)
+    : '<div class="disc-discogs-grid">' +
+        items.map(function(item) {
+          var artHtml = item.thumb
+            ? '<img class="disc-dg-art" src="' + escapeHtml(item.thumb) + '" loading="lazy" alt="" onerror="this.style.display=\'none\';">'
+            : '<div class="disc-dg-art-placeholder">♪</div>';
 
-      var priceHtml = item.cheapestUsd
-        ? '<span class="disc-dg-price">' + escapeHtml(item.cheapestStr || ('$' + item.cheapestUsd.toFixed(2))) + '</span>'
-        : '<span class="disc-dg-price-na">—</span>';
+          var priceHtml = item.cheapestUsd
+            ? '<span class="disc-dg-price">' + escapeHtml(item.cheapestStr || ('$' + item.cheapestUsd.toFixed(2))) + '</span>'
+            : '<span class="disc-dg-price-na">—</span>';
 
-      var condBadge = item.condition
-        ? '<span class="disc-dg-cond">' + escapeHtml(item.condition.split(' ')[0]) + '</span>'
+          var condBadge = item.condition
+            ? '<span class="disc-dg-cond">' + escapeHtml(item.condition.split(' ')[0]) + '</span>'
+            : '';
+
+          var sellerHtml = item.seller
+            ? '<span class="disc-dg-seller">' + escapeHtml(item.seller) +
+              (item.sellerRating ? ' <span class="disc-dg-rating">' + item.sellerRating.toFixed(1) + '%</span>' : '') +
+              '</span>'
+            : '';
+
+          var shipsHtml = item.shipsFrom ? '<span class="disc-dg-ships">ships ' + escapeHtml(item.shipsFrom) + '</span>' : '';
+
+          var listingsLabel = item.numListings > 1 ? item.numListings + ' listings' : '1 listing';
+
+          var linkAttr = item.listingUrl ? ' onclick="window.open(\'' + escapeAttr(item.listingUrl) + '\',\'_blank\')"' : '';
+
+          return '<div class="disc-dg-card"' + linkAttr + '>' +
+            '<div class="disc-dg-art-wrap">' + artHtml + '</div>' +
+            '<div class="disc-dg-body">' +
+              '<div class="disc-dg-artist">' + escapeHtml(item.artist) + '</div>' +
+              '<div class="disc-dg-title">' + escapeHtml(item.title) + '</div>' +
+              '<div class="disc-dg-footer">' +
+                priceHtml + condBadge +
+              '</div>' +
+              '<div class="disc-dg-meta">' +
+                sellerHtml + shipsHtml +
+                '<span class="disc-dg-count">' + listingsLabel + '</span>' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+        }).join('') +
+      '</div>';
+
+  return summaryHtml + bodyHtml;
+}
+
+function setDiscogsView(v) {
+  _discogsView = v;
+  var el = document.getElementById('discInStockBody');
+  if (el) el.innerHTML = renderDiscogsSection();
+}
+
+function renderDiscogsBySeller(items) {
+  // Group listings by seller
+  var sellerMap = {};
+  items.forEach(function(item) {
+    var s = item.seller || 'Unknown';
+    if (!sellerMap[s]) {
+      sellerMap[s] = {
+        username:  s,
+        rating:    item.sellerRating,
+        shipsFrom: item.shipsFrom || '',
+        releases:  [],
+        totalUsd:  0
+      };
+    }
+    sellerMap[s].releases.push(item);
+    if (item.cheapestUsd) sellerMap[s].totalUsd += item.cheapestUsd;
+  });
+
+  // Sort sellers by release count desc
+  var sellers = Object.keys(sellerMap).map(function(k) { return sellerMap[k]; })
+    .sort(function(a, b) { return b.releases.length - a.releases.length; });
+
+  return '<div class="disc-seller-list">' +
+    sellers.map(function(seller) {
+      var wantsUrl = 'https://www.discogs.com/seller/' + encodeURIComponent(seller.username) + '/mywants';
+
+      var ratingHtml = seller.rating
+        ? '<span class="disc-seller-rating">' + parseFloat(seller.rating).toFixed(1) + '%</span>'
+        : '';
+      var shipsHtml = seller.shipsFrom
+        ? '<span class="disc-seller-ships">📦 ' + escapeHtml(seller.shipsFrom) + '</span>'
+        : '';
+      var countHtml = '<span class="disc-seller-count">' + seller.releases.length + ' release' + (seller.releases.length !== 1 ? 's' : '') + '</span>';
+      var totalHtml = seller.totalUsd > 0
+        ? '<span class="disc-seller-total">~$' + seller.totalUsd.toFixed(0) + '</span>'
         : '';
 
-      var sellerHtml = item.seller
-        ? '<span class="disc-dg-seller">' + escapeHtml(item.seller) +
-          (item.sellerRating ? ' <span class="disc-dg-rating">' + item.sellerRating.toFixed(1) + '%</span>' : '') +
-          '</span>'
-        : '';
+      var thumbsHtml = seller.releases.slice(0, 8).map(function(item) {
+        return item.thumb
+          ? '<img class="disc-seller-thumb" src="' + escapeHtml(item.thumb) + '" loading="lazy" ' +
+            'title="' + escapeAttr((item.artist || '') + ' – ' + (item.title || '')) + '" ' +
+            'onerror="this.style.display=\'none\'">'
+          : '<div class="disc-seller-thumb-ph" title="' + escapeAttr((item.artist || '') + ' – ' + (item.title || '')) + '">♪</div>';
+      }).join('');
 
-      var shipsHtml = item.shipsFrom ? '<span class="disc-dg-ships">ships ' + escapeHtml(item.shipsFrom) + '</span>' : '';
-
-      var listingsLabel = item.numListings > 1 ? item.numListings + ' listings' : '1 listing';
-
-      var linkAttr = item.listingUrl ? ' onclick="window.open(\'' + escapeAttr(item.listingUrl) + '\',\'_blank\')"' : '';
-
-      return '<div class="disc-dg-card"' + linkAttr + '>' +
-        '<div class="disc-dg-art-wrap">' + artHtml + '</div>' +
-        '<div class="disc-dg-body">' +
-          '<div class="disc-dg-artist">' + escapeHtml(item.artist) + '</div>' +
-          '<div class="disc-dg-title">' + escapeHtml(item.title) + '</div>' +
-          '<div class="disc-dg-footer">' +
-            priceHtml + condBadge +
-          '</div>' +
-          '<div class="disc-dg-meta">' +
-            sellerHtml + shipsHtml +
-            '<span class="disc-dg-count">' + listingsLabel + '</span>' +
-          '</div>' +
+      return '<div class="disc-seller-row" onclick="window.open(\'' + escapeAttr(wantsUrl) + '\',\'_blank\')">' +
+        '<div class="disc-seller-header">' +
+          '<span class="disc-seller-name">' + escapeHtml(seller.username) + '</span>' +
+          ratingHtml + shipsHtml + countHtml +
+          '<span class="disc-seller-total-wrap">' + totalHtml + '<span class="disc-seller-arrow">→</span></span>' +
         '</div>' +
+        (thumbsHtml ? '<div class="disc-seller-thumbs">' + thumbsHtml + '</div>' : '') +
       '</div>';
     }).join('') +
   '</div>';
-
-  return summaryHtml + gridHtml;
 }
 
 function renderStoreCard(s) {

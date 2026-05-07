@@ -8769,3 +8769,139 @@ body.light .ti-pct            { color: #777; }
   #userBarRescan { padding: 5px 8px; font-size: 9px; letter-spacing: 0.5px; }
   .nav-cart-pill { max-width: 110px; font-size: 10px; padding: 4px 8px; }
 }
+
+/* ══════════════════════════════════════════════════════════
+   DISCOGS — BY SELLER VIEW
+   ══════════════════════════════════════════════════════════ */
+
+/* Toggle pill (Cards / By Seller) */
+.disc-view-toggle {
+  display: flex;
+  gap: 3px;
+  margin-left: auto;
+}
+.disc-view-btn {
+  background: transparent;
+  border: 1px solid #333;
+  color: #666;
+  padding: 3px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.15s;
+}
+.disc-view-btn:hover { border-color: #555; color: #aaa; }
+.disc-view-btn.active {
+  background: var(--silver);
+  color: #000;
+  border-color: var(--silver);
+  font-weight: 600;
+}
+
+/* Seller list */
+.disc-seller-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.disc-seller-row {
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 10px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.disc-seller-row:hover {
+  border-color: var(--silver);
+  background: rgba(168, 184, 200, 0.04);
+}
+.disc-seller-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.disc-seller-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.2px;
+}
+.disc-seller-rating {
+  font-size: 11px;
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.1);
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+.disc-seller-ships {
+  font-size: 11px;
+  color: var(--text-sec);
+}
+.disc-seller-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--silver);
+  background: rgba(168, 184, 200, 0.1);
+  padding: 2px 7px;
+  border-radius: 8px;
+}
+.disc-seller-total-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.disc-seller-total {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.disc-seller-arrow {
+  font-size: 14px;
+  color: #444;
+  transition: color 0.15s;
+}
+.disc-seller-row:hover .disc-seller-arrow { color: var(--silver); }
+
+/* Thumbnail strip */
+.disc-seller-thumbs {
+  display: flex;
+  gap: 5px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.disc-seller-thumb {
+  width: 38px;
+  height: 38px;
+  border-radius: 4px;
+  object-fit: cover;
+  opacity: 0.85;
+  transition: opacity 0.15s;
+}
+.disc-seller-row:hover .disc-seller-thumb { opacity: 1; }
+.disc-seller-thumb-ph {
+  width: 38px;
+  height: 38px;
+  border-radius: 4px;
+  background: #1a1a1a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: #333;
+}
+
+/* Light mode */
+body.light .disc-view-btn { border-color: #ddd; color: #aaa; }
+body.light .disc-view-btn:hover { border-color: #aaa; color: #444; }
+body.light .disc-view-btn.active { background: var(--silver); color: #fff; border-color: var(--silver); }
+body.light .disc-seller-row { background: #fff; border-color: #e8e8e8; }
+body.light .disc-seller-row:hover { border-color: #aaa; background: #fafafa; }
+body.light .disc-seller-name { color: #222; }
+body.light .disc-seller-ships { color: #999; }
+body.light .disc-seller-count { background: rgba(0,0,0,0.06); color: #666; }
+body.light .disc-seller-total { color: #222; }
+body.light .disc-seller-arrow { color: #ccc; }
+body.light .disc-seller-thumb-ph { background: #f0f0f0; color: #ccc; }
