@@ -8906,19 +8906,41 @@ body.light .disc-seller-total { color: #222; }
 body.light .disc-seller-arrow { color: #ccc; }
 body.light .disc-seller-thumb-ph { background: #f0f0f0; color: #ccc; }
 
-/* Extension nudge on landing page */
-.welcome-ext-nudge {
+/* Extension row below store logos on landing page */
+.welcome-ext-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid #1e1e1e;
+  flex-wrap: wrap;
+}
+.welcome-ext-label {
+  font-size: 12px;
+  color: #555;
+  letter-spacing: 0.3px;
+}
+.welcome-ext-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Oswald', sans-serif;
   font-size: 11px;
-  color: #444;
-  margin-top: 10px;
-}
-.welcome-ext-nudge a {
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
   color: #666;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  transition: color 0.15s;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 6px 14px;
+  text-decoration: none;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
 }
-.welcome-ext-nudge a:hover { color: var(--silver); }
-body.light .welcome-ext-nudge { color: #aaa; }
-body.light .welcome-ext-nudge a { color: #999; }
-body.light .welcome-ext-nudge a:hover { color: #555; }
+.welcome-ext-btn:hover { color: var(--silver); border-color: #444; }
+body.light .welcome-ext-row { border-top-color: #eee; }
+body.light .welcome-ext-label { color: #aaa; }
+body.light .welcome-ext-btn { color: #bbb; border-color: #ddd; }
+body.light .welcome-ext-btn:hover { color: #555; border-color: #aaa; }
