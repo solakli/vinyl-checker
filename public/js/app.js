@@ -3629,6 +3629,9 @@ function loadCollection(forceRefresh) {
   document.getElementById('collGenreRow').innerHTML = '';
   var cgc = document.getElementById('collGenreChart');
   if (cgc) { cgc.style.display = 'none'; cgc.innerHTML = ''; }
+  var ggc = document.getElementById('collGemIntelCard');
+  if (ggc) { ggc.style.display = 'none'; ggc.innerHTML = ''; }
+  if (forceRefresh) { _profileCache = null; _profileUsername = null; }
 
   var url = 'api/collection/' + encodeURIComponent(username) + (forceRefresh ? '?refresh=1' : '');
 
@@ -3656,6 +3659,8 @@ function loadCollection(forceRefresh) {
       renderCollectionGenreChart();
       // Load gem scores so collection cards get tier badges
       fetchGemScores(username);
+      // Headline Underground Score card — fetched async, won't block grid render
+      loadCollectionGemIntel(username);
       renderCollectionGrid();
       // Warn if OAuth token is expired and collection may be incomplete
       if (data.needs_reauth) {
@@ -3734,6 +3739,129 @@ function renderCollectionGenreChart() {
       '</div>';
     }).join('') +
     '</div>';
+}
+
+// ── Underground Score card on the My Collection page ──
+// Surfaces the headline "wrapped"-style metrics from the profile API
+// at the top of the collection so users see them on the page they actually visit.
+function loadCollectionGemIntel(username) {
+  if (!username) return;
+  var card = document.getElementById('collGemIntelCard');
+  if (!card) return;
+
+  // Reuse cached profile data when available
+  if (_profileCache && _profileUsername === username) {
+    renderCollectionGemIntel(_profileCache);
+    return;
+  }
+
+  // Lightweight loading state
+  card.style.display = '';
+  card.innerHTML =
+    '<div class="cgc-card-head">' +
+      '<span class="cgc-card-eyebrow">✦ Your Underground Score</span>' +
+    '</div>' +
+    '<div class="cgc-card-empty" style="padding:14px 0;color:#666">Loading…</div>';
+
+  fetch('api/profile/' + encodeURIComponent(username))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      _profileCache    = data;
+      _profileUsername = username;
+      renderCollectionGemIntel(data);
+    })
+    .catch(function() {
+      card.style.display = 'none';
+    });
+}
+
+function renderCollectionGemIntel(p) {
+  var card = document.getElementById('collGemIntelCard');
+  if (!card) return;
+
+  var g = p && p.gemIntel;
+  // Empty state — nothing enriched yet
+  if (!g || !g.total) {
+    card.style.display = '';
+    card.innerHTML =
+      '<div class="cgc-card-head">' +
+        '<span class="cgc-card-eyebrow">✦ Your Underground Score' + infoTip('underground-index') + '</span>' +
+      '</div>' +
+      '<div class="cgc-card-empty">' +
+        '<strong>Score your collection</strong>' +
+        'We need to enrich your records with YouTube + Discogs signals before we can calculate how underground you are.' +
+        '<a class="cgc-empty-cta" onclick="switchView(\'profile\',null);return false;">Start enrichment →</a>' +
+      '</div>';
+    return;
+  }
+
+  // ── Underground gauge SVG (same shape as profile, sized for this card) ──
+  var pct = g.undergroundPct || 0;
+  var gaugeAngle = pct / 100 * 180;
+  var needleRad = (180 - gaugeAngle) * Math.PI / 180;
+  var nx = 50 + 38 * Math.cos(needleRad);
+  var ny = 50 - 38 * Math.sin(needleRad);
+  var gaugeColor = pct >= 70 ? '#4ade80' : pct >= 40 ? '#C9A227' : '#ff6b6b';
+  var tierLabel  = pct >= 75 ? 'UNDERGROUND' : pct >= 50 ? 'DEEP' : pct >= 30 ? 'MIXED' : 'MAINSTREAM';
+  var gaugeSvg =
+    '<svg viewBox="0 0 100 55" class="cgc-gauge-svg">' +
+      '<path d="M 8 50 A 42 42 0 0 1 92 50" fill="none" stroke="#333" stroke-width="8" stroke-linecap="round"/>' +
+      '<path d="M 8 50 A 42 42 0 0 1 50 8" fill="none" stroke="#4ade80" stroke-width="8" stroke-linecap="round" opacity="0.25"/>' +
+      '<path d="M 50 8 A 42 42 0 0 1 92 50" fill="none" stroke="#ff6b6b" stroke-width="8" stroke-linecap="round" opacity="0.18"/>' +
+      '<path d="M 8 50 A 42 42 0 ' + (gaugeAngle > 90 ? 1 : 0) + ' 1 ' + nx.toFixed(1) + ' ' + ny.toFixed(1) + '" fill="none" stroke="' + gaugeColor + '" stroke-width="8" stroke-linecap="round"/>' +
+      '<text x="50" y="46" text-anchor="middle" font-family="Oswald,sans-serif" font-size="20" font-weight="700" fill="' + gaugeColor + '">' + pct + '%</text>' +
+    '</svg>';
+
+  // ── Tier blocks (top 4 — drop "Unscored") ──
+  var TIERS = [
+    { key: 'hidden_gem',     tipKey: 'tier-hidden-gem',     icon: '💎', label: 'Hidden Gems',    cls: 'cgc-t-gem'   },
+    { key: 'club_weapon',    tipKey: 'tier-club-weapon',    icon: '🔥', label: 'Club Weapons',   cls: 'cgc-t-club'  },
+    { key: 'deep_cut',       tipKey: 'tier-deep-cut',       icon: '🎯', label: 'Deep Cuts',      cls: 'cgc-t-deep'  },
+    { key: 'known_quantity', tipKey: 'tier-known-quantity', icon: '📣', label: 'Known Quantity', cls: 'cgc-t-known' }
+  ];
+  var tiersHtml = TIERS.map(function(t) {
+    var cnt   = (g.tierCounts && g.tierCounts[t.key]) || 0;
+    var relPct = g.total > 0 ? ((cnt / g.total * 100).toFixed(1)) : '0';
+    return '<div class="cgc-tier ' + t.cls + '">' +
+      '<div class="cgc-tier-head">' +
+        '<span class="cgc-tier-icon">' + t.icon + '</span>' +
+        '<span>' + t.label + '</span>' +
+        infoTip(t.tipKey) +
+      '</div>' +
+      '<div class="cgc-tier-count">' + cnt + '</div>' +
+      '<div class="cgc-tier-pct">' + relPct + '% of collection</div>' +
+    '</div>';
+  }).join('');
+
+  // ── Footer: rarity tier badge + meta ──
+  var footPieces = [];
+  if (typeof p.avgHave === 'number' && p.metaSynced > 10) {
+    var rt = p.avgHave < 50  ? { label:'Ultra Rare Digger', cls:'prof-badge-gold'  } :
+             p.avgHave < 150 ? { label:'Underground',        cls:'prof-badge-teal'  } :
+             p.avgHave < 400 ? { label:'Deep Digger',        cls:'prof-badge-smoke' } :
+                               { label:'Broad Taste',        cls:'prof-badge-blue'  };
+    footPieces.push('<span class="prof-badge ' + rt.cls + '">' + rt.label + infoTip('rarity-tier') + '</span>');
+  }
+  if (typeof p.rarePct === 'number' && p.metaSynced > 10) {
+    footPieces.push('<span>' + p.rarePct + '% rare' + infoTip('rare-pct') + '</span>');
+  }
+  footPieces.push('<span>' + (g.enriched || 0) + ' / ' + (g.total || 0) + ' enriched</span>');
+
+  card.style.display = '';
+  card.innerHTML =
+    '<div class="cgc-card-head">' +
+      '<span class="cgc-card-eyebrow">✦ Your Underground Score' + infoTip('underground-index') + '</span>' +
+      '<a class="cgc-card-link" onclick="switchView(\'profile\',null);return false;">Full breakdown on Profile →</a>' +
+    '</div>' +
+    '<div class="cgc-card-body">' +
+      '<div class="cgc-gauge-block">' +
+        gaugeSvg +
+        '<div class="cgc-gauge-label">UNDERGROUND INDEX' + infoTip('underground-index', { lg: true }) + '</div>' +
+        '<div class="cgc-gauge-tier">' + tierLabel + '</div>' +
+      '</div>' +
+      '<div class="cgc-tiers">' + tiersHtml + '</div>' +
+    '</div>' +
+    '<div class="cgc-card-foot">' + footPieces.join('') + '</div>';
 }
 
 function setCollGenre(genre) {
@@ -4659,9 +4787,13 @@ var INFO_TIPS = {
   'underground-index': {
     title: 'Underground Index',
     body:
-      '<p>How <strong>underground</strong> your collection is on average — based on YouTube view counts of every release we\'ve enriched.</p>' +
-      '<p>Tracks with under 10K views count as underground. Tracks over 1M views count as mainstream. We average the score across your whole collection.</p>' +
-      '<span class="info-formula"><strong>Score:</strong> avg of every track\'s underground score (0–100), where less-viewed = higher.</span>' +
+      '<p>How <strong>underground</strong> your collection is on average — based on how rarely the world has heard each release.</p>' +
+      '<p>For every record we look at two signals:</p>' +
+      '<span class="info-formula">' +
+        '<strong>YouTube views</strong> — under 10K is underground, over 1M is mainstream<br>' +
+        '<strong>Shazam count</strong> — how many people have Shazamed it. Under 1K = barely on anyone\'s radar.' +
+      '</span>' +
+      '<p>Each track gets a 0–100 score where less-known = higher. We average across your whole collection.</p>' +
       '<ul class="info-tier-list">' +
         '<li><span class="info-tier-name">75 +</span><span class="info-tier-desc">Underground</span></li>' +
         '<li><span class="info-tier-name">50 – 74</span><span class="info-tier-desc">Deep</span></li>' +
@@ -4673,9 +4805,10 @@ var INFO_TIPS = {
     title: 'Avg Gem Score',
     body:
       '<p>An overall <strong>rarity & quality score</strong> for each release in your collection — averaged across all your records.</p>' +
-      '<p>It combines four signals into a single 0–100 number:</p>' +
+      '<p>It blends five signals into a single 0–100 number:</p>' +
       '<span class="info-formula">' +
-        '<strong>Underground</strong> — low YouTube views<br>' +
+        '<strong>YouTube obscurity</strong> — low view counts<br>' +
+        '<strong>Shazam obscurity</strong> — low Shazam counts<br>' +
         '<strong>Demand</strong> — Discogs want/have ratio<br>' +
         '<strong>DJ Validation</strong> — mentions in DJ comment threads<br>' +
         '<strong>Heritage</strong> — released on iconic labels' +
