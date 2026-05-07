@@ -4649,6 +4649,221 @@ function escapeAttr(s) {
 }
 
 
+// ═══════════════════════════════════════════════════════════════
+// INFO TIPS — explain how each metric is calculated
+// Click ? icon → modal with plain-English explanation
+// ═══════════════════════════════════════════════════════════════
+
+var INFO_TIPS = {
+  // ── HEADLINE GEM INTEL METRICS ────────────────────────────────
+  'underground-index': {
+    title: 'Underground Index',
+    body:
+      '<p>How <strong>underground</strong> your collection is on average — based on YouTube view counts of every release we\'ve enriched.</p>' +
+      '<p>Tracks with under 10K views count as underground. Tracks over 1M views count as mainstream. We average the score across your whole collection.</p>' +
+      '<span class="info-formula"><strong>Score:</strong> avg of every track\'s underground score (0–100), where less-viewed = higher.</span>' +
+      '<ul class="info-tier-list">' +
+        '<li><span class="info-tier-name">75 +</span><span class="info-tier-desc">Underground</span></li>' +
+        '<li><span class="info-tier-name">50 – 74</span><span class="info-tier-desc">Deep</span></li>' +
+        '<li><span class="info-tier-name">30 – 49</span><span class="info-tier-desc">Mixed</span></li>' +
+        '<li><span class="info-tier-name">&lt; 30</span><span class="info-tier-desc">Mainstream</span></li>' +
+      '</ul>'
+  },
+  'gem-score': {
+    title: 'Avg Gem Score',
+    body:
+      '<p>An overall <strong>rarity & quality score</strong> for each release in your collection — averaged across all your records.</p>' +
+      '<p>It combines four signals into a single 0–100 number:</p>' +
+      '<span class="info-formula">' +
+        '<strong>Underground</strong> — low YouTube views<br>' +
+        '<strong>Demand</strong> — Discogs want/have ratio<br>' +
+        '<strong>DJ Validation</strong> — mentions in DJ comment threads<br>' +
+        '<strong>Heritage</strong> — released on iconic labels' +
+      '</span>' +
+      '<ul class="info-tier-list">' +
+        '<li><span class="info-tier-name">65 +</span><span class="info-tier-desc">Gold tier</span></li>' +
+        '<li><span class="info-tier-name">45 – 64</span><span class="info-tier-desc">Solid</span></li>' +
+        '<li><span class="info-tier-name">&lt; 45</span><span class="info-tier-desc">Common</span></li>' +
+      '</ul>'
+  },
+  'gem-density': {
+    title: 'Gem Density',
+    body:
+      '<p>The percentage of your collection that lands in the <strong>top tiers</strong>: Hidden Gems, Club Weapons, and Deep Cuts.</p>' +
+      '<p>A high density means you\'re mostly buying records that are either rare, DJ-validated, or genuinely underground — not radio fodder.</p>'
+  },
+  'rarity-index': {
+    title: 'Rarity Index',
+    body:
+      '<p>Discogs <strong>want / have</strong> ratio across your collection (0–100).</p>' +
+      '<p>For every release, we look at how many people want it vs how many people own it on Discogs. A higher ratio means people are chasing the record.</p>' +
+      '<span class="info-formula"><strong>65 +</strong> means most of your records are sought-after on the secondary market.</span>'
+  },
+  'dj-validation': {
+    title: 'DJ Validation',
+    body:
+      '<p>How often your records show up in <strong>DJ comment threads</strong> on YouTube — "what was that track at 32:00", track ID requests, set rips.</p>' +
+      '<p>A high score means your collection is full of <strong>club weapons</strong> that DJs actually play out, not just bedroom listening records.</p>'
+  },
+  'data-coverage': {
+    title: 'Data Coverage',
+    body:
+      '<p>How much of your collection has been <strong>enriched</strong> with YouTube view counts, DJ mentions, and Discogs metadata.</p>' +
+      '<p>The more coverage, the more accurate every other metric on this page becomes. Hit the <em>Enrich Releases</em> button on your profile to keep going.</p>'
+  },
+
+  // ── TIER DEFINITIONS ─────────────────────────────────────────
+  'tier-hidden-gem': {
+    title: 'Hidden Gem 💎',
+    body:
+      '<p><strong>Rare and high-quality.</strong> Few collectors own these records, but the ones who do rate them highly.</p>' +
+      '<p>Hidden gems combine low YouTube view counts with a strong Discogs want/have ratio — proof that they\'re sought-after even though they\'re obscure.</p>'
+  },
+  'tier-club-weapon': {
+    title: 'Club Weapon 🔥',
+    body:
+      '<p><strong>DJ-validated tracks</strong> that get played out. We detect these by mining DJ comment threads on YouTube — "what is this track", "track ID", set rip threads, and so on.</p>' +
+      '<p>If you\'ve got a lot of these, your collection is built for the dancefloor.</p>'
+  },
+  'tier-deep-cut': {
+    title: 'Deep Cut 🎯',
+    body:
+      '<p><strong>Underground but not legendary.</strong> Under 10K YouTube views, but doesn\'t have the want/have demand to qualify as a Hidden Gem yet.</p>' +
+      '<p>These are the records you put on a mix to confuse other diggers.</p>'
+  },
+  'tier-known-quantity': {
+    title: 'Known Quantity 📣',
+    body:
+      '<p><strong>Mainstream, well-known records</strong> — over 1M YouTube views. Anthems, classics, the staples of any collection.</p>' +
+      '<p>Nothing wrong with these — every great collection has them — but they\'re not what makes a digger stand out.</p>'
+  },
+  'tier-unscored': {
+    title: 'Unscored ⬜',
+    body:
+      '<p>Releases we haven\'t enriched yet — usually because we couldn\'t find a YouTube match or Discogs metadata is missing.</p>' +
+      '<p>Hit <em>Continue Enrichment</em> on your profile to score more of your collection.</p>'
+  },
+
+  // ── HERO BADGES ───────────────────────────────────────────────
+  'rarity-tier': {
+    title: 'Rarity Tier',
+    body:
+      '<p>How <strong>obscure</strong> your collection is, based on the average number of Discogs collectors per release.</p>' +
+      '<ul class="info-tier-list">' +
+        '<li><span class="info-tier-name">Ultra Rare Digger</span><span class="info-tier-desc">avg &lt; 50 collectors</span></li>' +
+        '<li><span class="info-tier-name">Underground</span><span class="info-tier-desc">avg 50 – 149</span></li>' +
+        '<li><span class="info-tier-name">Deep Digger</span><span class="info-tier-desc">avg 150 – 399</span></li>' +
+        '<li><span class="info-tier-name">Broad Taste</span><span class="info-tier-desc">avg 400 +</span></li>' +
+      '</ul>'
+  },
+  'collection-ratio': {
+    title: 'Collection Ratio',
+    body:
+      '<p>Whether you\'re a hoarder, a curator, or a tireless hunter — based on how big your <strong>collection</strong> is compared to your <strong>wantlist</strong>.</p>' +
+      '<ul class="info-tier-list">' +
+        '<li><span class="info-tier-name">Collector</span><span class="info-tier-desc">collection 8× wantlist or more</span></li>' +
+        '<li><span class="info-tier-name">Keeper</span><span class="info-tier-desc">collection 3 – 8× wantlist</span></li>' +
+        '<li><span class="info-tier-name">Balanced</span><span class="info-tier-desc">roughly equal</span></li>' +
+        '<li><span class="info-tier-name">Active Buyer</span><span class="info-tier-desc">wantlist bigger than collection</span></li>' +
+      '</ul>'
+  },
+  'era-badge': {
+    title: 'Era Badge',
+    body:
+      '<p>The <strong>decade you collect from most</strong>, based on release years across your collection.</p>' +
+      '<p>The full distribution is shown in the <em>Era Profile</em> chart below.</p>'
+  },
+  'rare-pct': {
+    title: '% Rare',
+    body:
+      '<p>The percentage of your enriched collection that\'s owned by <strong>fewer than 200 collectors</strong> on Discogs.</p>' +
+      '<p>A useful proxy for how often you reach for genuinely obscure records over the safer bets.</p>'
+  },
+  'archetypes': {
+    title: 'Personality Archetypes',
+    body:
+      '<p>Auto-generated <strong>tags</strong> that describe your taste — like "Detroit Loyalist" or "Cosmic Disco" — based on the labels, artists, eras, and styles in your collection.</p>' +
+      '<p>You earn an archetype when enough of your records hit a specific pattern. They\'re a fingerprint of the collection.</p>'
+  },
+
+  // ── TASTE INTEL ──────────────────────────────────────────────
+  'hunting': {
+    title: 'Hunting',
+    body:
+      '<p>The styles and genres that dominate your <strong>wantlist</strong> right now. What you\'re actively looking for.</p>'
+  },
+  'keeping': {
+    title: 'Keeping',
+    body:
+      '<p>The styles that dominate your <strong>collection</strong> — the records you\'ve actually committed to and bought.</p>'
+  },
+  'leaning': {
+    title: 'Leaning',
+    body:
+      '<p>What you\'ve been adding to your collection in the <strong>last 60 days</strong>, compared to your longer-term taste.</p>' +
+      '<p>↑ means you\'re leaning into a style. ↓ means you\'re cooling on it. → means it\'s steady.</p>'
+  },
+  'store-match': {
+    title: 'Store Match',
+    body:
+      '<p>How well each store\'s overall <strong>catalog</strong> aligns with your taste — independent of what\'s currently in stock.</p>' +
+      '<p>The top store is one you should regularly check, because they consistently stock records you like.</p>'
+  },
+  'taste-match': {
+    title: 'Taste Match',
+    body:
+      '<p>An overlap score between two diggers, on a 0–100 scale.</p>' +
+      '<p>Calculated across <strong>six dimensions</strong>:</p>' +
+      '<span class="info-formula">' +
+        '<strong>Era</strong> — same decade preferences<br>' +
+        '<strong>Rarity</strong> — similar obscurity tolerance<br>' +
+        '<strong>Underground</strong> — similar mainstream/underground ratio<br>' +
+        '<strong>Style</strong> — overlapping sub-genres<br>' +
+        '<strong>Artist</strong> — shared artists<br>' +
+        '<strong>Label</strong> — shared labels' +
+      '</span>'
+  },
+
+  // ── HERO RING ────────────────────────────────────────────────
+  'in-stock-pct': {
+    title: 'In Stock %',
+    body:
+      '<p>What percentage of your <strong>wantlist</strong> is currently available across the 12 stores we scan.</p>' +
+      '<p>This updates every time you run a scan. The dial fills up as more of your wants come into stock.</p>'
+  }
+};
+
+function infoTip(key, opts) {
+  // Returns the HTML for a clickable ? icon. opts.lg = larger variant.
+  var cls = 'info-tip' + (opts && opts.lg ? ' info-tip-lg' : '');
+  return '<button type="button" class="' + cls + '" data-info="' + escapeAttr(key) + '" ' +
+         'onclick="event.stopPropagation();infoTipShow(\'' + escapeAttr(key) + '\');return false;" ' +
+         'title="What is this?" aria-label="What is this?">?</button>';
+}
+
+function infoTipShow(key) {
+  var tip = INFO_TIPS[key];
+  if (!tip) { console.warn('[info-tip] unknown key:', key); return; }
+  document.getElementById('infoModalTitle').textContent = tip.title;
+  document.getElementById('infoModalBody').innerHTML    = tip.body;
+  document.getElementById('infoModalEyebrow').textContent = tip.eyebrow || 'How it\'s calculated';
+  document.getElementById('infoModalOverlay').classList.add('active');
+  document.body.style.overflow = 'hidden';
+}
+
+function infoTipClose() {
+  document.getElementById('infoModalOverlay').classList.remove('active');
+  document.body.style.overflow = '';
+}
+
+// Close on Escape
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    var el = document.getElementById('infoModalOverlay');
+    if (el && el.classList.contains('active')) infoTipClose();
+  }
+});
+
 
 // ═══════════════════════════════════════════════════════════════
 // PROFILE VIEW
@@ -4724,11 +4939,11 @@ function _buildGemIntelHtml(g) {
 
   // ── Tier breakdown bars ──
   var tiers = [
-    { key: 'hidden_gem',     icon: '💎', label: 'Hidden Gems',     cls: 'gi-tier-gem' },
-    { key: 'club_weapon',    icon: '🔥', label: 'Club Weapons',    cls: 'gi-tier-club' },
-    { key: 'deep_cut',       icon: '🎯', label: 'Deep Cuts',       cls: 'gi-tier-deep' },
-    { key: 'known_quantity', icon: '📣', label: 'Known Quantity',  cls: 'gi-tier-known' },
-    { key: 'unscored',       icon: '⬜', label: 'Unscored',        cls: 'gi-tier-unscore' },
+    { key: 'hidden_gem',     tipKey: 'tier-hidden-gem',     icon: '💎', label: 'Hidden Gems',     cls: 'gi-tier-gem' },
+    { key: 'club_weapon',    tipKey: 'tier-club-weapon',    icon: '🔥', label: 'Club Weapons',    cls: 'gi-tier-club' },
+    { key: 'deep_cut',       tipKey: 'tier-deep-cut',       icon: '🎯', label: 'Deep Cuts',       cls: 'gi-tier-deep' },
+    { key: 'known_quantity', tipKey: 'tier-known-quantity', icon: '📣', label: 'Known Quantity',  cls: 'gi-tier-known' },
+    { key: 'unscored',       tipKey: 'tier-unscored',       icon: '⬜', label: 'Unscored',        cls: 'gi-tier-unscore' },
   ];
   var maxTier = Math.max.apply(null, tiers.map(function(t) { return g.tierCounts[t.key] || 0; }));
   var tierBarsHtml = tiers.map(function(t) {
@@ -4737,7 +4952,7 @@ function _buildGemIntelHtml(g) {
     var relPct = g.total > 0 ? ((cnt / g.total * 100).toFixed(1)) : '0';
     return '<div class="gi-tier-row">' +
       '<span class="gi-tier-icon">' + t.icon + '</span>' +
-      '<span class="gi-tier-label">' + t.label + '</span>' +
+      '<span class="gi-tier-label">' + t.label + infoTip(t.tipKey) + '</span>' +
       '<div class="gi-tier-bar-wrap"><div class="gi-tier-bar ' + t.cls + '" style="width:' + pctW + '%"></div></div>' +
       '<span class="gi-tier-count">' + cnt + '</span>' +
       '<span class="gi-tier-pct">' + relPct + '%</span>' +
@@ -4814,22 +5029,22 @@ function _buildGemIntelHtml(g) {
   var kpiHtml = '<div class="gi-kpis">' +
     '<div class="gi-kpi">' +
       '<div class="gi-kpi-val">' + (g.gemDensity || 0) + '%</div>' +
-      '<div class="gi-kpi-label">Gem Density</div>' +
+      '<div class="gi-kpi-label">Gem Density' + infoTip('gem-density') + '</div>' +
       '<div class="gi-kpi-sub">% in top tiers</div>' +
     '</div>' +
     '<div class="gi-kpi">' +
       '<div class="gi-kpi-val ' + (g.rarityIndex >= 65 ? 'gi-kpi-hi' : '') + '">' + (g.rarityIndex || 0) + '</div>' +
-      '<div class="gi-kpi-label">Rarity Index</div>' +
+      '<div class="gi-kpi-label">Rarity Index' + infoTip('rarity-index') + '</div>' +
       '<div class="gi-kpi-sub">want/have signal</div>' +
     '</div>' +
     '<div class="gi-kpi">' +
       '<div class="gi-kpi-val ' + (g.djValidation >= 40 ? 'gi-kpi-hi' : '') + '">' + (g.djValidation || 0) + '</div>' +
-      '<div class="gi-kpi-label">DJ Validation</div>' +
+      '<div class="gi-kpi-label">DJ Validation' + infoTip('dj-validation') + '</div>' +
       '<div class="gi-kpi-sub">club weapon signal</div>' +
     '</div>' +
     '<div class="gi-kpi">' +
       '<div class="gi-kpi-val">' + (g.enriched || 0) + '<span style="font-size:14px;opacity:.6">/' + (g.total||0) + '</span></div>' +
-      '<div class="gi-kpi-label">Data Coverage</div>' +
+      '<div class="gi-kpi-label">Data Coverage' + infoTip('data-coverage') + '</div>' +
       '<div class="gi-kpi-sub">' + (g.enrichedPct || 0) + '% enriched</div>' +
     '</div>' +
   '</div>';
@@ -4912,14 +5127,14 @@ function _buildGemIntelHtml(g) {
       // Underground gauge
       '<div class="gi-gauge-block">' +
         '<div class="gi-gauge-wrap">' + gaugeSvg + '</div>' +
-        '<div class="gi-gauge-label">UNDERGROUND<br>INDEX</div>' +
+        '<div class="gi-gauge-label">UNDERGROUND<br>INDEX' + infoTip('underground-index', { lg: true }) + '</div>' +
         '<div class="gi-gauge-sub">' + gaugeLabel + '</div>' +
       '</div>' +
 
       // Gem score ring
       '<div class="gi-ring-block">' +
         '<div class="gi-ring-wrap">' + gemRing + '</div>' +
-        '<div class="gi-ring-label">AVG GEM<br>SCORE</div>' +
+        '<div class="gi-ring-label">AVG GEM<br>SCORE' + infoTip('gem-score', { lg: true }) + '</div>' +
       '</div>' +
 
       // KPIs
@@ -5029,19 +5244,19 @@ function _buildTasteIntelHtml(p) {
 
   return '<div class="ti-band">' +
     '<div class="ti-col">' +
-      '<div class="ti-col-head"><span class="ti-icon">🎯</span> Hunting <span class="ti-col-sub">' + h.total + ' wants</span></div>' +
+      '<div class="ti-col-head"><span class="ti-icon">🎯</span> Hunting' + infoTip('hunting') + ' <span class="ti-col-sub">' + h.total + ' wants</span></div>' +
       '<div class="ti-rows">' + (huntRows || '<div class="ti-empty">No wantlist data.</div>') + '</div>' +
     '</div>' +
     '<div class="ti-col">' +
-      '<div class="ti-col-head"><span class="ti-icon">🗄</span> Keeping <span class="ti-col-sub">' + k.total + ' owned</span></div>' +
+      '<div class="ti-col-head"><span class="ti-icon">🗄</span> Keeping' + infoTip('keeping') + ' <span class="ti-col-sub">' + k.total + ' owned</span></div>' +
       '<div class="ti-rows">' + (keepRows || '<div class="ti-empty">No collection yet.</div>') + '</div>' +
     '</div>' +
     '<div class="ti-col">' +
-      '<div class="ti-col-head"><span class="ti-icon">📈</span> Leaning <span class="ti-col-sub">' + leanSubtitle + '</span></div>' +
+      '<div class="ti-col-head"><span class="ti-icon">📈</span> Leaning' + infoTip('leaning') + ' <span class="ti-col-sub">' + leanSubtitle + '</span></div>' +
       '<div class="ti-rows">' + leanRows + '</div>' +
     '</div>' +
     '<div class="ti-col">' +
-      '<div class="ti-col-head"><span class="ti-icon">🏪</span> Store Match <span class="ti-col-sub">catalog alignment</span></div>' +
+      '<div class="ti-col-head"><span class="ti-icon">🏪</span> Store Match' + infoTip('store-match') + ' <span class="ti-col-sub">catalog alignment</span></div>' +
       '<div class="ti-rows">' + smRows + '</div>' +
     '</div>' +
   '</div>';
@@ -5056,14 +5271,17 @@ function renderProfile(p) {
   var r = 44, circ = 2 * Math.PI * r;
   var dash = (inStockPct / 100) * circ;
   var ringHtml =
-    '<svg class="prof-ring-svg" viewBox="0 0 100 100">' +
-      '<circle class="prof-ring-bg" cx="50" cy="50" r="' + r + '"/>' +
-      '<circle class="prof-ring-fill" cx="50" cy="50" r="' + r + '" ' +
-        'stroke-dasharray="' + dash.toFixed(1) + ' ' + circ.toFixed(1) + '" ' +
-        'stroke-dashoffset="0" transform="rotate(-90 50 50)"/>' +
-      '<text class="prof-ring-pct" x="50" y="54" text-anchor="middle">' + inStockPct.toFixed(1) + '%</text>' +
-      '<text class="prof-ring-label" x="50" y="67" text-anchor="middle">in stock</text>' +
-    '</svg>';
+    '<div class="prof-ring-inner">' +
+      '<svg class="prof-ring-svg" viewBox="0 0 100 100">' +
+        '<circle class="prof-ring-bg" cx="50" cy="50" r="' + r + '"/>' +
+        '<circle class="prof-ring-fill" cx="50" cy="50" r="' + r + '" ' +
+          'stroke-dasharray="' + dash.toFixed(1) + ' ' + circ.toFixed(1) + '" ' +
+          'stroke-dashoffset="0" transform="rotate(-90 50 50)"/>' +
+        '<text class="prof-ring-pct" x="50" y="54" text-anchor="middle">' + inStockPct.toFixed(1) + '%</text>' +
+        '<text class="prof-ring-label" x="50" y="67" text-anchor="middle">in stock</text>' +
+      '</svg>' +
+      '<div class="prof-ring-tip">' + infoTip('in-stock-pct') + '</div>' +
+    '</div>';
 
   // ── Stat cards ──
   var stats = [
@@ -5095,7 +5313,7 @@ function renderProfile(p) {
     if (matchVal !== null) {
       var mCls = matchVal >= 70 ? 'match-high' : matchVal >= 40 ? 'match-mid' : 'match-low';
       tasteMatchHtml = '<div class="prof-hero-match ' + mCls + '">' +
-        '<span class="prof-match-num">' + matchVal + '%</span> taste match with you' +
+        '<span class="prof-match-num">' + matchVal + '%</span> taste match with you' + infoTip('taste-match') +
       '</div>';
     }
   }
@@ -5108,7 +5326,7 @@ function renderProfile(p) {
         escapeHtml(t.label) +
       '</span>';
     }).join('');
-    tagsHtml = '<div class="prof-archetype-row">' + tagPills + '</div>';
+    tagsHtml = '<div class="prof-archetype-row">' + tagPills + infoTip('archetypes') + '</div>';
   }
 
   // ── Gem archetypes in hero (top 2, from gemIntel, no emojis) ──
@@ -5124,7 +5342,12 @@ function renderProfile(p) {
         escapeHtml(a.label) +
       '</span>';
     }).join('');
-    tagsHtml = (tagsHtml ? tagsHtml.replace('</div>', gemPills + '</div>') : '<div class="prof-archetype-row">' + gemPills + '</div>');
+    if (tagsHtml) {
+      // Insert gem pills before the existing ? icon at the end of the row
+      tagsHtml = tagsHtml.replace(/(<button[^>]*data-info="archetypes"[^>]*>\?<\/button><\/div>)$/, gemPills + '$1');
+    } else {
+      tagsHtml = '<div class="prof-archetype-row">' + gemPills + infoTip('archetypes') + '</div>';
+    }
   }
 
   // ── Rarity tier badge (no emojis) ──
@@ -5134,20 +5357,20 @@ function renderProfile(p) {
              p.avgHave < 150 ? { label:'Underground',        cls:'prof-badge-teal'  } :
              p.avgHave < 400 ? { label:'Deep Digger',        cls:'prof-badge-smoke' } :
                                { label:'Broad Taste',        cls:'prof-badge-blue'  };
-    rarityTierHtml = '<span class="prof-badge ' + rt.cls + '">' + rt.label + '</span>';
+    rarityTierHtml = '<span class="prof-badge ' + rt.cls + '">' + rt.label + infoTip('rarity-tier') + '</span>';
   }
 
   // ── Era badge (no emojis) ──
   var eraBadgeHtml = '';
   if (p.topDecade) {
     var eraLabels = { '60s':'60s Soul', '70s':'70s Vinyl', '80s':'80s Wave', '90s':'90s Head', '00s':'00s Underground', '10s':'2010s Digger', '20s':'20s Head' };
-    eraBadgeHtml = '<span class="prof-badge prof-badge-era">' + (eraLabels[p.topDecade] || p.topDecade) + '</span>';
+    eraBadgeHtml = '<span class="prof-badge prof-badge-era">' + (eraLabels[p.topDecade] || p.topDecade) + infoTip('era-badge') + '</span>';
   }
 
   // ── Rarity % stat ──
   var rarityStatHtml = '';
   if (typeof p.rarePct === 'number' && p.metaSynced > 10) {
-    rarityStatHtml = '<span class="prof-stat-pill">' + p.rarePct + '% rare <span class="prof-stat-pill-sub">(&lt;200 collectors)</span></span>';
+    rarityStatHtml = '<span class="prof-stat-pill">' + p.rarePct + '% rare <span class="prof-stat-pill-sub">(&lt;200 collectors)</span>' + infoTip('rare-pct') + '</span>';
   }
 
   // ── Collection ratio badge (no emojis) ──
@@ -5155,7 +5378,7 @@ function renderProfile(p) {
   if (p.collectionSize > 0 && p.wantlistSize > 0) {
     var ratio = p.collectionSize / p.wantlistSize;
     var ratioLabel = ratio > 8 ? 'Collector' : ratio > 3 ? 'Keeper' : ratio > 1 ? 'Balanced' : 'Active Buyer';
-    collRatioHtml = '<span class="prof-stat-pill">' + ratioLabel + ' <span class="prof-stat-pill-sub">(' + p.collectionSize + ' owned)</span></span>';
+    collRatioHtml = '<span class="prof-stat-pill">' + ratioLabel + ' <span class="prof-stat-pill-sub">(' + p.collectionSize + ' owned)</span>' + infoTip('collection-ratio') + '</span>';
   }
 
   var metaBadgesHtml = (rarityTierHtml || eraBadgeHtml || rarityStatHtml || collRatioHtml)

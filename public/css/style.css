@@ -1456,6 +1456,197 @@ body.light .tag-badge .tag-stock { color: var(--gold); }
 
 .modal-close:hover { color: var(--gold); background: rgba(255,255,255,0.05); }
 
+/* ───────────────────────────────────────────────────────────────
+   INFO TIP — small ? icon + explanation modal
+   ─────────────────────────────────────────────────────────────── */
+
+.info-tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid #555;
+  color: #888;
+  font-family: 'Inter', sans-serif;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: help;
+  user-select: none;
+  vertical-align: middle;
+  transition: all 0.15s ease;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.info-tip:hover {
+  background: var(--silver);
+  border-color: var(--silver);
+  color: #000;
+  transform: scale(1.15);
+}
+.info-tip:focus-visible {
+  outline: 2px solid var(--silver);
+  outline-offset: 2px;
+}
+
+/* Slightly larger variant for headline metrics */
+.info-tip-lg {
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+}
+
+/* Light mode */
+body.light .info-tip { border-color: #aaa; color: #888; }
+body.light .info-tip:hover { background: #333; border-color: #333; color: #fff; }
+
+/* ── Info modal ── */
+.info-modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.82);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 2000;
+  padding: 80px 20px 40px;
+  overflow-y: auto;
+}
+.info-modal-overlay.active {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  animation: infoModalFade 0.2s ease;
+}
+
+@keyframes infoModalFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.info-modal-content {
+  position: relative;
+  background: #111;
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  max-width: 460px;
+  width: 100%;
+  padding: 28px 28px 24px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  animation: infoModalSlide 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes infoModalSlide {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.info-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  background: transparent;
+  border: none;
+  color: #666;
+  font-size: 22px;
+  cursor: pointer;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  font-family: 'Inter', sans-serif;
+  line-height: 1;
+}
+.info-modal-close:hover { color: var(--silver); background: rgba(255,255,255,0.05); }
+
+.info-modal-eyebrow {
+  font-family: 'Oswald', sans-serif;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--silver);
+  margin-bottom: 8px;
+  opacity: 0.7;
+}
+
+.info-modal-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #fff;
+  margin-bottom: 16px;
+  line-height: 1.2;
+}
+
+.info-modal-body {
+  font-family: 'Inter', sans-serif;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #ccc;
+}
+
+.info-modal-body p { margin-bottom: 12px; }
+.info-modal-body p:last-child { margin-bottom: 0; }
+
+.info-modal-body strong { color: #fff; font-weight: 600; }
+
+.info-modal-body .info-formula {
+  display: block;
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: #0a0a0a;
+  border-left: 3px solid var(--silver);
+  border-radius: 4px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: #aaa;
+  line-height: 1.5;
+}
+.info-modal-body .info-formula strong { color: var(--silver); }
+
+.info-modal-body .info-tier-list {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.info-modal-body .info-tier-list li {
+  padding: 8px 0;
+  border-top: 1px solid #1e1e1e;
+  font-size: 13px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.info-modal-body .info-tier-list li:first-child { border-top: none; padding-top: 4px; }
+.info-modal-body .info-tier-list .info-tier-name {
+  font-weight: 600;
+  color: #fff;
+  flex-shrink: 0;
+  min-width: 110px;
+}
+.info-modal-body .info-tier-list .info-tier-desc {
+  color: #999;
+  font-size: 12.5px;
+}
+
+body.light .info-modal-content { background: #f8f8f8; border-color: #ddd; }
+body.light .info-modal-title { color: #111; }
+body.light .info-modal-body { color: #444; }
+body.light .info-modal-body strong { color: #111; }
+body.light .info-modal-body .info-formula { background: #fff; color: #555; }
+body.light .info-modal-body .info-tier-list li { border-top-color: #e5e5e5; }
+body.light .info-modal-body .info-tier-list .info-tier-name { color: #111; }
+body.light .info-modal-body .info-tier-list .info-tier-desc { color: #666; }
+
 /* Modal position indicator (subtle) */
 .modal-nav-indicator {
   text-align: center;
@@ -6070,6 +6261,18 @@ body.light .disc-fy-statline { color: #aaa; }
 
 .prof-ring {
   flex-shrink: 0;
+}
+.prof-ring-inner {
+  position: relative;
+  display: inline-block;
+}
+.prof-ring-tip {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+.prof-ring-tip .info-tip {
+  margin-left: 0;
 }
 .prof-ring-svg {
   width: 120px;

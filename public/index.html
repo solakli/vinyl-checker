@@ -379,6 +379,16 @@
   </div>
 </div>
 
+<!-- Info Tip Modal — explains how a metric is calculated -->
+<div class="info-modal-overlay" id="infoModalOverlay" onclick="if(event.target===this)infoTipClose()">
+  <div class="info-modal-content">
+    <button class="info-modal-close" onclick="infoTipClose()" aria-label="Close">&times;</button>
+    <div class="info-modal-eyebrow" id="infoModalEyebrow">How it's calculated</div>
+    <h3 class="info-modal-title" id="infoModalTitle"></h3>
+    <div class="info-modal-body" id="infoModalBody"></div>
+  </div>
+</div>
+
 <!-- Cart Optimizer Panel -->
 <div class="optimizer-overlay" id="optimizerOverlay" style="display:none">
   <div class="optimizer-panel">
