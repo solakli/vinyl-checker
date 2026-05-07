@@ -297,45 +297,18 @@
     <div id="welcome" class="welcome" style="display:none">
       <div class="welcome-hero">
         <h2><span>Wax</span> Digger</h2>
-        <p class="welcome-sub">Find your wantlist in stock. Add Discogs marketplace prices. Build the cheapest cart.</p>
+        <p class="welcome-sub">Search 12 stores. See what's in stock. Buy it cheaper.</p>
       </div>
-
-      <div class="welcome-steps">
-
-        <!-- Step 1: Connect Discogs -->
-        <div class="welcome-step">
-          <div class="welcome-step-num">1</div>
-          <div class="welcome-step-body">
-            <div class="welcome-step-title">Connect your Discogs</div>
-            <div class="welcome-step-desc">We scan 12 record stores for every item on your wantlist — see what's in stock and at what price.</div>
-            <button class="welcome-cta" onclick="handleConnectDiscogs()">
-              <img class="store-logo" src="img/discogs.png" alt="" style="width:18px;height:18px;margin-right:8px;vertical-align:middle;filter:none;opacity:1"> Connect Discogs
-            </button>
-            <p class="welcome-hint" id="welcomeHint">Works with private wantlists too</p>
-            <div id="welcomeUsernameForm" style="display:none;margin-top:14px">
-              <input type="text" class="username-input" id="welcomeUsernameInput" placeholder="Enter your Discogs username..." style="margin-bottom:8px">
-              <button class="welcome-cta" onclick="handleWelcomeUsernameSubmit()" style="margin-top:8px">Check My Wantlist</button>
-            </div>
-          </div>
+      <div class="welcome-actions">
+        <button class="welcome-cta" onclick="handleConnectDiscogs()">
+          <img class="store-logo" src="img/discogs.png" alt="" style="width:20px;height:20px;margin-right:8px;vertical-align:middle;filter:none;opacity:1"> Connect Your Discogs
+        </button>
+        <p class="welcome-hint" id="welcomeHint">Authorize to scan your wantlist &mdash; works with private wantlists too</p>
+        <div id="welcomeUsernameForm" style="display:none;margin-top:16px;display:none">
+          <input type="text" class="username-input" id="welcomeUsernameInput" placeholder="Enter your Discogs username..." style="margin-bottom:8px">
+          <button class="welcome-cta" onclick="handleWelcomeUsernameSubmit()" style="margin-top:8px">Check My Wantlist</button>
         </div>
-
-        <div class="welcome-step-divider">+</div>
-
-        <!-- Step 2: Extension -->
-        <div class="welcome-step welcome-step-ext">
-          <div class="welcome-step-num welcome-step-num-ext">2</div>
-          <div class="welcome-step-body">
-            <div class="welcome-step-title">Add the Chrome Extension <span class="welcome-step-optional">optional</span></div>
-            <div class="welcome-step-desc">Syncs Discogs marketplace seller prices into your wantlist. We then build you an optimized cart across stores <em>and</em> Discogs sellers — shipping included.</div>
-            <a class="welcome-cta welcome-cta-ext" href="https://chromewebstore.google.com/detail/wax-digger/cnmfcnifoimkmcmibkgeafobgfkdoepf" target="_blank" rel="noopener">
-              ⛏ Add to Chrome
-            </a>
-            <p class="welcome-hint">Free &middot; 60 second setup &middot; no account needed</p>
-          </div>
-        </div>
-
       </div>
-
       <div class="welcome-stores">
         <span class="welcome-store-label">Stores we check:</span>
         <div class="welcome-store-logos">
