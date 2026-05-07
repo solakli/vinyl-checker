@@ -8906,41 +8906,67 @@ body.light .disc-seller-total { color: #222; }
 body.light .disc-seller-arrow { color: #ccc; }
 body.light .disc-seller-thumb-ph { background: #f0f0f0; color: #ccc; }
 
-/* Extension row below store logos on landing page */
-.welcome-ext-row {
+/* Store chips on landing page */
+.welcome-store-chips {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  margin-top: 20px;
-  padding-top: 18px;
-  border-top: 1px solid #1e1e1e;
   flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 14px;
 }
-.welcome-ext-label {
-  font-size: 12px;
-  color: #555;
-  letter-spacing: 0.3px;
-}
-.welcome-ext-btn {
+.welcome-store-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-family: 'Oswald', sans-serif;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  color: #666;
-  border: 1px solid #2a2a2a;
-  border-radius: 6px;
-  padding: 6px 14px;
-  text-decoration: none;
-  transition: color 0.15s, border-color 0.15s;
+  gap: 7px;
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 20px;
+  padding: 6px 13px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #999;
   white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
 }
-.welcome-ext-btn:hover { color: var(--silver); border-color: #444; }
-body.light .welcome-ext-row { border-top-color: #eee; }
-body.light .welcome-ext-label { color: #aaa; }
-body.light .welcome-ext-btn { color: #bbb; border-color: #ddd; }
-body.light .welcome-ext-btn:hover { color: #555; border-color: #aaa; }
+.welcome-store-chip:hover { border-color: #333; color: #ccc; }
+.welcome-store-chip img {
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+/* Discogs chip — clickable link, slightly highlighted */
+.welcome-store-chip-discogs {
+  text-decoration: none;
+  border-color: rgba(168,184,200,0.2);
+  color: var(--silver);
+}
+.welcome-store-chip-discogs:hover {
+  border-color: rgba(168,184,200,0.5);
+  background: rgba(168,184,200,0.06);
+  color: #fff;
+}
+.welcome-store-ext-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #555;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 1px;
+}
+.welcome-store-chip-discogs:hover .welcome-store-ext-tag {
+  color: var(--silver);
+  border-color: rgba(168,184,200,0.4);
+  background: rgba(168,184,200,0.08);
+}
+
+/* Light mode */
+body.light .welcome-store-chip { background: #f5f5f5; border-color: #e8e8e8; color: #666; }
+body.light .welcome-store-chip:hover { border-color: #ccc; color: #333; }
+body.light .welcome-store-chip-discogs { border-color: rgba(168,184,200,0.3); color: var(--silver); background: rgba(168,184,200,0.04); }
+body.light .welcome-store-chip-discogs:hover { border-color: var(--silver); background: rgba(168,184,200,0.1); color: #333; }
+body.light .welcome-store-ext-tag { background: #eee; border-color: #ddd; color: #aaa; }
