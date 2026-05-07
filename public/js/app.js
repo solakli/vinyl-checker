@@ -3790,7 +3790,7 @@ function renderCollectionGemIntel(p) {
       '<div class="cgc-card-empty">' +
         '<strong>Score your collection</strong>' +
         'We need to enrich your records with YouTube + Discogs signals before we can calculate how underground you are.' +
-        '<a class="cgc-empty-cta" onclick="switchView(\'profile\',null);return false;">Start enrichment →</a>' +
+        '<a class="cgc-empty-cta" href="#" onclick="switchView(\'profile\',null);return false;">Start enrichment →</a>' +
       '</div>';
     return;
   }

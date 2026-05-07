@@ -5157,7 +5157,7 @@ body.light .wl-style-pill.active { background: rgba(168, 184, 200,0.12); color: 
 }
 
 .mobile-tab-label {
-  font-size: 6.5px;
+  font-size: 8px;
   font-weight: 600;
   letter-spacing: 0.2px;
   text-transform: uppercase;
