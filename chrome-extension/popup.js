@@ -119,7 +119,7 @@ function showDone(state) {
     progressWrap.style.display = 'block';
     progressFill.style.width   = '100%';
     progressText.textContent   = state.done + ' releases · ' + (state.found || 0) + ' listings synced';
-    showStatus('✓ Done! Open Gold Digger to run the optimizer.', 'success');
+    showStatus('✓ Done! Open Wax Digger to run the optimizer.', 'success');
     var ts = state.completedAt ? new Date(state.completedAt).toLocaleString() : '';
     if (ts) lastSyncedEl.textContent = 'Last synced: ' + ts;
     chrome.storage.local.set({ lastSynced: state.completedAt });

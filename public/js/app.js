@@ -2569,12 +2569,12 @@ document.addEventListener('visibilitychange', function() {
 // Track whether the Gold Digger extension is installed (content script sets this)
 var _extInstalled = false;
 
-window.addEventListener('golddigger:ready', function () {
+window.addEventListener('waxdigger:ready', function () {
   _extInstalled = true;
 });
 
 // When extension reports sync progress — update optimizer overlay AND discover Discogs UI
-window.addEventListener('golddigger:syncstate', function (e) {
+window.addEventListener('waxdigger:syncstate', function (e) {
   var state = e.detail;
   if (!state) return;
 
@@ -2682,7 +2682,7 @@ function _showOptimizerPrefsPanel(username) {
 
   if (_extInstalled && username && syncIsStale) {
     var serverUrl = (window.location.origin + window.location.pathname).replace(/\/$/, '');
-    window.dispatchEvent(new CustomEvent('golddigger:startsync', {
+    window.dispatchEvent(new CustomEvent('waxdigger:startsync', {
       detail: { username: username, serverUrl: serverUrl }
     }));
   } else {
@@ -2717,7 +2717,7 @@ function triggerDiscogsSync() {
 
   // Dispatch to content script → background → sync-window
   var serverUrl = (window.location.origin + window.location.pathname).replace(/\/+$/, '');
-  window.dispatchEvent(new CustomEvent('golddigger:startsync', {
+  window.dispatchEvent(new CustomEvent('waxdigger:startsync', {
     detail: { username: username, serverUrl: serverUrl }
   }));
 

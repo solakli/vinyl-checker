@@ -80,7 +80,7 @@ async function runSync(server, username) {
     // Done
     fill.style.width = '100%';
     label.textContent = items.length + ' releases · ' + allListings.length + ' listings synced';
-    showStatus('✓ Done! You can now close this window and run Dig For Gold.', 'ok');
+    showStatus('✓ Done! You can now close this window and run the optimizer.', 'ok');
     closeBtn.style.display = 'block';
     chrome.storage.local.set({ syncState: {
         running: false, done: items.length, total: items.length,

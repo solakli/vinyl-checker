@@ -1,12 +1,12 @@
 'use strict';
 
 // Tell the page the extension is installed
-window.dispatchEvent(new CustomEvent('golddigger:ready'));
+window.dispatchEvent(new CustomEvent('waxdigger:ready'));
 
 // Relay storage → page (sync progress updates)
 chrome.storage.onChanged.addListener(function (changes, area) {
     if (area === 'local' && changes.syncState) {
-        window.dispatchEvent(new CustomEvent('golddigger:syncstate', {
+        window.dispatchEvent(new CustomEvent('waxdigger:syncstate', {
             detail: changes.syncState.newValue
         }));
     }
@@ -15,12 +15,12 @@ chrome.storage.onChanged.addListener(function (changes, area) {
 // Send current state to page on load (in case sync is already running / completed)
 chrome.storage.local.get(['syncState', 'serverUrl', 'username'], function (data) {
     if (data.syncState) {
-        window.dispatchEvent(new CustomEvent('golddigger:syncstate', { detail: data.syncState }));
+        window.dispatchEvent(new CustomEvent('waxdigger:syncstate', { detail: data.syncState }));
     }
 });
 
 // Listen for sync trigger from the page
-window.addEventListener('golddigger:startsync', function (e) {
+window.addEventListener('waxdigger:startsync', function (e) {
     var detail = e.detail || {};
     chrome.storage.local.set({
         serverUrl: detail.serverUrl,

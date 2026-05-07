@@ -19,7 +19,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
         sendResponse({ ok: true });
         startSync(msg.server, msg.username);
     }
-    // Triggered by content-script when app page clicks "Dig For Gold"
+    // Triggered by content-script when app page triggers a sync
     if (msg.action === 'openSyncWindow') {
         chrome.windows.create({
             url: chrome.runtime.getURL('sync-window.html'),
@@ -39,7 +39,7 @@ async function startSync(server, username) {
     // Reset progress
     await setProgress({ running: true, done: 0, total: 0, found: 0, error: null, completedAt: null });
 
-    console.log('[GoldDigger] Fetching wantlist for', username, 'from', server);
+    console.log('[WaxDigger] Fetching wantlist for', username, 'from', server);
 
     // Fetch wantlist
     try {
@@ -47,18 +47,18 @@ async function startSync(server, username) {
         var data = await res.json();
         _items   = (data.results || []).filter(function (r) { return r.item && r.item.id; });
     } catch (e) {
-        console.error('[GoldDigger] Failed to fetch wantlist:', e.message);
+        console.error('[WaxDigger] Failed to fetch wantlist:', e.message);
         await setProgress({ running: false, error: 'Could not reach server: ' + e.message });
         _running = false;
         return;
     }
 
-    console.log('[GoldDigger] Got', _items.length, 'wantlist items');
+    console.log('[WaxDigger] Got', _items.length, 'wantlist items');
     await setProgress({ running: true, done: 0, total: _items.length, found: 0 });
 
     // Get Discogs cookies once
     var cookieHeader = await getDiscogsCookieHeader();
-    console.log('[GoldDigger] Cookie header length:', cookieHeader.length);
+    console.log('[WaxDigger] Cookie header length:', cookieHeader.length);
 
     if (!cookieHeader) {
         await setProgress({ running: false, error: 'Not logged into Discogs — open discogs.com and log in first.' });
@@ -78,29 +78,29 @@ async function startSync(server, username) {
     }
 
     // Post to server
-    console.log('[GoldDigger] Posting', allListings.length, 'listings to server');
+    console.log('[WaxDigger] Posting', allListings.length, 'listings to server');
     try {
         var postRes = await fetch(server + '/api/discogs-listings/' + encodeURIComponent(username), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ listings: allListings })
         });
-        console.log('[GoldDigger] POST result:', postRes.status);
+        console.log('[WaxDigger] POST result:', postRes.status);
     } catch (e) {
-        console.error('[GoldDigger] Failed to post listings:', e.message);
+        console.error('[WaxDigger] Failed to post listings:', e.message);
     }
 
     await setProgress({ running: false, done: _items.length, total: _items.length,
                         found: allListings.length, completedAt: Date.now() });
     _running = false;
-    console.log('[GoldDigger] Sync complete');
+    console.log('[WaxDigger] Sync complete');
 }
 
 // ── Discogs cookies ───────────────────────────────────────────────────────────
 async function getDiscogsCookieHeader() {
     return new Promise(function (resolve) {
         chrome.cookies.getAll({ domain: 'discogs.com' }, function (cookies) {
-            console.log('[GoldDigger] Cookies found:', cookies ? cookies.length : 0);
+            console.log('[WaxDigger] Cookies found:', cookies ? cookies.length : 0);
             if (!cookies || !cookies.length) { resolve(''); return; }
             resolve(cookies.map(function (c) { return c.name + '=' + c.value; }).join('; '));
         });
@@ -119,14 +119,14 @@ async function fetchMarketplacePage(discogsId, wantlistId, cookieHeader) {
                 'Accept-Language': 'en-US,en;q=0.9'
             }
         });
-        console.log('[GoldDigger]', url, '→', res.status);
+        console.log('[WaxDigger]', url, '→', res.status);
         if (!res.ok) return [];
         var html    = await res.text();
         var parsed  = parseHtml(html, wantlistId);
-        console.log('[GoldDigger] parsed', parsed.length, 'listings for', discogsId);
+        console.log('[WaxDigger] parsed', parsed.length, 'listings for', discogsId);
         return parsed;
     } catch (e) {
-        console.error('[GoldDigger] fetch error for', discogsId, ':', e.message);
+        console.error('[WaxDigger] fetch error for', discogsId, ':', e.message);
         return [];
     }
 }
@@ -150,13 +150,13 @@ function parseHtml(html, wantlistId) {
 
                 // ── Debug: log structure of first listing once per page ───────
                 if (idx === 0) {
-                    console.log('[GoldDigger] listing[0] keys:', JSON.stringify(Object.keys(l)));
-                    if (l.seller) console.log('[GoldDigger] listing[0].seller keys:', JSON.stringify(Object.keys(l.seller)));
+                    console.log('[WaxDigger] listing[0] keys:', JSON.stringify(Object.keys(l)));
+                    if (l.seller) console.log('[WaxDigger] listing[0].seller keys:', JSON.stringify(Object.keys(l.seller)));
                     var shipFields = ['ships_from','shipsFrom','location','shipping_price',
                                       'shippingPrice','original_shipping_price','shipping'];
                     var found = {};
                     shipFields.forEach(function(k) { if (l[k] !== undefined) found[k] = l[k]; });
-                    console.log('[GoldDigger] shipping-related fields:', JSON.stringify(found));
+                    console.log('[WaxDigger] shipping-related fields:', JSON.stringify(found));
                 }
 
                 // ── ships_from: try every field name Discogs has used ─────────
@@ -201,7 +201,7 @@ function parseHtml(html, wantlistId) {
             });
             if (listings.length) return listings;
         } catch (e) {
-            console.error('[GoldDigger] __NEXT_DATA__ parse error:', e.message);
+            console.error('[WaxDigger] __NEXT_DATA__ parse error:', e.message);
         }
     }
 
