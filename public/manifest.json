@@ -1,11 +1,11 @@
 {
-  "name": "Gold Digger",
-  "short_name": "Gold Digger",
+  "name": "Wax Digger",
+  "short_name": "Wax Digger",
   "description": "Find your vinyl wantlist in stock across record stores worldwide",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0d0d0d",
-  "theme_color": "#3B2507",
+  "background_color": "#080808",
+  "theme_color": "#080808",
   "orientation": "portrait",
   "icons": [
     {
