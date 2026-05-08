@@ -3,9 +3,22 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Wax Digger</title>
+<title>Wax Digger — Find Your Vinyl Wantlist In Stock</title>
+<meta name="description" content="Search 12 record stores at once. See which records from your Discogs wantlist are in stock — and find the cheapest cart across HHV, Hardwax, Juno, Deejay.de and more.">
+<!-- Open Graph / Social -->
+<meta property="og:title" content="Wax Digger — Find Your Vinyl Wantlist In Stock">
+<meta property="og:description" content="Search 12 record stores at once. Find what's in stock from your Discogs wantlist and build the cheapest cart — shipping included.">
+<meta property="og:image" content="https://waxdigger.ai/vinyl/img/brand/screenshot-dashboard.jpg">
+<meta property="og:url" content="https://waxdigger.ai/vinyl/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Wax Digger">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Wax Digger — Find Your Vinyl Wantlist In Stock">
+<meta name="twitter:description" content="Search 12 record stores at once. Find what's in stock from your Discogs wantlist and build the cheapest cart — shipping included.">
+<meta name="twitter:image" content="https://waxdigger.ai/vinyl/img/brand/screenshot-dashboard.jpg">
+<!-- PWA -->
 <link rel="icon" type="image/png" href="img/brand/logo-waxdigger.png">
-<link rel="apple-touch-icon" href="img/brand/logo-waxdigger.png">
+<link rel="apple-touch-icon" href="img/brand/apple-touch-icon.jpg">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#080808">
 <meta name="mobile-web-app-capable" content="yes">
@@ -304,7 +317,7 @@
           <img class="store-logo" src="img/discogs.png" alt="" style="width:20px;height:20px;margin-right:8px;vertical-align:middle;filter:none;opacity:1"> Connect Your Discogs
         </button>
         <p class="welcome-hint" id="welcomeHint">Authorize to scan your wantlist</p>
-        <div id="welcomeUsernameForm" style="display:none;margin-top:16px;display:none">
+        <div id="welcomeUsernameForm" style="display:none;margin-top:16px">
           <input type="text" class="username-input" id="welcomeUsernameInput" placeholder="Enter your Discogs username..." style="margin-bottom:8px">
           <button class="welcome-cta" onclick="handleWelcomeUsernameSubmit()" style="margin-top:8px">Check My Wantlist</button>
         </div>
@@ -331,7 +344,7 @@
         <div class="welcome-mp-block">
           <span class="welcome-store-label"><img src="img/discogs.png" alt="" class="welcome-mp-label-icon">Discogs Marketplace</span>
           <p class="welcome-mp-desc">Add extension to scan all Discogs Marketplace vendors</p>
-          <a class="welcome-discogs-btn" href="https://chromewebstore.google.com/detail/wax-digger/cnmfcnifoimkmcmibkgeafobgfkdoepf" target="_blank" rel="noopener">⛏ Add Extension</a>
+          <a class="welcome-discogs-btn" href="extension.html">⛏ Add Extension</a>
         </div>
       </div>
     </div>
@@ -455,7 +468,8 @@
         </div>
         <div class="discogs-sync-done" id="discogsSyncDone" style="display:none"></div>
         <div class="discogs-ext-hint" id="discogsExtHint">
-          Use the <strong>Wax Digger Chrome Extension</strong> to sync seller listings from your Discogs session — Discogs blocks direct server access.
+          <p>Scan all Discogs Marketplace vendors for your wantlist — then include them in the optimizer.</p>
+          <a class="discogs-ext-cta" href="extension.html">⛏ Add Wax Digger Extension →</a>
         </div>
       </div>
 

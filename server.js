@@ -92,6 +92,11 @@ const PORT = process.env.PORT || 3000;
 
 // Serve static files from public/
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Clean URL: /extension → extension.html
+app.get('/extension', function (req, res) {
+    res.sendFile(path.join(__dirname, 'public', 'extension.html'));
+});
 // Parse JSON bodies, capturing raw body for GitHub webhook HMAC verification
 app.use(express.json({
     limit: '20mb',

@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wax Digger Extension — Scan All Discogs Marketplace Vendors</title>
+<meta name="description" content="Add the Wax Digger Chrome Extension to scan your entire Discogs wantlist against every Marketplace vendor — then build the cheapest cart across all stores and sellers.">
+<meta property="og:title" content="Wax Digger Extension — Scan All Discogs Marketplace Vendors">
+<meta property="og:description" content="Scan your Discogs wantlist against every Marketplace vendor. Build the cheapest cart across stores and sellers — shipping included.">
+<meta property="og:image" content="https://waxdigger.ai/vinyl/img/brand/screenshot-extension.jpg">
+<meta property="og:url" content="https://waxdigger.ai/vinyl/extension">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Wax Digger">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://waxdigger.ai/vinyl/img/brand/screenshot-extension.jpg">
+<link rel="icon" type="image/png" href="img/brand/logo-waxdigger.png">
+<meta name="theme-color" content="#080808">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #080808;
+  --card: #111;
+  --border: #1e1e1e;
+  --text: #fff;
+  --text-muted: #aaa;
+  --silver: #A8B8C8;
+  --silver-soft: rgba(168,184,200,0.12);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Nav ── */
+.ext-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 32px;
+  border-bottom: 1px solid #111;
+  position: sticky;
+  top: 0;
+  background: rgba(8,8,8,0.95);
+  backdrop-filter: blur(8px);
+  z-index: 10;
+}
+.ext-nav-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  font-family: 'Oswald', sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #fff;
+}
+.ext-nav-logo img { width: 26px; height: 26px; }
+.ext-nav-right { display: flex; align-items: center; gap: 20px; }
+.ext-nav-back {
+  font-size: 12px;
+  color: #555;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.ext-nav-back:hover { color: #aaa; }
+.ext-nav-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: #080808;
+  background: var(--silver);
+  padding: 7px 16px;
+  border-radius: 6px;
+  transition: opacity 0.15s;
+}
+.ext-nav-cta:hover { opacity: 0.85; }
+
+/* ── Hero ── */
+.ext-hero {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 90px 24px 70px;
+  text-align: center;
+}
+.ext-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--silver);
+  background: var(--silver-soft);
+  border: 1px solid rgba(168,184,200,0.15);
+  border-radius: 20px;
+  padding: 5px 14px;
+  margin-bottom: 28px;
+}
+.ext-eyebrow-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--silver);
+  opacity: 0.6;
+}
+.ext-hero h1 {
+  font-family: 'Oswald', sans-serif;
+  font-size: 56px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  line-height: 1.05;
+  margin-bottom: 22px;
+}
+.ext-hero h1 .accent { color: var(--silver); }
+.ext-hero-sub {
+  font-size: 15px;
+  color: var(--text-muted);
+  line-height: 1.7;
+  max-width: 460px;
+  margin: 0 auto 44px;
+}
+.ext-hero-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--silver);
+  color: #080808;
+  font-family: 'Oswald', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  text-decoration: none;
+  padding: 16px 36px;
+  border-radius: 8px;
+  transition: opacity 0.15s, transform 0.15s;
+}
+.ext-hero-cta:hover { opacity: 0.9; transform: translateY(-1px); }
+.ext-hero-meta {
+  margin-top: 14px;
+  font-size: 11px;
+  color: #3a3a3a;
+  letter-spacing: 0.3px;
+}
+
+/* ── Stores banner ── */
+.ext-stores-bar {
+  max-width: 680px;
+  margin: 0 auto 0;
+  padding: 0 24px 60px;
+}
+.ext-stores-bar-inner {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #0c0c0c;
+}
+.ext-stores-label {
+  font-family: 'Oswald', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #444;
+  white-space: nowrap;
+}
+.ext-stores-plus {
+  font-family: 'Oswald', sans-serif;
+  font-size: 20px;
+  color: #2a2a2a;
+  font-weight: 700;
+}
+.ext-stores-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+}
+.ext-store-chip {
+  font-size: 11px;
+  color: #555;
+  background: #111;
+  border: 1px solid #1e1e1e;
+  border-radius: 12px;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+.ext-discogs-chip {
+  font-size: 11px;
+  color: var(--silver);
+  background: var(--silver-soft);
+  border: 1px solid rgba(168,184,200,0.2);
+  border-radius: 12px;
+  padding: 3px 9px;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+/* ── Features ── */
+.ext-features {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 0 24px 60px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 14px;
+}
+.ext-feature {
+  background: #0c0c0c;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 22px 18px;
+}
+.ext-feature-icon { font-size: 22px; margin-bottom: 12px; }
+.ext-feature-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: #e0e0e0;
+  margin-bottom: 8px;
+}
+.ext-feature-desc { font-size: 12px; color: #555; line-height: 1.6; }
+
+/* ── How it works ── */
+.ext-how {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 0 24px 60px;
+}
+.ext-section-eyebrow {
+  font-family: 'Oswald', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #333;
+  margin-bottom: 20px;
+}
+.ext-steps {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.ext-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--border);
+  background: #0c0c0c;
+  transition: background 0.15s;
+}
+.ext-step:last-child { border-bottom: none; }
+.ext-step:hover { background: #0e0e0e; }
+.ext-step-num {
+  font-family: 'Oswald', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: #222;
+  min-width: 28px;
+  line-height: 1.2;
+}
+.ext-step-body {}
+.ext-step-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d0d0d0;
+  margin-bottom: 5px;
+}
+.ext-step-desc { font-size: 12px; color: #555; line-height: 1.6; }
+
+/* ── Bottom CTA ── */
+.ext-bottom {
+  text-align: center;
+  padding: 70px 24px 90px;
+  border-top: 1px solid #111;
+}
+.ext-bottom h2 {
+  font-family: 'Oswald', sans-serif;
+  font-size: 32px;
+  font-weight: 700;
+  color: #e0e0e0;
+  margin-bottom: 12px;
+}
+.ext-bottom p {
+  font-size: 13px;
+  color: #3a3a3a;
+  margin-top: 16px;
+  letter-spacing: 0.3px;
+}
+
+/* ── Responsive ── */
+@media (max-width: 600px) {
+  .ext-hero h1 { font-size: 38px; }
+  .ext-features { grid-template-columns: 1fr; }
+  .ext-nav { padding: 14px 20px; }
+  .ext-stores-bar-inner { flex-direction: column; align-items: flex-start; gap: 12px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── Nav ── -->
+<nav class="ext-nav">
+  <a class="ext-nav-logo" href="index.html">
+    <img src="img/brand/logo-waxdigger.png" alt="Wax Digger">
+    WAX DIGGER
+  </a>
+  <div class="ext-nav-right">
+    <a class="ext-nav-back" href="index.html">← Back to app</a>
+    <a class="ext-nav-cta" href="https://chromewebstore.google.com/detail/wax-digger/cnmfcnifoimkmcmibkgeafobgfkdoepf" target="_blank" rel="noopener">⛏ Add to Chrome</a>
+  </div>
+</nav>
+
+<!-- ── Hero ── -->
+<section class="ext-hero">
+  <div class="ext-eyebrow">
+    <span class="ext-eyebrow-dot"></span>
+    Chrome Extension
+    <span class="ext-eyebrow-dot"></span>
+  </div>
+  <h1>Scan <span class="accent">All Discogs</span><br>Marketplace Vendors</h1>
+  <p class="ext-hero-sub">Wax Digger already checks 12 record stores. Add the extension to also scan every seller on Discogs Marketplace — then find the cheapest cart across all of them, shipping included.</p>
+  <a class="ext-hero-cta" href="https://chromewebstore.google.com/detail/wax-digger/cnmfcnifoimkmcmibkgeafobgfkdoepf" target="_blank" rel="noopener">⛏ Add to Chrome — It's Free</a>
+  <p class="ext-hero-meta">Chrome only · No account required · No passwords stored</p>
+</section>
+
+<!-- Screenshot preview -->
+<div style="max-width:760px;margin:0 auto 60px;padding:0 24px">
+  <img src="img/brand/screenshot-extension.jpg" alt="Wax Digger Extension scanning Discogs Marketplace"
+    style="width:100%;border-radius:12px;border:1px solid #1e1e1e;opacity:0.9;">
+</div>
+
+<!-- ── Stores we cover ── -->
+<div class="ext-stores-bar">
+  <div class="ext-stores-bar-inner">
+    <span class="ext-stores-label">Stores we check</span>
+    <div class="ext-stores-chips">
+      <span class="ext-store-chip">HHV</span>
+      <span class="ext-store-chip">Deejay.de</span>
+      <span class="ext-store-chip">Hardwax</span>
+      <span class="ext-store-chip">Juno</span>
+      <span class="ext-store-chip">Turntable Lab</span>
+      <span class="ext-store-chip">Phonica</span>
+      <span class="ext-store-chip">Decks.de</span>
+      <span class="ext-store-chip">Yoyaku</span>
+      <span class="ext-store-chip">Underground Vinyl</span>
+      <span class="ext-store-chip">Gramaphone</span>
+      <span class="ext-store-chip">Further Records</span>
+      <span class="ext-store-chip">Octopus NYC</span>
+    </div>
+    <span class="ext-stores-plus">+</span>
+    <span class="ext-discogs-chip">⛏ All Discogs vendors</span>
+  </div>
+</div>
+
+<!-- ── Features ── -->
+<div class="ext-features">
+  <div class="ext-feature">
+    <div class="ext-feature-icon">🔍</div>
+    <div class="ext-feature-title">Every Discogs Seller</div>
+    <div class="ext-feature-desc">Scans your wantlist against every marketplace listing — not just the 12 curated stores. Thousands more sellers.</div>
+  </div>
+  <div class="ext-feature">
+    <div class="ext-feature-icon">🛒</div>
+    <div class="ext-feature-title">Optimised Cart</div>
+    <div class="ext-feature-desc">Combines Discogs sellers with store results to find the cheapest multi-seller cart, shipping included.</div>
+  </div>
+  <div class="ext-feature">
+    <div class="ext-feature-icon">🔒</div>
+    <div class="ext-feature-title">Uses Your Session</div>
+    <div class="ext-feature-desc">Works with your existing Discogs login. No passwords stored, no separate sign-up, no tracking.</div>
+  </div>
+</div>
+
+<!-- ── How it works ── -->
+<div class="ext-how">
+  <div class="ext-section-eyebrow">How it works</div>
+  <div class="ext-steps">
+    <div class="ext-step">
+      <div class="ext-step-num">1</div>
+      <div class="ext-step-body">
+        <div class="ext-step-title">Add the extension to Chrome</div>
+        <div class="ext-step-desc">One-click install from the Chrome Web Store. Free, open source, no sign-up needed.</div>
+      </div>
+    </div>
+    <div class="ext-step">
+      <div class="ext-step-num">2</div>
+      <div class="ext-step-body">
+        <div class="ext-step-title">Log into Discogs as usual</div>
+        <div class="ext-step-desc">The extension uses your existing Discogs session — no passwords stored, nothing new to configure.</div>
+      </div>
+    </div>
+    <div class="ext-step">
+      <div class="ext-step-num">3</div>
+      <div class="ext-step-body">
+        <div class="ext-step-title">Hit Sync in Wax Digger</div>
+        <div class="ext-step-desc">Open Wax Digger → Discover → Discogs tab and press Sync. The extension pulls live prices from your wantlist marketplace pages in the background.</div>
+      </div>
+    </div>
+    <div class="ext-step">
+      <div class="ext-step-num">4</div>
+      <div class="ext-step-body">
+        <div class="ext-step-title">Build your cheapest cart</div>
+        <div class="ext-step-desc">The Cart Optimizer combines all Discogs sellers with our 12 stores to find the best combination — fewest orders, lowest total including shipping.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Bottom CTA ── -->
+<div class="ext-bottom">
+  <h2>Ready to dig deeper?</h2>
+  <a class="ext-hero-cta" href="https://chromewebstore.google.com/detail/wax-digger/cnmfcnifoimkmcmibkgeafobgfkdoepf" target="_blank" rel="noopener">⛏ Add to Chrome — It's Free</a>
+  <p>Free forever · Chrome Web Store · No account required · <a href="privacy.html" style="color:#333">Privacy Policy</a></p>
+</div>
+
+</body>
+</html>

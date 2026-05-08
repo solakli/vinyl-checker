@@ -4517,7 +4517,7 @@ function renderDiscogsSection() {
   if (items.length === 0 && !syncing) {
     var extBtn = _extInstalled
       ? '<button class="disc-discogs-ext-btn" onclick="triggerDiscogsSync()">⛏ Sync Discogs Prices</button>'
-      : '<div class="disc-discogs-ext-hint">Install the Wax Digger Chrome Extension to sync seller prices from your Discogs account.</div>';
+      : '<div class="disc-discogs-ext-hint">Scan all Discogs Marketplace vendors for your wantlist.<br><a class="disc-discogs-ext-link" href="extension.html">⛏ Add Wax Digger Extension →</a></div>';
     return syncBannerHtml +
       '<div class="disc-discogs-empty">' +
         '<img src="img/discogs.png" style="width:20px;height:20px;opacity:0.5;margin-bottom:10px">' +

@@ -3,31 +3,39 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gold Digger — Privacy Policy</title>
+  <title>Wax Digger — Privacy Policy</title>
+  <link rel="icon" type="image/png" href="img/brand/logo-waxdigger.png">
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 720px; margin: 60px auto; padding: 0 24px; color: #1a1a1a; line-height: 1.7; }
     h1 { font-size: 28px; font-weight: 800; margin-bottom: 4px; }
-    h1 span { color: #C9A227; }
+    h1 span { color: #A8B8C8; }
     .meta { color: #888; font-size: 14px; margin-bottom: 40px; }
-    h2 { font-size: 17px; font-weight: 700; margin-top: 36px; }
+    h2 { font-size: 17px; font-weight: 700; margin-top: 36px; margin-bottom: 8px; }
     p, li { font-size: 15px; color: #333; }
-    a { color: #C9A227; }
+    ul { padding-left: 20px; margin-top: 8px; }
+    li { margin-bottom: 4px; }
+    a { color: #A8B8C8; }
+    .back { display: inline-block; margin-bottom: 40px; font-size: 13px; color: #aaa; text-decoration: none; }
+    .back:hover { color: #555; }
+    code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
   </style>
 </head>
 <body>
-  <h1><span>Gold</span> Digger</h1>
-  <div class="meta">Privacy Policy · Last updated April 19, 2026</div>
+  <a class="back" href="index.html">← Back to Wax Digger</a>
+  <h1><span>Wax</span> Digger</h1>
+  <div class="meta">Privacy Policy · Last updated May 8, 2026</div>
 
   <h2>Overview</h2>
-  <p>Gold Digger is a Chrome extension and web app that helps vinyl record collectors find the cheapest combination of sellers for their Discogs wantlist. This policy explains how the extension handles data.</p>
+  <p>Wax Digger is a Chrome extension and web app that helps vinyl record collectors find records from their Discogs wantlist across multiple stores, and find the cheapest cart combination. This policy explains how the extension and app handle data.</p>
 
   <h2>Data We Do Not Collect</h2>
-  <p>The Gold Digger extension does <strong>not</strong>:</p>
+  <p>The Wax Digger extension does <strong>not</strong>:</p>
   <ul>
     <li>Collect, store, or transmit any personal information to third parties</li>
     <li>Track browsing history or activity outside of discogs.com marketplace pages</li>
     <li>Share any data with advertisers or analytics services</li>
     <li>Sell or monetize any user data</li>
+    <li>Store or transmit your Discogs login credentials</li>
   </ul>
 
   <h2>Permissions Used</h2>
@@ -36,16 +44,29 @@
   <p>The extension reads your existing Discogs.com session cookies solely to authenticate marketplace page requests on your behalf. This allows it to fetch seller listings that require a logged-in Discogs account. Your cookies are never stored beyond the current sync session and are never transmitted to any server other than discogs.com.</p>
 
   <h2>storage</h2>
-  <p>The extension uses <code>chrome.storage.local</code> to store your Gold Digger server URL, Discogs username, and sync progress state locally on your device. This data never leaves your browser and is only used to remember your settings between sessions.</p>
+  <p>The extension uses <code>chrome.storage.local</code> to store your Wax Digger server URL, Discogs username, and sync progress state locally on your device. This data never leaves your browser and is only used to remember your settings between sessions.</p>
 
   <h2>tabs</h2>
-  <p>The tabs permission is used solely to open the Gold Digger web app in a new tab when you click "Open Gold Digger" from the extension popup.</p>
+  <p>The tabs permission is used solely to open the Wax Digger web app in a new tab when the extension needs to display sync results.</p>
 
   <h2>host permissions (discogs.com, waxdigger.ai)</h2>
-  <p>The extension accesses <strong>discogs.com</strong> marketplace pages to read seller listing information (seller name, price, condition, ships-from country) for records in your Discogs wantlist. It accesses <strong>waxdigger.ai</strong> to send this listing data to the Gold Digger optimizer, which calculates the cheapest cart combination.</p>
+  <p>The extension accesses <strong>discogs.com</strong> marketplace pages to read seller listing information (seller name, price, condition, ships-from country) for records in your Discogs wantlist. It accesses <strong>waxdigger.ai</strong> to send this listing data to the Wax Digger optimizer, which calculates the cheapest cart combination.</p>
+
+  <h2>Data Collected by the Web App</h2>
+  <p>When you connect your Discogs account to the Wax Digger web app, we store the following on our server:</p>
+  <ul>
+    <li>Your Discogs username and OAuth token (to sync your wantlist and collection)</li>
+    <li>Your wantlist and collection data from Discogs (record titles, artists, labels)</li>
+    <li>In-stock results from the record stores we check</li>
+    <li>Seller listing data synced via the Chrome extension (seller names, prices, shipping origin)</li>
+  </ul>
+  <p>This data is used solely to provide the Wax Digger service to you and is not shared with third parties.</p>
 
   <h2>Data Transmission</h2>
-  <p>Scraped seller listing data (seller username, price, condition, ships-from) is sent to the Gold Digger server at waxdigger.ai, which you operate or have authorized access to. No data is sent to any other server.</p>
+  <p>Scraped seller listing data (seller username, price, condition, ships-from) is sent to the Wax Digger server at waxdigger.ai to calculate the cheapest cart combination. No data is sent to any other server.</p>
+
+  <h2>Data Retention</h2>
+  <p>You can disconnect your Discogs account at any time from within the app. You may request deletion of your data by contacting us at the address below.</p>
 
   <h2>Contact</h2>
   <p>Questions about this privacy policy can be directed to <a href="mailto:omersolakli@gmail.com">omersolakli@gmail.com</a>.</p>
