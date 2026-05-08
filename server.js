@@ -3552,13 +3552,31 @@ app.delete('/api/cart/:username', function(req, res) {
     } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Admin Basic Auth middleware ───────────────────────────────────────────────
+function requireAdminAuth(req, res, next) {
+    var adminPassword = process.env.ADMIN_PASSWORD;
+    if (!adminPassword) return next(); // no password set → open (dev mode)
+
+    var auth = req.headers['authorization'] || '';
+    if (auth.startsWith('Basic ')) {
+        var decoded = Buffer.from(auth.slice(6), 'base64').toString('utf8');
+        // Accept "admin:<password>" or just ":<password>"
+        var colon = decoded.indexOf(':');
+        var pass = colon >= 0 ? decoded.slice(colon + 1) : decoded;
+        if (pass === adminPassword) return next();
+    }
+
+    res.set('WWW-Authenticate', 'Basic realm="Wax Digger Admin"');
+    res.status(401).send('Unauthorized');
+}
+
 // Admin dashboard — HTML page
-app.get('/admin', function (req, res) {
+app.get('/admin', requireAdminAuth, function (req, res) {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
 // Clean up dead/empty user accounts
-app.post('/api/admin/cleanup', function (req, res) {
+app.post('/api/admin/cleanup', requireAdminAuth, function (req, res) {
     try {
         var d = db.getDb();
         // Find users with no scan history
