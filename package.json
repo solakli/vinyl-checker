@@ -1,7 +1,7 @@
 {
-  "name": "discogs-vinyl-checker",
-  "version": "1.0.0",
-  "description": "Check if your Discogs wantlist items are in stock at vinyl stores",
+  "name": "wax-digger",
+  "version": "1.3.0",
+  "description": "Find your vinyl wantlist in stock across record stores worldwide",
   "main": "vinyl-checker-puppeteer.js",
   "scripts": {
     "check": "node vinyl-checker-puppeteer.js",

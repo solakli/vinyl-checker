@@ -3591,7 +3591,7 @@ var DAILY_CHECK_INTERVAL = 24 * 60 * 60 * 1000; // daily check fires once/day; u
 var NOTIFICATION_WEBHOOK = process.env.NOTIFICATION_WEBHOOK || '';
 
 app.listen(PORT, function () {
-    console.log('\n\u2728 Vinyl Checker running at http://localhost:' + PORT + '\n');
+    console.log('\n\u2728 Wax Digger running at http://localhost:' + PORT + '\n');
 
     // ── Startup cleanup ───────────────────────────────────────────────────────
     // Mark any unfinished scan_runs as errored. These are left over from a crash
