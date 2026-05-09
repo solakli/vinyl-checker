@@ -2844,21 +2844,11 @@ app.get('/api/changes/:username', function (req, res) {
 
 // Update last_seen_at — called by the frontend after it has displayed the
 // changes banner, so the NEXT visit starts from this moment forward.
-// Accepts session user OR explicit username — but only allows updating yourself.
+// Requires a valid session — only updates the logged-in user's own timestamp.
 app.post('/api/changes/seen', function (req, res) {
+    if (!req.sessionUser) return res.status(401).json({ error: 'Not logged in' });
     try {
-        var requestedUsername = (req.body && req.body.username) || '';
-        var sessionUsername   = req.sessionUser ? req.sessionUser.username : '';
-        // Must either be logged in, or the requested username must match the session
-        var username = sessionUsername || requestedUsername;
-        if (!username) return res.status(400).json({ error: 'username required' });
-        // If both provided, must match — prevents resetting another user's timestamp
-        if (sessionUsername && requestedUsername &&
-            sessionUsername.toLowerCase() !== requestedUsername.toLowerCase()) {
-            return res.status(403).json({ error: 'can only update your own last_seen_at' });
-        }
-        var user = db.getOrCreateUser(username);
-        db.touchUserLastSeen(user.id);
+        db.touchUserLastSeen(req.sessionUser.id);
         res.json({ ok: true, lastSeenAt: new Date().toISOString() });
     } catch (e) {
         res.status(500).json({ error: e.message });
