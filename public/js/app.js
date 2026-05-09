@@ -351,6 +351,24 @@ document.getElementById('usernameInput').addEventListener('keydown', function(e)
 
 // Welcome page — OAuth only (manual username removed)
 
+// ── Skeleton grid: shown at scan start before real results arrive ──────────────
+function showSkeletonGrid(count) {
+  var grid = document.getElementById('grid');
+  var skels = '';
+  var n = Math.min(count || 8, 12);
+  for (var i = 0; i < n; i++) {
+    skels += '<div class="card-skel" style="--card-i:' + i + '">' +
+      '<div class="skel-art"></div>' +
+      '<div class="skel-body">' +
+        '<div class="skel-line w-45"></div>' +
+        '<div class="skel-line w-85 h-16"></div>' +
+        '<div class="skel-line w-70"></div>' +
+      '</div>' +
+    '</div>';
+  }
+  grid.innerHTML = skels;
+}
+
 function startLoadingMessages() {
   var msgEl = document.getElementById('progressCurrent');
   // Show first message immediately
@@ -1173,7 +1191,7 @@ function render() {
   // Store filtered IDs for modal navigation (swipe prev/next)
   currentFilteredIds = filtered.map(function(item) { return item.item.id; });
 
-  grid.innerHTML = filtered.map(function(item) {
+  grid.innerHTML = filtered.map(function(item, _ci) {
     var visibleStores = item.stores.filter(function(s) { return activeStores.indexOf(s.store) !== -1; });
     var inStockCount = visibleStores.filter(function(s) { return s.inStock && !s.linkOnly; }).length;
 
@@ -1376,7 +1394,15 @@ function render() {
       storeRowsHtml += '</div>';
     }
 
-    return '<div class="card-v2' + cardExtraClass + '" data-discogs-id="' + item.item.id + '" onclick="openReleaseDetail(' + item.item.id + ')">' +
+    // Stagger animation index (capped at 18 so the last card doesn't wait forever)
+    var cardIdx = Math.min(_ci, 18);
+    // Ambient art glow: set --art-bg CSS var from album thumb URL
+    var cardStyleAttr = '--card-i:' + cardIdx + ';';
+    if (item.item.thumb) {
+      cardStyleAttr += '--art-bg:url(' + item.item.thumb.replace(/'/g, '%27') + ');';
+    }
+
+    return '<div class="card-v2' + cardExtraClass + '" style="' + cardStyleAttr + '" data-discogs-id="' + item.item.id + '" onclick="openReleaseDetail(' + item.item.id + ')">' +
       '<div class="card-art">' +
         artHtml +
         condBadge +

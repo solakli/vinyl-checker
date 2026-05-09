@@ -9076,3 +9076,225 @@ body.light .welcome-discogs-btn:hover { border-color: #aaa; color: #555; }
 body.light .discogs-ext-hint p { color: #aaa; }
 body.light .discogs-ext-cta { color: #888; }
 body.light .disc-discogs-ext-link { color: #888; }
+
+/* ═══════════════════════════════════════════════════════════════
+   ✨ BREAKTHROUGH VISUAL EFFECTS
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 1. CARD ENTRANCE ANIMATION ─────────────────────────────── */
+@keyframes cardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(22px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.card-v2 {
+  animation: cardEnter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--card-i, 0) * 35ms);
+  position: relative; /* required for ::before glow */
+}
+
+/* ── 2. AMBIENT ART GLOW ────────────────────────────────────── */
+/* Each card gets a --art-bg CSS variable set from JS (album thumb URL).
+   On hover, the blurred, saturated art bleeds through the card bg. */
+.card-v2::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  background: var(--art-bg, none) center / cover no-repeat;
+  filter: blur(36px) saturate(3.5) brightness(0.22);
+  opacity: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  transition: opacity 0.55s ease;
+}
+
+.card-v2:hover::before {
+  opacity: 0.85;
+}
+
+/* Ensure card content renders above the glow */
+.card-v2 .card-art,
+.card-v2 .card-body {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── 3. SPINNING VINYL RECORD ON HOVER ──────────────────────── */
+@keyframes vinyl-spin {
+  from { transform: translateY(-50%) rotate(0deg); }
+  to   { transform: translateY(-50%) rotate(360deg); }
+}
+
+.card-v2:hover .card-vinyl-disc {
+  animation: vinyl-spin 3.6s linear infinite;
+  /* Warm glow on the record as it spins */
+  filter: drop-shadow(0 0 10px rgba(200, 160, 60, 0.35)) drop-shadow(3px 0 10px rgba(0,0,0,0.7));
+}
+
+/* ── 4. IN-STOCK CARD — green hover glow ────────────────────── */
+.card-v2-instock:hover {
+  border-color: rgba(74, 222, 128, 0.45);
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(74, 222, 128, 0.3),
+    0 0 32px rgba(74, 222, 128, 0.08);
+}
+
+/* ── 5. IN-STOCK BADGE — pulse glow ─────────────────────────── */
+@keyframes stockBadgePulse {
+  0%, 100% { box-shadow: 0 0 6px rgba(74, 222, 128, 0.2); }
+  50%       { box-shadow: 0 0 14px rgba(74, 222, 128, 0.5); }
+}
+
+.card-v2-instock .card-condition {
+  color: var(--green);
+  border: 1px solid rgba(74, 222, 128, 0.55);
+  background: rgba(0, 0, 0, 0.82);
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.2);
+  animation: stockBadgePulse 2.5s ease-in-out infinite;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+/* ── 6. BUY NOW — glow for in-stock ────────────────────────── */
+.card-v2-instock .btn-add-cart {
+  background: rgba(74, 222, 128, 0.12);
+  border-color: rgba(74, 222, 128, 0.55);
+  color: var(--green);
+  transition: all 0.2s ease;
+}
+
+.card-v2-instock .btn-add-cart:hover {
+  background: var(--green);
+  color: #000;
+  box-shadow: 0 4px 16px rgba(74, 222, 128, 0.35);
+  transform: translateY(-1px);
+}
+
+/* ── 7. SKELETON LOADERS ─────────────────────────────────────── */
+@keyframes skelSweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+.card-skel {
+  background: #111;
+  border: 1px solid #1a1a1a;
+  border-radius: 12px;
+  overflow: hidden;
+  animation: cardEnter 0.4s ease both;
+  animation-delay: calc(var(--card-i, 0) * 55ms);
+}
+
+.skel-art {
+  height: 190px;
+  background: #181818;
+  position: relative;
+  overflow: hidden;
+}
+
+.skel-art::after,
+.skel-line::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 60%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.055) 50%,
+    transparent 100%
+  );
+  animation: skelSweep 1.6s ease-in-out infinite;
+}
+
+.skel-body {
+  padding: 14px 14px 12px;
+}
+
+.skel-line {
+  height: 9px;
+  border-radius: 4px;
+  background: #1a1a1a;
+  margin-bottom: 10px;
+  position: relative;
+  overflow: hidden;
+}
+
+.skel-line.w-70 { width: 70%; }
+.skel-line.w-85 { width: 85%; }
+.skel-line.w-45 { width: 45%; }
+.skel-line.h-16 { height: 16px; margin-top: 16px; margin-bottom: 6px; }
+
+/* ── 8. NAVBAR ACTIVE TAB — animated underline ───────────────── */
+/* Override the static border-bottom with an animated pseudo-element */
+.navbar-nav a.active {
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+}
+
+.navbar-nav a {
+  position: relative;
+}
+
+.navbar-nav a.active::after {
+  content: '';
+  position: absolute;
+  bottom: -18px;  /* align with navbar bottom edge */
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--silver);
+  border-radius: 1px;
+  animation: tabLine 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: left;
+}
+
+@keyframes tabLine {
+  from { transform: scaleX(0); opacity: 0; }
+  to   { transform: scaleX(1); opacity: 1; }
+}
+
+/* ── 9. CARD HOVER — generic (non-in-stock) polish ─────────── */
+.card-v2:hover {
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(168, 184, 200, 0.25);
+}
+
+/* ── 10. SCAN PROGRESS — glowing fill ───────────────────────── */
+.progress-bar-fill {
+  background: linear-gradient(90deg, #8aaccc, #b8ccdc, #8aaccc);
+  background-size: 200% 100%;
+  animation: progressGlow 2s ease-in-out infinite;
+}
+
+@keyframes progressGlow {
+  0%, 100% { background-position: 0% 50%; }
+  50%       { background-position: 100% 50%; }
+}
+
+/* Light mode adjustments for new effects */
+body.light .card-v2::before {
+  filter: blur(36px) saturate(3) brightness(0.08);
+}
+body.light .card-v2:hover::before { opacity: 0.5; }
+body.light .card-skel { background: #f8f8f8; border-color: #e8e8e8; }
+body.light .skel-art { background: #f0f0f0; }
+body.light .skel-line { background: #ebebeb; }
+body.light .skel-art::after,
+body.light .skel-line::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.7) 50%,
+    transparent 100%
+  );
+}
