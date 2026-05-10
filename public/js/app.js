@@ -226,7 +226,7 @@ function _applyTheme(isLight, animate) {
 function _updateThemeBtn() {
   var btn  = document.getElementById('themeToggle');
   if (!btn) return;
-  var mode = localStorage.getItem('gold-digger-theme') || 'auto';
+  var mode = localStorage.getItem('gold-digger-theme') || 'dark';
   var day  = document.body.classList.contains('light');
   if (mode === 'auto') {
     btn.textContent = day ? '☀' : '🌙';
@@ -259,7 +259,7 @@ function _scheduleAutoSwitch(lat, lng) {
 
   var delay = nextMs - now;
   _autoThemeTimer = setTimeout(function() {
-    if ((localStorage.getItem('gold-digger-theme') || 'auto') === 'auto') {
+    if ((localStorage.getItem('gold-digger-theme') || 'dark') === 'auto') {
       _applyTheme(toLight, true);
       _scheduleAutoSwitch(lat, lng);
     }
@@ -298,7 +298,7 @@ function _initAutoTheme() {
 
 // ─── Initialise on load ───────────────────────────────────────────────────────
 (function() {
-  var saved = localStorage.getItem('gold-digger-theme') || 'auto';
+  var saved = localStorage.getItem('gold-digger-theme') || 'dark';
   if (saved === 'light') {
     document.body.classList.add('light');
     _updateThemeBtn();
@@ -325,7 +325,7 @@ document.getElementById('themeToggle').addEventListener('mouseup', function() {
 });
 document.getElementById('themeToggle').addEventListener('click', function() {
   clearTimeout(_themeHoldTimer);
-  var saved   = localStorage.getItem('gold-digger-theme') || 'auto';
+  var saved   = localStorage.getItem('gold-digger-theme') || 'dark';
   var isLight = document.body.classList.contains('light');
   if (saved === 'auto') {
     // First click: override to opposite
