@@ -3970,7 +3970,7 @@ function renderCollectionGrid() {
     return;
   }
 
-  grid.innerHTML = items.map(function(item) {
+  grid.innerHTML = items.map(function(item, _ci) {
     var thumb = item.thumb
       ? '<img class="coll-card-art" src="' + escapeHtml(item.thumb) + '" loading="lazy" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">'
         + '<div class="coll-card-art coll-art-placeholder" style="display:none">♪</div>'
@@ -3989,7 +3989,10 @@ function renderCollectionGrid() {
       ? ' onclick="openCollRelease(' + item.discogs_id + ')"'
       : '';
 
-    return '<div class="coll-card"' + clickHandler + '>' +
+    var collCardStyle = '--card-i:' + Math.min(_ci, 18) + ';';
+    if (item.thumb) collCardStyle += '--art-bg:url(' + item.thumb.replace(/'/g, '%27') + ');';
+
+    return '<div class="coll-card" style="' + collCardStyle + '"' + clickHandler + '>' +
       '<div class="coll-art-wrap">' + thumb + '</div>' +
       '<div class="coll-card-body">' +
         '<div class="coll-card-artist">' + escapeHtml(item.artist || '') + '</div>' +
@@ -4336,13 +4339,13 @@ function renderForYouTab() {
   if (filtered.length === 0) {
     html += '<div class="disc-empty">No items found. Run a scan and sync your streaming data to see recommendations.</div>';
   } else {
-    html += '<div class="disc-card-grid">' + filtered.map(renderForYouCard).join('') + '</div>';
+    html += '<div class="disc-card-grid">' + filtered.map(function(item, i) { return renderForYouCard(item, i); }).join('') + '</div>';
   }
 
   document.getElementById('discBody').innerHTML = html;
 }
 
-function renderForYouCard(item) {
+function renderForYouCard(item, cardIdx) {
   var isWantlist = item.source === 'wantlist';
   var isDigger   = item.source === 'digger';
   var pct = item.matchPct || 0;
@@ -4356,6 +4359,11 @@ function renderForYouCard(item) {
     ? '<img class="disc-card-art" src="' + escapeHtml(item.image || item.thumb) + '" loading="lazy" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">' +
       '<div class="disc-card-art-placeholder" style="display:none">♪</div>'
     : '<div class="disc-card-art-placeholder">♪</div>';
+
+  var fyCardIdx = Math.min(cardIdx || 0, 18);
+  var fyCardStyle = '--card-i:' + fyCardIdx + ';';
+  var fyArtUrl = item.image || item.thumb;
+  if (fyArtUrl) fyCardStyle += '--art-bg:url(' + fyArtUrl.replace(/'/g, '%27') + ');';
 
   // Genre chip (first style tag — digger cards split on comma, others on pipe)
   var styleStr = item.styles || item.genres || '';
@@ -4378,7 +4386,7 @@ function renderForYouCard(item) {
       ? 'https://www.discogs.com/release/' + item.discogsId
       : null;
     var linkAttr = discogsUrl ? ' onclick="window.open(\'' + escapeAttr(discogsUrl) + '\',\'_blank\')"' : '';
-    return '<div class="disc-fy-card disc-fy-card-digger"' + linkAttr + '>' +
+    return '<div class="disc-fy-card disc-fy-card-digger" style="' + fyCardStyle + '"' + linkAttr + '>' +
       '<div class="disc-card-art-wrap">' +
         artHtml +
         '<span class="' + badgeClass + '">' + badgeLabel + '</span>' +
@@ -4426,7 +4434,7 @@ function renderForYouCard(item) {
   }
 
   var linkAttr = item.url ? ' onclick="window.open(\'' + escapeAttr(item.url) + '\',\'_blank\')"' : '';
-  return '<div class="disc-fy-card"' + linkAttr + '>' +
+  return '<div class="disc-fy-card" style="' + fyCardStyle + '"' + linkAttr + '>' +
     '<div class="disc-card-art-wrap">' +
       artHtml +
       '<span class="' + badgeClass + '">' + badgeLabel + '</span>' +
@@ -5142,14 +5150,17 @@ function _buildGemIntelHtml(g) {
   var ny = 50 - 38 * Math.sin(needleRad);
   var gaugeColor = pct >= 70 ? '#4ade80' : pct >= 40 ? '#C9A227' : '#ff6b6b';
   var gaugeLabel = pct >= 75 ? 'UNDERGROUND' : pct >= 50 ? 'DEEP' : pct >= 30 ? 'MIXED' : 'MAINSTREAM';
+  var gaugeFrac = (pct / 100).toFixed(3); // 0–1 fraction, used with pathLength="1"
   var gaugeSvg = '<svg viewBox="0 0 100 55" class="gi-gauge-svg">' +
     // Background arc (grey)
     '<path d="M 8 50 A 42 42 0 0 1 92 50" fill="none" stroke="#333" stroke-width="8" stroke-linecap="round"/>' +
-    // Colored arc segments
+    // Colored arc segments (zone hints)
     '<path d="M 8 50 A 42 42 0 0 1 50 8" fill="none" stroke="#4ade80" stroke-width="8" stroke-linecap="round" opacity="0.3"/>' +
     '<path d="M 50 8 A 42 42 0 0 1 92 50" fill="none" stroke="#ff6b6b" stroke-width="8" stroke-linecap="round" opacity="0.2"/>' +
-    // Filled arc
-    '<path d="M 8 50 A 42 42 0 ' + (gaugeAngle > 90 ? 1 : 0) + ' 1 ' + nx.toFixed(1) + ' ' + ny.toFixed(1) + '" fill="none" stroke="' + gaugeColor + '" stroke-width="8" stroke-linecap="round"/>' +
+    // Filled arc — animates in via stroke-dashoffset (pathLength="1" normalises the path length)
+    '<path d="M 8 50 A 42 42 0 ' + (gaugeAngle > 90 ? 1 : 0) + ' 1 ' + nx.toFixed(1) + ' ' + ny.toFixed(1) + '" ' +
+      'fill="none" stroke="' + gaugeColor + '" stroke-width="8" stroke-linecap="round" ' +
+      'pathLength="1" stroke-dasharray="' + gaugeFrac + ' 1" stroke-dashoffset="1" class="gi-gauge-fill"/>' +
     // Center text
     '<text x="50" y="47" text-anchor="middle" font-family="Oswald,sans-serif" font-size="18" font-weight="700" fill="' + gaugeColor + '">' + pct + '%</text>' +
     '</svg>';
@@ -5159,10 +5170,13 @@ function _buildGemIntelHtml(g) {
   var gsR = 28, gsCirc = 2 * Math.PI * gsR;
   var gsDash = (gs / 100) * gsCirc;
   var gsColor = gs >= 65 ? '#C9A227' : gs >= 45 ? '#4ade80' : '#888';
+  // Ring: dasharray="gsDash gsCirc" dashoffset="gsDash" → starts empty, animates to filled
   var gemRing = '<svg viewBox="0 0 70 70" class="gi-ring-svg">' +
     '<circle cx="35" cy="35" r="' + gsR + '" fill="none" stroke="#333" stroke-width="7"/>' +
     '<circle cx="35" cy="35" r="' + gsR + '" fill="none" stroke="' + gsColor + '" stroke-width="7" stroke-linecap="round" ' +
-      'stroke-dasharray="' + gsDash.toFixed(1) + ' ' + gsCirc.toFixed(1) + '" transform="rotate(-90 35 35)"/>' +
+      'stroke-dasharray="' + gsDash.toFixed(1) + ' ' + gsCirc.toFixed(1) + '" ' +
+      'stroke-dashoffset="' + gsDash.toFixed(1) + '" ' +
+      'class="gi-ring-animated" transform="rotate(-90 35 35)"/>' +
     '<text x="35" y="38" text-anchor="middle" font-family="Oswald,sans-serif" font-size="15" font-weight="700" fill="' + gsColor + '">' + gs + '</text>' +
     '</svg>';
 
@@ -5175,14 +5189,14 @@ function _buildGemIntelHtml(g) {
     { key: 'unscored',       tipKey: 'tier-unscored',       icon: '⬜', label: 'Unscored',        cls: 'gi-tier-unscore' },
   ];
   var maxTier = Math.max.apply(null, tiers.map(function(t) { return g.tierCounts[t.key] || 0; }));
-  var tierBarsHtml = tiers.map(function(t) {
+  var tierBarsHtml = tiers.map(function(t, ti) {
     var cnt = g.tierCounts[t.key] || 0;
     var pctW = maxTier > 0 ? Math.round(cnt / maxTier * 100) : 0;
     var relPct = g.total > 0 ? ((cnt / g.total * 100).toFixed(1)) : '0';
-    return '<div class="gi-tier-row">' +
+    return '<div class="gi-tier-row" style="--tier-i:' + ti + '">' +
       '<span class="gi-tier-icon">' + t.icon + '</span>' +
       '<span class="gi-tier-label">' + t.label + infoTip(t.tipKey) + '</span>' +
-      '<div class="gi-tier-bar-wrap"><div class="gi-tier-bar ' + t.cls + '" style="width:' + pctW + '%"></div></div>' +
+      '<div class="gi-tier-bar-wrap"><div class="gi-tier-bar ' + t.cls + '" style="width:' + pctW + '%;--tier-i:' + ti + '"></div></div>' +
       '<span class="gi-tier-count">' + cnt + '</span>' +
       '<span class="gi-tier-pct">' + relPct + '%</span>' +
     '</div>';
@@ -5191,7 +5205,7 @@ function _buildGemIntelHtml(g) {
   // ── Top Gem cards ──
   var gemCardsHtml = '';
   if (g.topGems && g.topGems.length) {
-    gemCardsHtml = '<div class="gi-gems-row">' + g.topGems.map(function(r) {
+    gemCardsHtml = '<div class="gi-gems-row">' + g.topGems.map(function(r, gi) {
       var tierDot = { hidden_gem:'💎', club_weapon:'🔥', deep_cut:'🎯' }[r.tier] || '';
       var viewsLabel = r.viewCount != null
         ? (r.viewCount >= 1000000 ? (r.viewCount/1000000).toFixed(1)+'M' :
@@ -5203,7 +5217,7 @@ function _buildGemIntelHtml(g) {
       var ytLink = r.videoId
         ? ' onclick="window.open(\'https://youtube.com/watch?v=' + escapeAttr(r.videoId) + '\',\'_blank\')"'
         : '';
-      return '<div class="gi-gem-card"' + ytLink + '>' +
+      return '<div class="gi-gem-card" style="--gem-i:' + gi + '"' + ytLink + '>' +
         artHtml +
         '<div class="gi-gem-score">' + tierDot + ' ' + r.gemScore + '</div>' +
         '<div class="gi-gem-artist">' + escapeHtml(r.artist || '') + '</div>' +
@@ -5256,22 +5270,22 @@ function _buildGemIntelHtml(g) {
 
   // ── KPI pill row ──
   var kpiHtml = '<div class="gi-kpis">' +
-    '<div class="gi-kpi">' +
+    '<div class="gi-kpi" style="--kpi-i:0">' +
       '<div class="gi-kpi-val">' + (g.gemDensity || 0) + '%</div>' +
       '<div class="gi-kpi-label">Gem Density' + infoTip('gem-density') + '</div>' +
       '<div class="gi-kpi-sub">% in top tiers</div>' +
     '</div>' +
-    '<div class="gi-kpi">' +
+    '<div class="gi-kpi" style="--kpi-i:1">' +
       '<div class="gi-kpi-val ' + (g.rarityIndex >= 65 ? 'gi-kpi-hi' : '') + '">' + (g.rarityIndex || 0) + '</div>' +
       '<div class="gi-kpi-label">Rarity Index' + infoTip('rarity-index') + '</div>' +
       '<div class="gi-kpi-sub">want/have signal</div>' +
     '</div>' +
-    '<div class="gi-kpi">' +
+    '<div class="gi-kpi" style="--kpi-i:2">' +
       '<div class="gi-kpi-val ' + (g.djValidation >= 40 ? 'gi-kpi-hi' : '') + '">' + (g.djValidation || 0) + '</div>' +
       '<div class="gi-kpi-label">DJ Validation' + infoTip('dj-validation') + '</div>' +
       '<div class="gi-kpi-sub">club weapon signal</div>' +
     '</div>' +
-    '<div class="gi-kpi">' +
+    '<div class="gi-kpi" style="--kpi-i:3">' +
       '<div class="gi-kpi-val">' + (g.enriched || 0) + '<span style="font-size:14px;opacity:.6">/' + (g.total||0) + '</span></div>' +
       '<div class="gi-kpi-label">Data Coverage' + infoTip('data-coverage') + '</div>' +
       '<div class="gi-kpi-sub">' + (g.enrichedPct || 0) + '% enriched</div>' +

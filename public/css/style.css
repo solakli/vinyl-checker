@@ -9343,3 +9343,162 @@ body.light .skel-line::after {
     transparent 100%
   );
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   ✨ BREAKTHROUGH — COLLECTION · DISCOVER · PROFILE
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── COLLECTION: ambient art glow + stagger entrance ─────────── */
+.coll-card {
+  animation: cardEnter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--card-i, 0) * 28ms);
+  position: relative;
+  overflow: visible;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.coll-card::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  background: var(--art-bg, none) center / cover no-repeat;
+  filter: blur(32px) saturate(3.5) brightness(0.22);
+  opacity: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  transition: opacity 0.5s ease;
+}
+
+.coll-card:hover::before { opacity: 0.8; }
+
+/* Keep art + body above the glow layer */
+.coll-card .coll-art-wrap,
+.coll-card .coll-card-body {
+  position: relative;
+  z-index: 1;
+}
+
+.coll-card:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(168, 184, 200, 0.25);
+}
+
+/* ── DISCOVER: For You card glow + stagger ───────────────────── */
+.disc-fy-card {
+  animation: cardEnter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--card-i, 0) * 28ms);
+  position: relative;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.disc-fy-card::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  background: var(--art-bg, none) center / cover no-repeat;
+  filter: blur(32px) saturate(3.5) brightness(0.22);
+  opacity: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  transition: opacity 0.5s ease;
+}
+
+.disc-fy-card:hover::before { opacity: 0.8; }
+
+.disc-fy-card .disc-card-art-wrap,
+.disc-fy-card .disc-card-body {
+  position: relative;
+  z-index: 1;
+}
+
+.disc-fy-card:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(168, 184, 200, 0.25);
+}
+
+/* ── DISCOVER: match % badge bounces in ──────────────────────── */
+@keyframes badgePop {
+  0%   { transform: scale(0.4); opacity: 0; }
+  65%  { transform: scale(1.25); }
+  100% { transform: scale(1);   opacity: 1; }
+}
+
+.disc-match-badge {
+  animation: badgePop 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: calc(var(--card-i, 0) * 28ms + 90ms);
+}
+
+/* ── PROFILE: tier rows stagger in ───────────────────────────── */
+.gi-tier-row {
+  animation: cardEnter 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--tier-i, 0) * 70ms + 100ms);
+}
+
+/* ── PROFILE: tier bars grow left-to-right ───────────────────── */
+@keyframes barGrow {
+  from { width: 0 !important; opacity: 0.4; }
+}
+
+.gi-tier-bar {
+  animation: barGrow 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--tier-i, 0) * 80ms + 250ms);
+}
+
+/* ── PROFILE: underground gauge arc draws in ─────────────────── */
+/* pathLength="1" is set on the element so dashoffset 1 = path start */
+@keyframes gaugeFill {
+  to { stroke-dashoffset: 0; }
+}
+
+.gi-gauge-fill {
+  animation: gaugeFill 1.2s cubic-bezier(0.22, 1, 0.36, 1) 0.25s forwards;
+}
+
+/* ── PROFILE: gem score ring draws in ────────────────────────── */
+/* stroke-dashoffset starts at gsDash (element attribute) and animates to 0 */
+@keyframes ringFill {
+  to { stroke-dashoffset: 0; }
+}
+
+.gi-ring-animated {
+  animation: ringFill 1.2s cubic-bezier(0.22, 1, 0.36, 1) 0.45s forwards;
+  /* The from-value is already set on the element as a presentational attribute */
+}
+
+/* ── PROFILE: KPI pills stagger in ──────────────────────────── */
+.gi-kpi {
+  animation: cardEnter 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--kpi-i, 0) * 60ms + 100ms);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.gi-kpi:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(168, 184, 200, 0.15);
+}
+
+/* ── PROFILE: top gem cards stagger + lift ───────────────────── */
+.gi-gem-card {
+  animation: cardEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--gem-i, 0) * 60ms + 400ms);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.gi-gem-card:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(168, 184, 200, 0.2);
+}
+
+/* Light mode adjustments */
+body.light .coll-card::before    { filter: blur(32px) saturate(3) brightness(0.08); }
+body.light .coll-card:hover::before  { opacity: 0.5; }
+body.light .disc-fy-card::before { filter: blur(32px) saturate(3) brightness(0.08); }
+body.light .disc-fy-card:hover::before { opacity: 0.5; }
