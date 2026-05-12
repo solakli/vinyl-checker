@@ -690,7 +690,8 @@ async function loadExisting(username) {
       }
     }
   } catch(e) {}
-  _discoverCache = null;
+  _discoverCache    = null;
+  _sellerIntelData  = null;   // clear seller intel on user switch
   var overlay = document.getElementById('optimizerOverlay');
   if (overlay) overlay.style.display = 'none';
   var banner = document.getElementById('optimizerBanner');
@@ -4025,7 +4026,11 @@ document.addEventListener('DOMContentLoaded', function() {
 // ═══════════════════════════════════════════════════════════════
 
 var _discoverData        = null;
-var _discoverTab         = 'forYou';   // 'forYou' | 'inStock' | 'diggers'
+var _discoverTab         = 'forYou';   // 'forYou' | 'inStock' | 'diggers' | 'sellers'
+var _sellerIntelData     = null;       // cached seller intelligence response
+var _sellerIntelLoading  = false;
+var _sellerIntelSort     = 'records';  // 'records' | 'quality' | 'rare' | 'price'
+var _sellerMinRecords    = 2;          // hide sellers with fewer than N wantlist records
 var _discoverSort        = 'items';
 var _discoverGenreFilter = null;
 var _activeDiscoverStore = null;
@@ -4229,6 +4234,7 @@ function renderDiscover() {
       '<button class="disc-tab-btn' + (_discoverTab === 'forYou' ? ' active' : '') + '" data-tab="forYou" onclick="switchDiscoverTab(\'forYou\')">For You</button>' +
       '<button class="disc-tab-btn' + (_discoverTab === 'inStock' ? ' active' : '') + '" data-tab="inStock" onclick="switchDiscoverTab(\'inStock\')">In Stock</button>' +
       '<button class="disc-tab-btn' + (_discoverTab === 'diggers' ? ' active' : '') + '" data-tab="diggers" onclick="switchDiscoverTab(\'diggers\')">DIGGERS</button>' +
+      '<button class="disc-tab-btn' + (_discoverTab === 'sellers' ? ' active' : '') + '" data-tab="sellers" onclick="switchDiscoverTab(\'sellers\')">SELLERS</button>' +
     '</div>' +
     // Body
     '<div id="discBody"></div>';
@@ -4241,6 +4247,7 @@ function renderDiscoverBody() {
   if (!_discoverData) return;
   if (_discoverTab === 'forYou') renderForYouTab();
   else if (_discoverTab === 'diggers') { renderDiscoverDiggers(); return; }
+  else if (_discoverTab === 'sellers') { renderSellersTab(); return; }
   else renderInStockTab();
 }
 
@@ -4880,6 +4887,192 @@ function escapeAttr(s) {
   return String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+// SELLER INTELLIGENCE TAB
+// ═══════════════════════════════════════════════════════════════
+
+function loadSellerIntel(force) {
+  var username = getCurrentUsername();
+  var body = document.getElementById('discBody');
+  if (!body) return;
+
+  // Show cached data immediately if available
+  if (_sellerIntelData && !force) {
+    renderSellerIntelBody();
+    return;
+  }
+
+  body.innerHTML = '<div class="disc-loading" style="display:flex"><div class="disc-spinner"></div>Loading seller intelligence…</div>';
+  _sellerIntelLoading = true;
+
+  fetch('api/seller-intelligence/' + encodeURIComponent(username))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      _sellerIntelData    = data;
+      _sellerIntelLoading = false;
+      if (_discoverTab === 'sellers') renderSellerIntelBody();
+    })
+    .catch(function(e) {
+      _sellerIntelLoading = false;
+      if (body && _discoverTab === 'sellers') {
+        body.innerHTML = '<div class="disc-empty">Error loading seller data. <button class="disc-refresh-btn" onclick="loadSellerIntel(true)">Retry</button></div>';
+      }
+      console.error('[seller-intel]', e);
+    });
+}
+
+function renderSellersTab() {
+  var body = document.getElementById('discBody');
+  if (!body) return;
+  if (!_sellerIntelData) { loadSellerIntel(); return; }
+  renderSellerIntelBody();
+}
+
+function siSortSellers(sellers) {
+  var list = sellers.slice();
+  if (_sellerIntelSort === 'records') {
+    list.sort(function(a, b) { return b.recordCount - a.recordCount; });
+  } else if (_sellerIntelSort === 'quality') {
+    list.sort(function(a, b) { return (b.avgGradeScore || 0) - (a.avgGradeScore || 0); });
+  } else if (_sellerIntelSort === 'rare') {
+    list.sort(function(a, b) { return b.rareCount - a.rareCount; });
+  } else if (_sellerIntelSort === 'price') {
+    // cheapest total first (only sellers with price data)
+    list.sort(function(a, b) { return (a.totalPriceUsd || 9999) - (b.totalPriceUsd || 9999); });
+  }
+  return list;
+}
+
+function setSellerIntelSort(sort) {
+  _sellerIntelSort = sort;
+  renderSellerIntelBody();
+}
+
+function setSellerMinRecords(n) {
+  _sellerMinRecords = parseInt(n) || 1;
+  renderSellerIntelBody();
+}
+
+function renderSellerIntelBody() {
+  var body = document.getElementById('discBody');
+  if (!body) return;
+  var d = _sellerIntelData;
+
+  var allSellers = (d && d.sellers) || [];
+  var filtered   = allSellers.filter(function(s) { return s.recordCount >= _sellerMinRecords; });
+  var sorted     = siSortSellers(filtered);
+
+  var lastSyncedStr = '';
+  if (d && d.lastSynced) {
+    var ago = Date.now() - new Date(d.lastSynced).getTime();
+    var agoH = Math.round(ago / 36e5);
+    lastSyncedStr = agoH < 24 ? agoH + 'h ago' : Math.round(agoH / 24) + 'd ago';
+  }
+
+  var gradeColor = { M: '#c0d0ff', NM: '#7ee8a2', 'VG+': '#ffe07a', VG: '#ffa970', 'G+': '#f87', G: '#c77', F: '#a55', P: '#933', '?': '#888' };
+
+  var sortBtns = ['records','quality','rare','price'].map(function(k) {
+    var labels = { records:'Most Records', quality:'Best Condition', rare:'Most Rare', price:'Cheapest Total' };
+    return '<button class="si-sort-btn' + (_sellerIntelSort === k ? ' active' : '') + '" onclick="setSellerIntelSort(\'' + k + '\')">' + labels[k] + '</button>';
+  }).join('');
+
+  var minOptions = [1,2,3,5,10].map(function(n) {
+    return '<option value="' + n + '"' + (_sellerMinRecords === n ? ' selected' : '') + '>' + n + '+ records</option>';
+  }).join('');
+
+  var headerHtml =
+    '<div class="si-header">' +
+      '<div class="si-header-top">' +
+        '<div class="si-title-group">' +
+          '<span class="si-title">Seller Intelligence</span>' +
+          '<span class="si-subtitle">' + sorted.length + ' of ' + allSellers.length + ' sellers · ' + (d ? d.totalListings : 0) + ' listings' +
+            (lastSyncedStr ? ' · synced ' + lastSyncedStr : '') + '</span>' +
+        '</div>' +
+        '<button class="si-resync-btn" onclick="loadSellerIntel(true)" title="Re-fetch seller data">↻ Refresh</button>' +
+      '</div>' +
+      '<div class="si-sort-bar">' + sortBtns + '</div>' +
+      '<div class="si-filter-bar">' +
+        '<label class="si-filter-label">Show sellers with</label>' +
+        '<select class="si-min-select" onchange="setSellerMinRecords(this.value)">' + minOptions + '</select>' +
+      '</div>' +
+    '</div>';
+
+  if (!sorted.length) {
+    body.innerHTML = headerHtml +
+      '<div class="disc-empty">' +
+        '<div class="disc-empty-title">No sellers yet</div>' +
+        '<div class="disc-empty-sub">Run the Discogs Chrome extension to sync your wantlist marketplace data.</div>' +
+      '</div>';
+    return;
+  }
+
+  var cardsHtml = sorted.map(function(seller, si) {
+    var ratingHtml = seller.sellerRating
+      ? '<span class="si-rating">★ ' + seller.sellerRating.toFixed(1) + '</span>' +
+        (seller.sellerNumRatings ? '<span class="si-rating-count">(' + seller.sellerNumRatings.toLocaleString() + ')</span>' : '')
+      : '';
+    var gradeLabel = seller.avgGradeScore >= 4 ? 'NM avg' : seller.avgGradeScore >= 3 ? 'VG+ avg' : seller.avgGradeScore >= 2 ? 'VG avg' : '';
+    var gradeLabelHtml = gradeLabel ? '<span class="si-grade-badge">' + gradeLabel + '</span>' : '';
+    var rareHtml = seller.rareCount
+      ? '<span class="si-rare-pill" title="Want/Have ≥ 1.2">💎 ' + seller.rareCount + ' rare</span>'
+      : '';
+    var nmHtml = seller.premiumCount
+      ? '<span class="si-nm-pill">M/NM/VG+: ' + seller.premiumCount + '</span>'
+      : '';
+    var priceHtml = seller.totalPriceUsd
+      ? '<span class="si-price-total">$' + seller.totalPriceUsd.toFixed(2) + ' total</span>'
+      : '';
+
+    // Records inside the seller card
+    var recordsHtml = seller.records.map(function(rec) {
+      var condColor = gradeColor[rec.condition] || '#888';
+      var rareTag = rec.isRare
+        ? '<span class="si-rec-rare" title="' + (rec.wantHaveRatio ? rec.wantHaveRatio + 'x want/have' : 'rare') + '">💎</span>'
+        : '';
+      var priceStr = rec.priceUsd ? '$' + rec.priceUsd.toFixed(2) : '';
+      var thumb = rec.thumb
+        ? '<img class="si-rec-thumb" src="' + escapeHtml(rec.thumb) + '" loading="lazy" onerror="this.style.display=\'none\'">'
+        : '<div class="si-rec-thumb si-rec-thumb-ph"></div>';
+      var link = rec.listingUrl
+        ? '<a class="si-rec-link" href="' + escapeHtml(rec.listingUrl) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">View ↗</a>'
+        : '';
+      return '<div class="si-rec-row">' +
+        thumb +
+        '<div class="si-rec-info">' +
+          '<div class="si-rec-title">' + escapeHtml((rec.artist || '') + ' – ' + (rec.title || '')) + '</div>' +
+          '<div class="si-rec-meta">' +
+            '<span class="si-rec-cond" style="color:' + condColor + '">' + escapeHtml(rec.condition) + '</span>' +
+            (priceStr ? '<span class="si-rec-price">' + priceStr + '</span>' : '') +
+            rareTag +
+            (rec.wantHaveRatio ? '<span class="si-rec-wh" title="Want / Have">' + rec.wantHaveRatio + 'x</span>' : '') +
+          '</div>' +
+        '</div>' +
+        link +
+      '</div>';
+    }).join('');
+
+    return '<div class="si-seller-card" style="--si-i:' + Math.min(si, 20) + '">' +
+      '<div class="si-seller-header" onclick="this.closest(\'.si-seller-card\').classList.toggle(\'open\')">' +
+        '<div class="si-seller-name-row">' +
+          '<span class="si-seller-name">' + escapeHtml(seller.sellerUsername) + '</span>' +
+          '<span class="si-record-count">' + seller.recordCount + ' record' + (seller.recordCount !== 1 ? 's' : '') + '</span>' +
+          gradeLabelHtml +
+        '</div>' +
+        '<div class="si-seller-meta">' +
+          ratingHtml + nmHtml + rareHtml + priceHtml +
+          '<span class="si-expand-arrow">›</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="si-seller-body">' +
+        '<a class="si-profile-link" href="https://www.discogs.com/seller/' + encodeURIComponent(seller.sellerUsername) + '/profile" target="_blank" rel="noopener" onclick="event.stopPropagation()">View Discogs Profile ↗</a>' +
+        '<div class="si-rec-list">' + recordsHtml + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  body.innerHTML = headerHtml + '<div class="si-seller-grid">' + cardsHtml + '</div>';
+}
 
 // ═══════════════════════════════════════════════════════════════
 // INFO TIPS — explain how each metric is calculated

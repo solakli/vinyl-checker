@@ -2935,6 +2935,147 @@ app.post('/api/discogs-listings/:username', function (req, res) {
     }
 });
 
+// ─── Seller Intelligence ─────────────────────────────────────────────────────
+// Aggregates discogs_listings by seller with condition normalization + rarity signal
+app.get('/api/seller-intelligence/:username', function (req, res) {
+    try {
+        var username = req.params.username;
+        var user = db.getOrCreateUser(username);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        // Load all listings for this user (joins wantlist for artist/title/discogs_id)
+        var allListings = db.getDb().prepare(`
+            SELECT dl.seller_username, dl.seller_rating, dl.seller_num_ratings,
+                   dl.price_usd, dl.price_original, dl.currency, dl.condition,
+                   dl.ships_from, dl.shipping_to_usd, dl.listing_url, dl.listing_id,
+                   dl.fetched_at,
+                   w.id as wantlist_id, w.artist, w.title, w.catno, w.thumb,
+                   w.discogs_id, w.genres, w.styles,
+                   rm.community_want, rm.community_have
+            FROM discogs_listings dl
+            JOIN wantlist w ON w.id = dl.wantlist_id
+            LEFT JOIN release_meta rm ON rm.discogs_id = w.discogs_id
+            WHERE w.user_id = ? AND w.active = 1
+        `).all(user.id);
+
+        if (!allListings.length) {
+            return res.json({ sellers: [], totalListings: 0, lastSynced: null,
+                              message: 'No listings found. Run the Chrome extension sync first.' });
+        }
+
+        // Helpers
+        function normalizeCondition(raw) {
+            if (!raw) return { grade: '?', score: 0 };
+            var s = raw.replace(/\s+/g, ' ');
+            if (/Mint\s*\(\s*M\s*\)/i.test(s) && !/Near/i.test(s)) return { grade: 'M',   score: 5.0 };
+            if (/Near Mint|NM or M/i.test(s))                        return { grade: 'NM',  score: 4.0 };
+            if (/Very Good Plus|VG\+/i.test(s))                      return { grade: 'VG+', score: 3.0 };
+            if (/Very Good/i.test(s))                                 return { grade: 'VG',  score: 2.0 };
+            if (/Good Plus|G\+/i.test(s))                            return { grade: 'G+',  score: 1.5 };
+            if (/Good/i.test(s))                                     return { grade: 'G',   score: 1.0 };
+            if (/Fair/i.test(s))                                     return { grade: 'F',   score: 0.5 };
+            if (/Poor/i.test(s))                                     return { grade: 'P',   score: 0.1 };
+            return { grade: '?', score: 0 };
+        }
+
+        function isRare(want, have) {
+            if (!want || !have || have === 0) return false;
+            return (want / have) >= 1.2;
+        }
+
+        // Aggregate by seller
+        var sellerMap = {};
+        var lastSynced = null;
+
+        allListings.forEach(function (l) {
+            if (!l.seller_username) return;
+            if (!lastSynced || (l.fetched_at && l.fetched_at > lastSynced)) lastSynced = l.fetched_at;
+
+            var cond = normalizeCondition(l.condition);
+            var rare = isRare(l.community_want, l.community_have);
+            var wantHaveRatio = (l.community_want && l.community_have)
+                ? Math.round((l.community_want / l.community_have) * 100) / 100 : null;
+
+            if (!sellerMap[l.seller_username]) {
+                sellerMap[l.seller_username] = {
+                    sellerUsername:   l.seller_username,
+                    sellerRating:     l.seller_rating,
+                    sellerNumRatings: l.seller_num_ratings,
+                    recordCount:      0,
+                    mCount:           0,
+                    nmCount:          0,
+                    vgPlusCount:      0,
+                    vgCount:          0,
+                    rareCount:        0,
+                    totalPriceUsd:    0,
+                    gradeScoreSum:    0,
+                    records:          []
+                };
+            }
+
+            var s = sellerMap[l.seller_username];
+            s.recordCount++;
+            if (cond.grade === 'M')   s.mCount++;
+            if (cond.grade === 'NM')  s.nmCount++;
+            if (cond.grade === 'VG+') s.vgPlusCount++;
+            if (cond.grade === 'VG')  s.vgCount++;
+            if (rare)                 s.rareCount++;
+            if (l.price_usd)          s.totalPriceUsd += l.price_usd;
+            s.gradeScoreSum += cond.score;
+
+            s.records.push({
+                wantlistId:    l.wantlist_id,
+                artist:        l.artist,
+                title:         l.title,
+                catno:         l.catno,
+                thumb:         l.thumb,
+                condition:     cond.grade,
+                gradeScore:    cond.score,
+                priceUsd:      l.price_usd,
+                priceOriginal: l.price_original,
+                currency:      l.currency,
+                shippingToUsd: l.shipping_to_usd,
+                listingUrl:    l.listing_url,
+                isRare:        rare,
+                communityWant: l.community_want,
+                communityHave: l.community_have,
+                wantHaveRatio: wantHaveRatio,
+                genres:        l.genres,
+                styles:        l.styles
+            });
+        });
+
+        // Finalise sellers
+        var sellers = Object.values(sellerMap).map(function (s) {
+            s.totalPriceUsd  = Math.round(s.totalPriceUsd * 100) / 100;
+            s.avgPriceUsd    = s.recordCount ? Math.round((s.totalPriceUsd / s.recordCount) * 100) / 100 : null;
+            s.avgGradeScore  = s.recordCount ? Math.round((s.gradeScoreSum  / s.recordCount) * 100) / 100 : null;
+            s.mintOrNmCount  = s.mCount + s.nmCount;
+            s.premiumCount   = s.mCount + s.nmCount + s.vgPlusCount; // M + NM + VG+
+            // Sort this seller's records by rarity then price desc
+            s.records.sort(function (a, b) {
+                if (b.isRare !== a.isRare) return b.isRare ? 1 : -1;
+                return (b.wantHaveRatio || 0) - (a.wantHaveRatio || 0);
+            });
+            delete s.gradeScoreSum;
+            return s;
+        });
+
+        // Default sort: most records first
+        sellers.sort(function (a, b) { return b.recordCount - a.recordCount; });
+
+        res.json({
+            sellers:       sellers,
+            totalListings: allListings.length,
+            totalSellers:  sellers.length,
+            lastSynced:    lastSynced
+        });
+    } catch (e) {
+        console.error('[seller-intelligence] error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ─── GOLDIE internal sync trigger ─────────────────────────────────────────────
 // Simple non-SSE endpoint GOLDIE can call to kick off a wantlist + collection sync
 app.post('/api/sync-now/:username', async function (req, res) {
