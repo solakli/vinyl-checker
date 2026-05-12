@@ -101,6 +101,42 @@ async function fetchMarketplacePage(discogsId, wantlistId) {
     }
 }
 
+// Extract clean grade label from a messy condition string
+function extractGrade(raw) {
+    if (!raw) return '';
+    var s = raw.replace(/\s+/g, ' ');
+    // Try to find full canonical form first
+    var canonical = s.match(/(Mint \(M\)|Near Mint \(NM or M-\)|Very Good Plus \(VG\+\)|Very Good \(VG\)|Good Plus \(G\+\)|Good \(G\)|Fair \(F\)|Poor \(P\))/);
+    if (canonical) return canonical[1];
+    // Shorter fallbacks
+    if (/Near Mint|NM or M-/i.test(s)) return 'Near Mint (NM or M-)';
+    if (/Very Good Plus|VG\+/i.test(s)) return 'Very Good Plus (VG+)';
+    if (/Very Good/i.test(s)) return 'Very Good (VG)';
+    if (/Mint/i.test(s)) return 'Mint (M)';
+    if (/Good Plus|G\+/i.test(s)) return 'Good Plus (G+)';
+    if (/Good/i.test(s)) return 'Good (G)';
+    return raw.substring(0, 40);
+}
+
+// Dig through __NEXT_DATA__ trying multiple possible listing paths
+function extractListingsFromJson(json) {
+    var page = json && json.props && json.props.pageProps;
+    if (!page) return [];
+    // Try known paths in order
+    var candidates = [
+        page.listings,
+        page.data && page.data.listings,
+        page.initialState && page.initialState.marketplace && page.initialState.marketplace.listings,
+        page.marketplace && page.marketplace.listings,
+        page.results,
+        page.data && page.data.results
+    ];
+    for (var i = 0; i < candidates.length; i++) {
+        if (Array.isArray(candidates[i]) && candidates[i].length > 0) return candidates[i];
+    }
+    return [];
+}
+
 function parseHtml(html, wantlistId) {
     var listings = [];
 
@@ -109,21 +145,23 @@ function parseHtml(html, wantlistId) {
     if (match) {
         try {
             var json    = JSON.parse(match[1]);
-            var page    = json && json.props && json.props.pageProps;
-            var results = (page && page.listings) ||
-                          (page && page.data && page.data.listings) || [];
+            var results = extractListingsFromJson(json);
             results.forEach(function (l) {
                 if (!l.seller || !l.seller.username) return;
+                var stats = l.seller.stats || l.seller.seller_stats || {};
+                // Discogs rate stored as "99.9" (%) or 0.999 (fraction) — normalise to %
+                var rating = parseFloat(stats.rating || stats.average || 0);
+                if (rating > 0 && rating <= 1) rating = rating * 100; // fraction → percent
                 listings.push({
                     wantlistId:       wantlistId,
                     listingId:        l.id,
                     sellerUsername:   l.seller.username,
-                    sellerRating:     l.seller.stats && parseFloat(l.seller.stats.rating),
-                    sellerNumRatings: l.seller.stats && l.seller.stats.total,
+                    sellerRating:     rating || null,
+                    sellerNumRatings: stats.total || stats.count || null,
                     priceOriginal:    l.price && l.price.value,
                     currency:         (l.price && l.price.currency) || 'USD',
-                    condition:        l.condition || '',
-                    shipsFrom:        l.ships_from || '',
+                    condition:        extractGrade(l.condition || l.sleeve_condition || ''),
+                    shipsFrom:        l.ships_from || l.seller_country || '',
                     listingUrl:       'https://www.discogs.com/sell/item/' + l.id
                 });
             });
@@ -142,20 +180,39 @@ function parseHtml(html, wantlistId) {
             var shipsEl     = row.querySelector('[class*="ships"]');
             var listingLink = row.querySelector('a[href*="/sell/item/"]');
             if (!sellerLink) return;
+
             var listId = null;
             if (listingLink) {
                 var m = listingLink.href.match(/\/sell\/item\/(\d+)/);
                 if (m) listId = parseInt(m[1]);
             }
+
+            // Extract seller rating — look in the seller's TD for a percentage
+            var sellerCell = sellerLink.closest('td') || row;
+            var sellerCellText = sellerCell.textContent || '';
+            var ratingMatch    = sellerCellText.match(/(\d{2,3}\.?\d*)\s*%/);
+            var sellerRating   = ratingMatch ? parseFloat(ratingMatch[1]) : null;
+            var numRatMatch    = sellerCellText.match(/\(?\s*(\d{1,6})\s*ratings?\)?/i);
+            var sellerNumRatings = numRatMatch ? parseInt(numRatMatch[1]) : null;
+
+            // Extract ships_from country — try explicit label or data attribute
+            var shipsFromText  = '';
+            if (shipsEl) {
+                // e.g. "Ships From: Germany" or just "Germany"
+                shipsFromText = shipsEl.textContent.replace(/ships?\s*from[:\s]*/i, '').trim();
+            }
+
             listings.push({
-                wantlistId:     wantlistId,
-                listingId:      listId,
-                sellerUsername: sellerLink.textContent.trim(),
-                priceOriginal:  priceEl ? parseFloat(priceEl.textContent.replace(/[^0-9.]/g, '')) : null,
-                currency:       'USD',
-                condition:      condEl ? condEl.textContent.trim() : '',
-                shipsFrom:      shipsEl ? shipsEl.textContent.trim() : '',
-                listingUrl:     listingLink ? listingLink.href : ''
+                wantlistId:       wantlistId,
+                listingId:        listId,
+                sellerUsername:   sellerLink.textContent.trim(),
+                sellerRating:     sellerRating,
+                sellerNumRatings: sellerNumRatings,
+                priceOriginal:    priceEl ? parseFloat(priceEl.textContent.replace(/[^0-9.]/g, '')) : null,
+                currency:         'USD',
+                condition:        extractGrade(condEl ? condEl.textContent : ''),
+                shipsFrom:        shipsFromText,
+                listingUrl:       listingLink ? listingLink.href : ''
             });
         } catch (e) {}
     });
