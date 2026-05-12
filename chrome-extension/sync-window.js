@@ -161,7 +161,7 @@ function parseHtml(html, wantlistId) {
                     priceOriginal:    l.price && l.price.value,
                     currency:         (l.price && l.price.currency) || 'USD',
                     condition:        extractGrade(l.condition || l.sleeve_condition || ''),
-                    shipsFrom:        l.ships_from || l.seller_country || '',
+                    shipsFrom:        l.ships_from || (l.seller && (l.seller.location || l.seller.ships_from)) || '',
                     listingUrl:       'https://www.discogs.com/sell/item/' + l.id
                 });
             });
