@@ -2682,6 +2682,17 @@ window.addEventListener('waxdigger:syncstate', function (e) {
       setTimeout(function() { loadDiscover(); }, 2500);
     }
   }
+
+  // ── 5. Update Sellers tab live sync banner ──
+  _updateSellerSyncBanner(state);
+
+  // ── 6. When sync completes, refresh seller intel data ──
+  if (state.completedAt && !prev.completedAt) {
+    _sellerIntelData = null; // invalidate cache so next visit fetches fresh data
+    if (_discoverTab === 'sellers') {
+      setTimeout(function() { loadSellerIntel(true); }, 1500);
+    }
+  }
 });
 
 // Show the prefs/settings panel inside the overlay (called by rerunOptimizer and fallback).
@@ -2742,20 +2753,24 @@ var _lastDiscogsSyncTime = {};
  * Trigger a Discogs marketplace sync via the Chrome extension.
  * Called from the Discover Discogs tab — separate from openOptimizer().
  */
-function triggerDiscogsSync() {
+function triggerDiscogsSync(fromSellersTab) {
   var username = getCurrentUsername();
   if (!username) return;
 
   if (!_extInstalled) {
-    // Show install prompt in the Discogs section
-    var el = document.getElementById('discInStockBody');
-    if (el) {
-      var banner = document.getElementById('dgSyncBanner') || document.createElement('div');
-      banner.id = 'dgSyncBanner';
-      banner.className = 'dg-sync-banner error';
-      banner.innerHTML = '⚠ Wax Digger Chrome Extension is not installed. ' +
-        '<a href="https://github.com/solakli/vinyl-checker#extension" target="_blank" style="color:var(--gold)">Install it here</a> to sync Discogs prices.';
-      el.insertBefore(banner, el.firstChild);
+    // Show install prompt — context-aware (sellers tab vs optimizer panel)
+    if (fromSellersTab) {
+      _updateSellerSyncBanner({ noExtension: true });
+    } else {
+      var el = document.getElementById('discInStockBody');
+      if (el) {
+        var banner = document.getElementById('dgSyncBanner') || document.createElement('div');
+        banner.id = 'dgSyncBanner';
+        banner.className = 'dg-sync-banner error';
+        banner.innerHTML = '⚠ Wax Digger Chrome Extension is not installed. ' +
+          '<a href="https://github.com/solakli/vinyl-checker#extension" target="_blank" style="color:var(--gold)">Install it here</a> to sync Discogs prices.';
+        el.insertBefore(banner, el.firstChild);
+      }
     }
     return;
   }
@@ -2766,9 +2781,59 @@ function triggerDiscogsSync() {
     detail: { username: username, serverUrl: serverUrl }
   }));
 
-  // Optimistically show running state in discover
+  // Optimistically show running state
   _discogsSyncState = { running: true, done: 0, total: 0, found: 0 };
   if (_inStockVendor === 'discogs') renderInStockBody();
+  if (fromSellersTab) _updateSellerSyncBanner(_discogsSyncState);
+}
+
+// Live sync banner inside the Sellers tab
+function _updateSellerSyncBanner(state) {
+  var bar = document.getElementById('siSyncBar');
+  if (!bar) return; // sellers tab not currently rendered
+
+  if (!state) { bar.style.display = 'none'; return; }
+
+  if (state.noExtension) {
+    bar.style.display = 'flex';
+    bar.className = 'si-sync-bar error';
+    bar.innerHTML =
+      '<span>⚠ Chrome extension not installed —</span>' +
+      '<a class="si-sync-link" href="extension.html" target="_blank">Install Wax Digger ↗</a>';
+    return;
+  }
+
+  if (state.running) {
+    var pct = state.total > 0 ? Math.round((state.done / state.total) * 100) : 0;
+    bar.style.display = 'flex';
+    bar.className = 'si-sync-bar running';
+    bar.innerHTML =
+      '<span class="si-sync-spin">⛏</span>' +
+      '<span>Syncing Discogs marketplace… ' + state.done + ' / ' + (state.total || '?') +
+        ' releases · ' + (state.found || 0) + ' listings (' + pct + '%)</span>' +
+      '<div class="si-sync-bar-fill" style="width:' + pct + '%"></div>';
+    return;
+  }
+
+  if (state.completedAt) {
+    bar.style.display = 'flex';
+    bar.className = 'si-sync-bar done';
+    bar.innerHTML = '✓ Sync complete — ' + (state.found || 0) + ' listings saved · refreshing…';
+    setTimeout(function() {
+      if (bar) bar.style.display = 'none';
+    }, 3000);
+    return;
+  }
+
+  if (state.error) {
+    bar.style.display = 'flex';
+    bar.className = 'si-sync-bar error';
+    bar.innerHTML = '⚠ Sync error: ' + escapeHtml(state.error) +
+      ' <button class="si-sync-retry" onclick="triggerDiscogsSync(true)">Retry</button>';
+    return;
+  }
+
+  bar.style.display = 'none';
 }
 
 /**
@@ -5090,6 +5155,13 @@ function renderSellerIntelBody() {
     return '<option value="' + p[0] + '"' + (_sellerMinRare === p[0] ? ' selected' : '') + '>' + p[1] + '</option>';
   }).join('');
 
+  var isSyncing = _discogsSyncState && _discogsSyncState.running;
+  var syncBtnHtml = _extInstalled
+    ? (isSyncing
+        ? '<span class="si-syncing-label">⛏ syncing…</span>'
+        : '<button class="si-sync-btn" onclick="triggerDiscogsSync(true)" title="Sync Discogs marketplace data">⛏ Sync Discogs</button>')
+    : '<a class="si-install-ext-btn" href="extension.html" target="_blank">⛏ Install Extension</a>';
+
   var headerHtml =
     '<div class="si-header">' +
       '<div class="si-header-top">' +
@@ -5098,7 +5170,14 @@ function renderSellerIntelBody() {
           '<span class="si-subtitle">' + sorted.length + ' of ' + allSellers.length + ' sellers · ' + (d ? d.totalListings : 0) + ' listings' +
             (lastSyncedStr ? ' · synced ' + lastSyncedStr : '') + '</span>' +
         '</div>' +
-        '<button class="si-resync-btn" onclick="loadSellerIntel(true)" title="Re-fetch seller data">↻ Refresh</button>' +
+        '<div class="si-header-actions">' +
+          syncBtnHtml +
+          '<button class="si-resync-btn" onclick="loadSellerIntel(true)" title="Re-fetch from our database">↻ Refresh</button>' +
+        '</div>' +
+      '</div>' +
+      // Live sync progress bar (hidden unless syncing)
+      '<div class="si-sync-bar" id="siSyncBar" style="display:' + (isSyncing ? 'flex' : 'none') + '">' +
+        (isSyncing ? '<span class="si-sync-spin">⛏</span><span>Syncing… ' + (_discogsSyncState.done || 0) + ' / ' + (_discogsSyncState.total || '?') + ' releases</span>' : '') +
       '</div>' +
       '<div class="si-sort-bar">' + sortBtns + '</div>' +
       '<div class="si-filter-bar">' +
@@ -5111,11 +5190,26 @@ function renderSellerIntelBody() {
     // Pinned bar (shown when sellers are pinned)
     '<div class="si-pinned-bar" id="siPinnedBar" style="display:' + (pinnedCount ? 'flex' : 'none') + '"></div>';
 
+  if (!allSellers.length) {
+    // No data at all — show sync CTA
+    var emptyCta = _extInstalled
+      ? '<button class="si-empty-sync-btn" onclick="triggerDiscogsSync(true)">⛏ Sync Discogs Marketplace Now</button>'
+      : '<a class="si-empty-sync-btn" href="extension.html" target="_blank">⛏ Install Wax Digger Extension →</a>';
+    body.innerHTML = headerHtml +
+      '<div class="disc-empty">' +
+        '<div class="disc-empty-title">No Discogs marketplace data yet</div>' +
+        '<div class="disc-empty-sub">Sync your Discogs wantlist marketplace once to see all sellers, ranked by what they have, how they grade, and how rare their stock is.</div>' +
+        '<div style="margin-top:16px">' + emptyCta + '</div>' +
+      '</div>';
+    _updatePinnedBar();
+    return;
+  }
+
   if (!sorted.length) {
     body.innerHTML = headerHtml +
       '<div class="disc-empty">' +
         '<div class="disc-empty-title">No sellers match your filters</div>' +
-        '<div class="disc-empty-sub">Try loosening the filters above, or run the Chrome extension to sync more data.</div>' +
+        '<div class="disc-empty-sub">Try loosening the filters above, or <button class="si-inline-sync" onclick="triggerDiscogsSync(true)">sync new Discogs data</button>.</div>' +
       '</div>';
     _updatePinnedBar();
     return;

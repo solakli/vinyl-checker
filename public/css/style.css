@@ -9736,6 +9736,93 @@ body.light .disc-fy-card:hover::before { opacity: 0.5; }
 }
 .si-rec-link:hover { opacity: 1; text-decoration: underline; }
 
+/* Header actions group */
+.si-header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+/* Sync Discogs button — primary CTA */
+.si-sync-btn {
+  background: rgba(100,160,255,0.15);
+  border: 1px solid rgba(100,160,255,0.35);
+  color: #a0c8ff;
+  border-radius: 10px;
+  padding: 7px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.18s;
+}
+.si-sync-btn:hover { background: rgba(100,160,255,0.25); transform: translateY(-1px); }
+.si-syncing-label { font-size: 0.8rem; color: var(--text-muted, #8a9ab0); font-style: italic; }
+.si-install-ext-btn {
+  background: rgba(100,160,255,0.1);
+  border: 1px solid rgba(100,160,255,0.25);
+  color: #7daee8;
+  border-radius: 10px;
+  padding: 7px 14px;
+  font-size: 0.79rem;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: all 0.18s;
+}
+.si-install-ext-btn:hover { background: rgba(100,160,255,0.18); }
+
+/* Live sync progress bar inside sellers tab */
+.si-sync-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  overflow: hidden;
+  background: rgba(100,160,255,0.08);
+  border: 1px solid rgba(100,160,255,0.2);
+  border-radius: 10px;
+  padding: 8px 14px;
+  margin-bottom: 10px;
+  font-size: 0.8rem;
+  color: #a0c8ff;
+  min-height: 36px;
+}
+.si-sync-bar.running { border-color: rgba(100,160,255,0.3); }
+.si-sync-bar.done { background: rgba(126,232,162,0.08); border-color: rgba(126,232,162,0.25); color: #7ee8a2; }
+.si-sync-bar.error { background: rgba(248,113,113,0.07); border-color: rgba(248,113,113,0.2); color: #f87171; }
+.si-sync-bar-fill {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  background: rgba(100,160,255,0.12);
+  transition: width 0.5s ease;
+  pointer-events: none;
+}
+@keyframes siSyncSpin { to { transform: rotate(360deg); } }
+.si-sync-spin { display: inline-block; animation: siSyncSpin 1.2s linear infinite; }
+.si-sync-retry {
+  background: none; border: 1px solid rgba(248,113,113,0.4);
+  color: #f87171; border-radius: 6px; padding: 2px 8px;
+  font-size: 0.73rem; cursor: pointer; margin-left: 8px;
+}
+.si-sync-link { color: #a0c8ff; text-decoration: underline; }
+
+/* Empty state sync CTA */
+.si-empty-sync-btn {
+  display: inline-block;
+  background: rgba(100,160,255,0.15);
+  border: 1px solid rgba(100,160,255,0.35);
+  color: #a0c8ff;
+  border-radius: 12px;
+  padding: 10px 22px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.18s;
+}
+.si-empty-sync-btn:hover { background: rgba(100,160,255,0.25); transform: translateY(-1px); }
+.si-inline-sync {
+  background: none; border: none; color: #7daee8;
+  cursor: pointer; font-size: inherit; text-decoration: underline; padding: 0;
+}
+
 /* Pin button */
 .si-pin-btn {
   background: none;
