@@ -3001,8 +3001,8 @@ app.get('/api/seller-intelligence/:username', function (req, res) {
             if (!sellerMap[l.seller_username]) {
                 sellerMap[l.seller_username] = {
                     sellerUsername:   l.seller_username,
-                    sellerRating:     l.seller_rating,
-                    sellerNumRatings: l.seller_num_ratings,
+                    sellerRating:     null,   // accumulated below — take best non-null
+                    sellerNumRatings: null,
                     recordCount:      0,
                     mCount:           0,
                     nmCount:          0,
@@ -3024,6 +3024,13 @@ app.get('/api/seller-intelligence/:username', function (req, res) {
             if (rare)                 s.rareCount++;
             if (l.price_usd)          s.totalPriceUsd += l.price_usd;
             s.gradeScoreSum += cond.score;
+            // Keep the best (non-null) rating — some listings have it, some don't
+            if (l.seller_rating != null && (s.sellerRating == null || l.seller_rating > s.sellerRating)) {
+                s.sellerRating = l.seller_rating;
+            }
+            if (l.seller_num_ratings != null && (s.sellerNumRatings == null || l.seller_num_ratings > s.sellerNumRatings)) {
+                s.sellerNumRatings = l.seller_num_ratings;
+            }
 
             s.records.push({
                 wantlistId:    l.wantlist_id,
