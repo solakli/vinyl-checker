@@ -1115,7 +1115,9 @@ app.post('/api/optimize/:username', function (req, res) {
         minCondition:    body.minCondition    || savedPrefs.min_condition   || 'VG',
         minSellerRating: body.minSellerRating != null ? body.minSellerRating : (savedPrefs.min_seller_rating || 98),
         maxPriceUsd:     body.maxPriceUsd     != null ? body.maxPriceUsd    : (savedPrefs.max_price_usd     || null),
-        forceRefresh:    body.forceRefresh    === true
+        forceRefresh:    body.forceRefresh    === true,
+        // Pinned sellers from Seller Intelligence — always included in results regardless of other filters
+        pinnedSellers:   Array.isArray(body.pinnedSellers) ? body.pinnedSellers.filter(function(s) { return typeof s === 'string'; }) : []
     };
 
     var r = db.createOptimizerJob(username, user.id, params);

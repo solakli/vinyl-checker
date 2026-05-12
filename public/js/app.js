@@ -692,6 +692,7 @@ async function loadExisting(username) {
   } catch(e) {}
   _discoverCache    = null;
   _sellerIntelData  = null;   // clear seller intel on user switch
+  _pinnedSellers    = {};
   var overlay = document.getElementById('optimizerOverlay');
   if (overlay) overlay.style.display = 'none';
   var banner = document.getElementById('optimizerBanner');
@@ -2702,6 +2703,23 @@ function _showOptimizerPrefsPanel(username) {
       .catch(function() {});
   }
 
+  // Show pinned sellers hint if any are pinned from Seller Intelligence tab
+  var pinned = Object.keys(_pinnedSellers);
+  var hintEl = document.getElementById('optPinnedHint');
+  if (hintEl) {
+    if (pinned.length) {
+      hintEl.style.display = 'block';
+      hintEl.innerHTML =
+        '<span class="opt-pinned-icon">📌</span>' +
+        '<span class="opt-pinned-text">Pinned sellers will be locked into results: ' +
+          pinned.map(function(u) { return '<strong>' + escapeHtml(u) + '</strong>'; }).join(', ') +
+        '</span>' +
+        '<button class="opt-pinned-clear" onclick="clearAllPins();this.closest(\'.opt-pinned-hint\').style.display=\'none\'">✕ Clear</button>';
+    } else {
+      hintEl.style.display = 'none';
+    }
+  }
+
   // Kick off Discogs sync — but only if we haven't synced recently (< 30 min)
   var SYNC_STALE_MS = 30 * 60 * 1000;
   var lastSync = _lastDiscogsSyncTime[username] || 0;
@@ -3000,6 +3018,11 @@ function runOptimizer() {
 
   var body = { postcode: postcode, minCondition: condition, minSellerRating: parseFloat(rating) };
   if (maxPrice) body.maxPriceUsd = parseFloat(maxPrice);
+  // Include pinned sellers from Seller Intelligence tab (if any)
+  var pinned = _siPinnedForOptimizer && _siPinnedForOptimizer.length
+    ? _siPinnedForOptimizer
+    : Object.keys(_pinnedSellers);
+  if (pinned.length) body.pinnedSellers = pinned;
 
   // Submit job
   fetch('api/optimize/' + encodeURIComponent(username), {
@@ -3253,10 +3276,12 @@ function showOptimizerResults(result) {
         ? '<a class="sc-visit-seller" href="' + sellerProfileUrl + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">Visit Seller ↗</a>'
         : '';
 
-      return '<div class="sc-seller' + (i === 0 ? ' open' : '') + '">' +
+      var pinnedBadge = entry.isPinned ? '<span class="sc-pinned-badge">📌</span>' : '';
+
+      return '<div class="sc-seller' + (i === 0 ? ' open' : '') + (entry.isPinned ? ' sc-seller-pinned' : '') + '">' +
         '<div class="sc-seller-header" onclick="this.parentElement.classList.toggle(\'open\')">' +
           '<div class="sc-seller-left">' +
-            '<div class="sc-seller-name">' + escapeHtml(entry.sourceName) + visitBtn + '</div>' +
+            '<div class="sc-seller-name">' + pinnedBadge + escapeHtml(entry.sourceName) + visitBtn + '</div>' +
             '<div class="sc-seller-sub">' + country + ratingHtml + ' · ' + shipping + '</div>' +
           '</div>' +
           '<div class="sc-seller-right">' +
@@ -4031,6 +4056,9 @@ var _sellerIntelData     = null;       // cached seller intelligence response
 var _sellerIntelLoading  = false;
 var _sellerIntelSort     = 'records';  // 'records' | 'quality' | 'rare' | 'price'
 var _sellerMinRecords    = 2;          // hide sellers with fewer than N wantlist records
+var _sellerMinRating     = 0;          // 0 = any; 97 / 98 / 99 / 99.5
+var _sellerMinRare       = 0;          // 0 = any; 1+ / 2+ / 3+ rare records
+var _pinnedSellers       = {};         // { sellerUsername: true } — locked into optimizer
 var _discoverSort        = 'items';
 var _discoverGenreFilter = null;
 var _activeDiscoverStore = null;
@@ -4897,7 +4925,7 @@ function loadSellerIntel(force) {
   var body = document.getElementById('discBody');
   if (!body) return;
 
-  // Show cached data immediately if available
+  // Show cached data immediately, background-refresh on repeat visits
   if (_sellerIntelData && !force) {
     renderSellerIntelBody();
     return;
@@ -4916,7 +4944,7 @@ function loadSellerIntel(force) {
     .catch(function(e) {
       _sellerIntelLoading = false;
       if (body && _discoverTab === 'sellers') {
-        body.innerHTML = '<div class="disc-empty">Error loading seller data. <button class="disc-refresh-btn" onclick="loadSellerIntel(true)">Retry</button></div>';
+        body.innerHTML = '<div class="disc-empty">Error loading seller data. <button class="si-resync-btn" onclick="loadSellerIntel(true)">Retry</button></div>';
       }
       console.error('[seller-intel]', e);
     });
@@ -4931,16 +4959,17 @@ function renderSellersTab() {
 
 function siSortSellers(sellers) {
   var list = sellers.slice();
-  if (_sellerIntelSort === 'records') {
-    list.sort(function(a, b) { return b.recordCount - a.recordCount; });
-  } else if (_sellerIntelSort === 'quality') {
-    list.sort(function(a, b) { return (b.avgGradeScore || 0) - (a.avgGradeScore || 0); });
-  } else if (_sellerIntelSort === 'rare') {
-    list.sort(function(a, b) { return b.rareCount - a.rareCount; });
-  } else if (_sellerIntelSort === 'price') {
-    // cheapest total first (only sellers with price data)
-    list.sort(function(a, b) { return (a.totalPriceUsd || 9999) - (b.totalPriceUsd || 9999); });
-  }
+  // Pinned sellers always float to top
+  list.sort(function(a, b) {
+    var ap = _pinnedSellers[a.sellerUsername] ? 1 : 0;
+    var bp = _pinnedSellers[b.sellerUsername] ? 1 : 0;
+    if (bp !== ap) return bp - ap;
+    if (_sellerIntelSort === 'records') return b.recordCount - a.recordCount;
+    if (_sellerIntelSort === 'quality') return (b.avgGradeScore || 0) - (a.avgGradeScore || 0);
+    if (_sellerIntelSort === 'rare')    return b.rareCount - a.rareCount;
+    if (_sellerIntelSort === 'price')   return (a.totalPriceUsd || 9999) - (b.totalPriceUsd || 9999);
+    return b.recordCount - a.recordCount;
+  });
   return list;
 }
 
@@ -4949,10 +4978,74 @@ function setSellerIntelSort(sort) {
   renderSellerIntelBody();
 }
 
-function setSellerMinRecords(n) {
-  _sellerMinRecords = parseInt(n) || 1;
+function setSellerFilter(key, val) {
+  if (key === 'minRecords') _sellerMinRecords = parseInt(val) || 1;
+  if (key === 'minRating')  _sellerMinRating  = parseFloat(val) || 0;
+  if (key === 'minRare')    _sellerMinRare     = parseInt(val)   || 0;
   renderSellerIntelBody();
 }
+
+function togglePinSeller(username, btn) {
+  if (_pinnedSellers[username]) {
+    delete _pinnedSellers[username];
+    if (btn) btn.classList.remove('active');
+  } else {
+    _pinnedSellers[username] = true;
+    if (btn) btn.classList.add('active');
+  }
+  _updatePinnedBar();
+  // Re-sort to float pinned to top (no full re-render — just update bar + reorder)
+  renderSellerIntelBody();
+}
+
+function _updatePinnedBar() {
+  var bar = document.getElementById('siPinnedBar');
+  if (!bar) return;
+  var count = Object.keys(_pinnedSellers).length;
+  if (count === 0) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  var names = Object.keys(_pinnedSellers).map(function(u) {
+    return '<span class="si-pinned-name">' + escapeHtml(u) + '</span>';
+  }).join('');
+  bar.innerHTML =
+    '<div class="si-pinned-left">' +
+      '<span class="si-pinned-icon">📌</span>' +
+      '<span class="si-pinned-label">' + count + ' seller' + (count !== 1 ? 's' : '') + ' pinned:</span>' +
+      '<div class="si-pinned-names">' + names + '</div>' +
+    '</div>' +
+    '<button class="si-optimize-btn" onclick="runOptimizerWithPinned()">⚡ Optimize Cart</button>' +
+    '<button class="si-clear-pins" onclick="clearAllPins()">✕</button>';
+}
+
+function clearAllPins() {
+  _pinnedSellers = {};
+  renderSellerIntelBody();
+}
+
+function runOptimizerWithPinned() {
+  var pinned = Object.keys(_pinnedSellers);
+  if (!pinned.length) { openOptimizer(); return; }
+  // Store pinned in state so the optimizer sends it
+  _siPinnedForOptimizer = pinned;
+  // Navigate to the wantlist tab and open optimizer
+  switchView('wantlist');
+  setTimeout(function() {
+    openOptimizerWithPinned(pinned);
+  }, 300);
+}
+
+function openOptimizerWithPinned(pinned) {
+  openOptimizer();
+  // Show pinned sellers in the optimizer prefs panel
+  setTimeout(function() {
+    var pinnedHint = document.getElementById('optPinnedHint');
+    if (!pinnedHint) return;
+    pinnedHint.style.display = 'block';
+    pinnedHint.textContent = '📌 Pinned: ' + pinned.join(', ');
+  }, 100);
+}
+
+var _siPinnedForOptimizer = [];
 
 function renderSellerIntelBody() {
   var body = document.getElementById('discBody');
@@ -4960,8 +5053,16 @@ function renderSellerIntelBody() {
   var d = _sellerIntelData;
 
   var allSellers = (d && d.sellers) || [];
-  var filtered   = allSellers.filter(function(s) { return s.recordCount >= _sellerMinRecords; });
-  var sorted     = siSortSellers(filtered);
+
+  // Apply filters
+  var filtered = allSellers.filter(function(s) {
+    if (s.recordCount < _sellerMinRecords) return false;
+    if (_sellerMinRating > 0 && (s.sellerRating == null || s.sellerRating < _sellerMinRating)) return false;
+    if (_sellerMinRare > 0  && s.rareCount < _sellerMinRare) return false;
+    return true;
+  });
+  var sorted = siSortSellers(filtered);
+  var pinnedCount = Object.keys(_pinnedSellers).length;
 
   var lastSyncedStr = '';
   if (d && d.lastSynced) {
@@ -4972,13 +5073,21 @@ function renderSellerIntelBody() {
 
   var gradeColor = { M: '#c0d0ff', NM: '#7ee8a2', 'VG+': '#ffe07a', VG: '#ffa970', 'G+': '#f87', G: '#c77', F: '#a55', P: '#933', '?': '#888' };
 
+  // Sort buttons
   var sortBtns = ['records','quality','rare','price'].map(function(k) {
     var labels = { records:'Most Records', quality:'Best Condition', rare:'Most Rare', price:'Cheapest Total' };
     return '<button class="si-sort-btn' + (_sellerIntelSort === k ? ' active' : '') + '" onclick="setSellerIntelSort(\'' + k + '\')">' + labels[k] + '</button>';
   }).join('');
 
-  var minOptions = [1,2,3,5,10].map(function(n) {
+  // Filter controls
+  var minRecOpts = [1,2,3,5,10].map(function(n) {
     return '<option value="' + n + '"' + (_sellerMinRecords === n ? ' selected' : '') + '>' + n + '+ records</option>';
+  }).join('');
+  var minRatingOpts = [[0,'Any rating'],[97,'★ 97%+'],[98,'★ 98%+'],[99,'★ 99%+'],[99.5,'★ 99.5%+']].map(function(p) {
+    return '<option value="' + p[0] + '"' + (_sellerMinRating === p[0] ? ' selected' : '') + '>' + p[1] + '</option>';
+  }).join('');
+  var minRareOpts = [[0,'Any'],[1,'1+ rare'],[2,'2+ rare'],[3,'3+ rare'],[5,'5+ rare']].map(function(p) {
+    return '<option value="' + p[0] + '"' + (_sellerMinRare === p[0] ? ' selected' : '') + '>' + p[1] + '</option>';
   }).join('');
 
   var headerHtml =
@@ -4993,43 +5102,46 @@ function renderSellerIntelBody() {
       '</div>' +
       '<div class="si-sort-bar">' + sortBtns + '</div>' +
       '<div class="si-filter-bar">' +
-        '<label class="si-filter-label">Show sellers with</label>' +
-        '<select class="si-min-select" onchange="setSellerMinRecords(this.value)">' + minOptions + '</select>' +
+        '<select class="si-min-select" title="Minimum records" onchange="setSellerFilter(\'minRecords\',this.value)">' + minRecOpts + '</select>' +
+        '<select class="si-min-select" title="Minimum seller rating" onchange="setSellerFilter(\'minRating\',this.value)">' + minRatingOpts + '</select>' +
+        '<select class="si-min-select" title="Minimum rare records" onchange="setSellerFilter(\'minRare\',this.value)">' + minRareOpts + '</select>' +
+        (pinnedCount ? '<button class="si-clear-pins-sm" onclick="clearAllPins()">Clear ' + pinnedCount + ' pin' + (pinnedCount !== 1 ? 's' : '') + '</button>' : '') +
       '</div>' +
-    '</div>';
+    '</div>' +
+    // Pinned bar (shown when sellers are pinned)
+    '<div class="si-pinned-bar" id="siPinnedBar" style="display:' + (pinnedCount ? 'flex' : 'none') + '"></div>';
 
   if (!sorted.length) {
     body.innerHTML = headerHtml +
       '<div class="disc-empty">' +
-        '<div class="disc-empty-title">No sellers yet</div>' +
-        '<div class="disc-empty-sub">Run the Discogs Chrome extension to sync your wantlist marketplace data.</div>' +
+        '<div class="disc-empty-title">No sellers match your filters</div>' +
+        '<div class="disc-empty-sub">Try loosening the filters above, or run the Chrome extension to sync more data.</div>' +
       '</div>';
+    _updatePinnedBar();
     return;
   }
 
   var cardsHtml = sorted.map(function(seller, si) {
-    var ratingHtml = seller.sellerRating
-      ? '<span class="si-rating">★ ' + seller.sellerRating.toFixed(1) + '</span>' +
+    var isPinned = !!_pinnedSellers[seller.sellerUsername];
+    var ratingColor = seller.sellerRating >= 99 ? '#7ee8a2' : seller.sellerRating >= 98 ? '#ffe07a' : '#b0bfcf';
+    var ratingHtml = seller.sellerRating != null
+      ? '<span class="si-rating" style="color:' + ratingColor + '">★ ' + seller.sellerRating.toFixed(1) + '%</span>' +
         (seller.sellerNumRatings ? '<span class="si-rating-count">(' + seller.sellerNumRatings.toLocaleString() + ')</span>' : '')
       : '';
-    var gradeLabel = seller.avgGradeScore >= 4 ? 'NM avg' : seller.avgGradeScore >= 3 ? 'VG+ avg' : seller.avgGradeScore >= 2 ? 'VG avg' : '';
+    var gradeLabel = seller.avgGradeScore >= 4 ? 'NM avg' : seller.avgGradeScore >= 3 ? 'VG+ avg' : '';
     var gradeLabelHtml = gradeLabel ? '<span class="si-grade-badge">' + gradeLabel + '</span>' : '';
     var rareHtml = seller.rareCount
-      ? '<span class="si-rare-pill" title="Want/Have ≥ 1.2">💎 ' + seller.rareCount + ' rare</span>'
-      : '';
+      ? '<span class="si-rare-pill" title="Want/Have ≥ 1.2x">💎 ' + seller.rareCount + ' rare</span>' : '';
     var nmHtml = seller.premiumCount
-      ? '<span class="si-nm-pill">M/NM/VG+: ' + seller.premiumCount + '</span>'
-      : '';
+      ? '<span class="si-nm-pill">M/NM/VG+: ' + seller.premiumCount + '</span>' : '';
     var priceHtml = seller.totalPriceUsd
-      ? '<span class="si-price-total">$' + seller.totalPriceUsd.toFixed(2) + ' total</span>'
-      : '';
+      ? '<span class="si-price-total">$' + seller.totalPriceUsd.toFixed(2) + '</span>' : '';
+    var pinBtnId = 'siPin_' + seller.sellerUsername.replace(/[^a-z0-9]/gi, '_');
 
-    // Records inside the seller card
     var recordsHtml = seller.records.map(function(rec) {
       var condColor = gradeColor[rec.condition] || '#888';
       var rareTag = rec.isRare
-        ? '<span class="si-rec-rare" title="' + (rec.wantHaveRatio ? rec.wantHaveRatio + 'x want/have' : 'rare') + '">💎</span>'
-        : '';
+        ? '<span class="si-rec-rare" title="' + (rec.wantHaveRatio ? rec.wantHaveRatio + 'x want/have' : 'rare') + '">💎</span>' : '';
       var priceStr = rec.priceUsd ? '$' + rec.priceUsd.toFixed(2) : '';
       var thumb = rec.thumb
         ? '<img class="si-rec-thumb" src="' + escapeHtml(rec.thumb) + '" loading="lazy" onerror="this.style.display=\'none\'">'
@@ -5045,16 +5157,19 @@ function renderSellerIntelBody() {
             '<span class="si-rec-cond" style="color:' + condColor + '">' + escapeHtml(rec.condition) + '</span>' +
             (priceStr ? '<span class="si-rec-price">' + priceStr + '</span>' : '') +
             rareTag +
-            (rec.wantHaveRatio ? '<span class="si-rec-wh" title="Want / Have">' + rec.wantHaveRatio + 'x</span>' : '') +
+            (rec.wantHaveRatio ? '<span class="si-rec-wh" title="Want / Have ratio">' + rec.wantHaveRatio + 'x</span>' : '') +
           '</div>' +
         '</div>' +
         link +
       '</div>';
     }).join('');
 
-    return '<div class="si-seller-card" style="--si-i:' + Math.min(si, 20) + '">' +
+    return '<div class="si-seller-card' + (isPinned ? ' pinned' : '') + '" style="--si-i:' + Math.min(si, 20) + '">' +
       '<div class="si-seller-header" onclick="this.closest(\'.si-seller-card\').classList.toggle(\'open\')">' +
         '<div class="si-seller-name-row">' +
+          '<button class="si-pin-btn' + (isPinned ? ' active' : '') + '" id="' + pinBtnId + '"' +
+            ' onclick="event.stopPropagation();togglePinSeller(' + JSON.stringify(seller.sellerUsername) + ',this)"' +
+            ' title="' + (isPinned ? 'Unpin seller' : 'Pin to optimizer') + '">📌</button>' +
           '<span class="si-seller-name">' + escapeHtml(seller.sellerUsername) + '</span>' +
           '<span class="si-record-count">' + seller.recordCount + ' record' + (seller.recordCount !== 1 ? 's' : '') + '</span>' +
           gradeLabelHtml +
@@ -5065,13 +5180,20 @@ function renderSellerIntelBody() {
         '</div>' +
       '</div>' +
       '<div class="si-seller-body">' +
-        '<a class="si-profile-link" href="https://www.discogs.com/seller/' + encodeURIComponent(seller.sellerUsername) + '/profile" target="_blank" rel="noopener" onclick="event.stopPropagation()">View Discogs Profile ↗</a>' +
+        '<div class="si-seller-body-actions">' +
+          '<a class="si-profile-link" href="https://www.discogs.com/seller/' + encodeURIComponent(seller.sellerUsername) + '/profile" target="_blank" rel="noopener" onclick="event.stopPropagation()">View Discogs Profile ↗</a>' +
+          '<button class="si-pin-full-btn' + (isPinned ? ' active' : '') + '"' +
+            ' onclick="togglePinSeller(' + JSON.stringify(seller.sellerUsername) + ',document.getElementById(\'' + pinBtnId + '\'))">' +
+            (isPinned ? '📌 Pinned to Optimizer' : '📌 Pin to Optimizer') +
+          '</button>' +
+        '</div>' +
         '<div class="si-rec-list">' + recordsHtml + '</div>' +
       '</div>' +
     '</div>';
   }).join('');
 
   body.innerHTML = headerHtml + '<div class="si-seller-grid">' + cardsHtml + '</div>';
+  _updatePinnedBar();
 }
 
 // ═══════════════════════════════════════════════════════════════
