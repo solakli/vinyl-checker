@@ -41,23 +41,35 @@ async function runSync(server, username) {
         return;
     }
 
-    // Step 2: fetch each release marketplace page (credentials:include works here!)
+    // Step 2: fetch release marketplace pages in parallel batches
     var allListings = [];
-    for (var i = 0; i < items.length; i++) {
-        var item    = items[i];
-        var sellers = await fetchMarketplacePage(item.item.id, item.wantlistId);
-        allListings = allListings.concat(sellers);
+    var BATCH_SIZE  = 4;   // 4 concurrent requests — fast but polite to Discogs
+    var done        = 0;
 
-        var pct = Math.round(((i + 1) / items.length) * 100);
+    for (var i = 0; i < items.length; i += BATCH_SIZE) {
+        var batch = items.slice(i, i + BATCH_SIZE);
+
+        // Fire all in batch simultaneously
+        var batchResults = await Promise.all(batch.map(function (item) {
+            return fetchMarketplacePage(item.item.id, item.wantlistId);
+        }));
+
+        batchResults.forEach(function (sellers) {
+            allListings = allListings.concat(sellers);
+        });
+        done += batch.length;
+
+        var pct = Math.round((done / items.length) * 100);
         fill.style.width  = pct + '%';
-        label.textContent = (i + 1) + ' / ' + items.length + ' releases · ' + allListings.length + ' listings found';
+        label.textContent = done + ' / ' + items.length + ' releases · ' + allListings.length + ' listings found';
 
-        // Save progress so popup can read it
+        // Save progress so popup + site can read it
         chrome.storage.local.set({ syncState: {
-            running: true, startedAt: syncStartedAt, done: i + 1, total: items.length, found: allListings.length
+            running: true, startedAt: syncStartedAt, done: done, total: items.length, found: allListings.length
         }});
 
-        await sleep(350);
+        // Brief pause between batches — avoids rate-limiting while staying fast
+        if (i + BATCH_SIZE < items.length) await sleep(120);
     }
 
     // Step 3: post to server
