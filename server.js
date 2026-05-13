@@ -1423,14 +1423,12 @@ app.post('/api/deploy', function (req, res) {
                 console.log('[deploy] package.json changed — running npm install');
                 execSync('cd ' + appDir + ' && npm install --production 2>&1');
             }
-            // Reload PM2 via a detached child process — calling pm2 reload from within
-            // the process being reloaded causes SIGTERM mid-execSync. Detached spawn
-            // lets the child outlive the current process cleanly.
-            console.log('[deploy] Reloading via PM2...');
-            var child = require('child_process').spawn('pm2', ['reload', 'vinyl-checker', '--update-env'], {
-                detached: true,
-                stdio: 'ignore'
-            });
+            // Restart server via detached shell — kill current process on port 5052,
+            // then re-launch with setsid so the child outlives the current process.
+            console.log('[deploy] Restarting server...');
+            var child = require('child_process').spawn('bash', ['-c',
+                'sleep 1 && fuser -k ' + PORT + '/tcp 2>/dev/null; sleep 1 && cd ' + appDir + ' && setsid node server.js >> /tmp/vinyl.log 2>&1'
+            ], { detached: true, stdio: 'ignore' });
             child.unref();
         } catch (e) {
             console.error('[deploy] ERROR: ' + e.message);
