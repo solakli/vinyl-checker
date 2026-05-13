@@ -4835,14 +4835,16 @@ function renderCartView() {
   });
   var storeGroups = [], discogsGroups = [];
   Object.keys(groups).forEach(function(k) {
-    (groups[k].sourceType === 'discogs' ? discogsGroups : storeGroups).push(groups[k]);
+    var _isD = groups[k].sourceType === 'discogs' || groups[k].sourceType === 'discogs_seller';
+    (_isD ? discogsGroups : storeGroups).push(groups[k]);
   });
 
   // ── Cost helpers ────────────────────────────────────────────────────────────
   function groupCost(g) {
     var fc = (g.country && VALID_COUNTRIES[g.country]) ? g.country : '';
     var sub = g.items.reduce(function(n, i) { return n + (i.price_usd || 0); }, 0);
-    var ship = fc === buyerCountry ? 0 : (SHIP_RATES[fc] || (g.sourceType === 'discogs' ? 15 : 12));
+    var _gIsD = g.sourceType === 'discogs' || g.sourceType === 'discogs_seller';
+    var ship = fc === buyerCountry ? 0 : (SHIP_RATES[fc] || (_gIsD ? 15 : 12));
     return { subtotal: sub, ship: ship, total: sub + ship, country: fc };
   }
   function secTot(arr) {
@@ -4858,7 +4860,7 @@ function renderCartView() {
   // ── Render one cart group ────────────────────────────────────────────────────
   function renderGroupHtml(g) {
     var cost = groupCost(g);
-    var isDiscogs = g.sourceType === 'discogs';
+    var isDiscogs = g.sourceType === 'discogs' || g.sourceType === 'discogs_seller';
     var headerMeta = '';
     if (isDiscogs) {
       if (g.sellerRating != null) {
@@ -4968,15 +4970,19 @@ function renderCartView() {
           [['VG','VG'],['VG+','VG+'],['NM or M-','NM']], false)+
         toggles('Min seller rating', 'minSellerRating',
           [['0','Any'],['95','95%+'],['98','98%+'],['99','99%+']], true)+
-        '<div class="cart-filter-group">'+
-          '<span class="cfg-label">Max $/record</span>'+
-          '<div class="cdf-price-wrap">'+
-            '<span class="cdf-currency">$</span>'+
-            '<input type="number" class="cdf-price-input" min="1" max="9999" '+
-              'value="'+(maxPriceUsd||'')+'" placeholder="any" '+
-              'onchange="setCartPref(\'maxPriceUsd\', this.value ? parseFloat(this.value) : null)">'+
-          '</div>'+
-        '</div>'+
+        (function(){
+          var sliderVal = maxPriceUsd ? Math.min(maxPriceUsd, 500) : 500;
+          var fillPct   = (((sliderVal - 10) / 490) * 100).toFixed(1);
+          var dispLabel = maxPriceUsd ? '$' + maxPriceUsd : 'any';
+          return '<div class="cart-filter-group cdf-price-group">'+
+            '<span class="cfg-label">Max $/record <strong class="cdf-price-display">'+dispLabel+'</strong></span>'+
+            '<input type="range" class="cdf-price-slider" min="10" max="500" step="5" '+
+              'value="'+sliderVal+'" style="--fill:'+fillPct+'%" '+
+              'oninput="updateCartPrice(this)" '+
+              'onchange="setCartPref(\'maxPriceUsd\',this.value>=500?null:parseFloat(this.value))">'+
+            '<div class="cdf-price-labels"><span>$10</span><span>No limit</span></div>'+
+          '</div>';
+        })()+
       '</div>'+
       '<button class="cart-smart-fill" id="cartAutoFillBtn" onclick="autoFillCart()">⚡ Smart fill Discogs</button>'+
     '</div>';
@@ -4991,7 +4997,7 @@ function renderCartView() {
           '<span class="caf-hdr-note">Add a group, then re-run Smart fill</span>'+
         '</div>'+
         _cartAutoFill.groups.map(function(g, idx) {
-          var isd = g.sourceType === 'discogs';
+          var isd = g.sourceType === 'discogs' || g.sourceType === 'discogs_seller';
           var rHtml = (isd && g.sellerRating != null)
             ? '<span class="caf-rating">★'+parseFloat(g.sellerRating).toFixed(1)+'%'+(g.sellerNumRatings?' <span class="caf-num-ratings">('+g.sellerNumRatings.toLocaleString()+')</span>':'')+' </span>' : '';
           var ctHtml = (g.country && VALID_COUNTRIES[g.country]) ? '<span class="caf-country">📦 '+g.country+'</span>' : '';
@@ -5059,6 +5065,13 @@ function renderCartView() {
 function setCartPref(key, val) {
   _cartPrefs[key] = val;
   renderCartView();
+}
+
+function updateCartPrice(el) {
+  var val = parseInt(el.value, 10);
+  var disp = document.querySelector('.cdf-price-display');
+  if (disp) disp.textContent = val >= 500 ? 'any' : '$' + val;
+  el.style.setProperty('--fill', (((val - 10) / 490) * 100).toFixed(1) + '%');
 }
 
 function removeCartItem(wantlistId, store) {
