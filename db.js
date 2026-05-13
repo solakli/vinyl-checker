@@ -359,6 +359,13 @@ function initTables() {
     try { db.exec('ALTER TABLE users ADD COLUMN last_seen_at TEXT'); } catch(e) {}
     // shipping_to_usd: buyer's personalized shipping cost extracted from Discogs marketplace page
     try { db.exec('ALTER TABLE discogs_listings ADD COLUMN shipping_to_usd REAL'); } catch(e) {}
+    // Cart enrichment columns
+    try { db.exec('ALTER TABLE cart ADD COLUMN condition TEXT'); } catch(e) {}
+    try { db.exec('ALTER TABLE cart ADD COLUMN ships_from TEXT'); } catch(e) {}
+    try { db.exec('ALTER TABLE cart ADD COLUMN listing_url TEXT'); } catch(e) {}
+    try { db.exec('ALTER TABLE cart ADD COLUMN source_type TEXT DEFAULT \'store\''); } catch(e) {}
+    try { db.exec('ALTER TABLE cart ADD COLUMN seller_username TEXT'); } catch(e) {}
+    try { db.exec('ALTER TABLE cart ADD COLUMN seller_rating REAL'); } catch(e) {}
 
     // Collection table — mirrors user's Discogs collection (records they own)
     db.exec(`
@@ -2146,20 +2153,26 @@ function getDiscoverData(userId) {
 function getCartItems(userId) {
     return getDb().prepare(`
         SELECT c.id, c.wantlist_id, c.store, c.price, c.price_usd, c.added_at,
-               w.artist, w.title, w.year, w.thumb, w.discogs_id
+               c.condition, c.ships_from, c.listing_url, c.source_type, c.seller_username, c.seller_rating,
+               w.artist, w.title, w.year, w.thumb, w.discogs_id, w.catno, w.label
         FROM cart c
         JOIN wantlist w ON w.id = c.wantlist_id
         WHERE c.user_id = ?
-        ORDER BY c.added_at DESC
+        ORDER BY c.store, c.added_at DESC
     `).all(userId);
 }
 
-function addToCart(userId, wantlistId, store, price, priceUsd) {
+function addToCart(userId, wantlistId, store, price, priceUsd, opts) {
+    opts = opts || {};
     try {
+        // First remove any existing entry for this wantlist item (one source per item)
+        getDb().prepare('DELETE FROM cart WHERE user_id = ? AND wantlist_id = ?').run(userId, wantlistId);
         return getDb().prepare(`
-            INSERT OR REPLACE INTO cart (user_id, wantlist_id, store, price, price_usd, added_at)
-            VALUES (?, ?, ?, ?, ?, datetime('now'))
-        `).run(userId, wantlistId, store, price || null, priceUsd || null);
+            INSERT INTO cart (user_id, wantlist_id, store, price, price_usd, condition, ships_from, listing_url, source_type, seller_username, seller_rating, added_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        `).run(userId, wantlistId, store, price || null, priceUsd || null,
+               opts.condition || null, opts.shipsFrom || null, opts.listingUrl || null,
+               opts.sourceType || 'store', opts.sellerUsername || null, opts.sellerRating || null);
     } catch(e) { return null; }
 }
 
@@ -2167,6 +2180,10 @@ function removeFromCart(userId, wantlistId, store) {
     return getDb().prepare(
         'DELETE FROM cart WHERE user_id = ? AND wantlist_id = ? AND store = ?'
     ).run(userId, wantlistId, store);
+}
+
+function removeFromCartByWantlistId(userId, wantlistId) {
+    return getDb().prepare('DELETE FROM cart WHERE user_id = ? AND wantlist_id = ?').run(userId, wantlistId);
 }
 
 function clearCart(userId) {
@@ -2278,6 +2295,7 @@ module.exports = {
     getCartItems: getCartItems,
     addToCart: addToCart,
     removeFromCart: removeFromCart,
+    removeFromCartByWantlistId: removeFromCartByWantlistId,
     clearCart: clearCart,
     getCartCount: getCartCount,
     // ETL Pipeline

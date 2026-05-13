@@ -52,6 +52,7 @@
   <div class="navbar-nav">
     <a href="#" class="nav-link active" data-view="wantlist" onclick="switchView('wantlist',this);return false;">Wantlist</a>
     <a href="#" class="nav-link" data-view="discover" onclick="switchView('discover',this);return false;">Discover <span class="cart-badge" id="cartBadge" style="display:none">0</span></a>
+    <a href="#" class="nav-link" data-view="cart" onclick="switchView('cart',this);return false;">Cart <span class="cart-nav-badge" id="cartNavBadge" style="display:none">0</span></a>
     <a href="#" class="nav-link" data-view="mix" onclick="switchView('mix',this);return false;">Mixes</a>
     <a href="#" class="nav-link" data-view="collection" onclick="switchView('collection',this);return false;">My Collection</a>
     <a href="#" class="nav-link" data-view="profile" id="profileNavLink" onclick="switchView('profile',this);return false;">Profile</a>
@@ -114,6 +115,10 @@
   <button class="mobile-tab" data-view="discover" onclick="switchView('discover',null)">
     <span class="mobile-tab-icon">◎</span>
     <span class="mobile-tab-label">Discover</span>
+  </button>
+  <button class="mobile-tab" data-view="cart" onclick="switchView('cart',null)">
+    <span class="mobile-tab-icon">🛒</span>
+    <span class="mobile-tab-label">Cart</span>
   </button>
   <button class="mobile-tab" data-view="mix" onclick="switchView('mix',null)">
     <span class="mobile-tab-icon">♫</span>
@@ -221,6 +226,13 @@
   </div>
 </div>
 
+<!-- ═══ CART VIEW ═══ -->
+<div id="view-cart" class="alt-view" style="display:none">
+  <div class="cart-wrap" id="cartWrap">
+    <div id="cartBody"></div>
+  </div>
+</div>
+
 <!-- ═══ MIX TO CART VIEW ═══ -->
 <div id="view-mix" class="alt-view" style="display:none">
   <div class="mix-wrap">
@@ -276,8 +288,8 @@
         <div class="results-hero-label" id="resultsHeroLabel">records in stock</div>
         <div class="results-hero-sub" id="resultsHeroSub"></div>
       </div>
-      <button class="results-hero-cta" onclick="openOptimizer()">
-        Find cheapest combination →
+      <button class="results-hero-cta" onclick="switchView('cart',null)">
+        View Cart →
       </button>
     </div>
 
@@ -381,20 +393,6 @@
       </div>
     </div>
 
-    <!-- Cart Optimizer -->
-    <div class="sidebar-optimizer" id="sidebarOptimizer">
-      <div class="sidebar-opt-title">Cart Optimizer</div>
-      <div class="sidebar-empty" id="sidebarEmpty">
-        <p>Find the cheapest combination of stores to buy your entire wantlist — shipping included.</p>
-        <button class="btn-checkout" style="margin-top:16px" onclick="openOptimizer()">OPEN OPTIMIZER</button>
-        <div class="sidebar-ext-hint">
-          <div class="sidebar-ext-divider">+ Discogs Marketplace</div>
-          <a class="sidebar-ext-btn" href="https://chromewebstore.google.com/detail/wax-digger/kiclpfmfialjahglebihjghkebpaaome" target="_blank" rel="noopener">⛏ Add Extension to include all Discogs vendors</a>
-        </div>
-      </div>
-      <div id="sidebarResults" style="display:none"></div>
-    </div>
-
     <!-- Cheapest finds — shown once scan data is loaded -->
     <div class="sb-finds" id="sbFinds" style="display:none">
       <div class="sb-finds-title">Cheapest Right Now</div>
@@ -403,11 +401,6 @@
 
   </div>
 
-</div>
-
-<!-- ═══ OPTIMIZER BANNER (hidden — replaced by navbar button) ═══ -->
-<div class="optimizer-banner" id="optimizerBanner" style="display:none">
-  <button class="optimize-trigger-btn" id="optimizeTrigger" onclick="openOptimizer()">Dig For Gold</button>
 </div>
 
 <!-- Release Detail Modal -->
@@ -425,80 +418,6 @@
     <div class="info-modal-eyebrow" id="infoModalEyebrow">How it's calculated</div>
     <h3 class="info-modal-title" id="infoModalTitle"></h3>
     <div class="info-modal-body" id="infoModalBody"></div>
-  </div>
-</div>
-
-<!-- Cart Optimizer Panel -->
-<div class="optimizer-overlay" id="optimizerOverlay" style="display:none">
-  <div class="optimizer-panel">
-    <div class="optimizer-header">
-      <h2>Cart <span>Optimizer</span></h2>
-      <button class="modal-close" id="optimizerClose">&times;</button>
-    </div>
-
-    <!-- Preferences form -->
-    <div class="optimizer-prefs" id="optimizerPrefs">
-      <p class="optimizer-desc">Find the cheapest combination of sellers &amp; stores to buy your entire wantlist — shipping included.</p>
-      <div class="pref-row">
-        <label>Your postcode / ZIP</label>
-        <input type="text" id="optPostcode" placeholder="e.g. 10001 or SW1A 1AA" maxlength="12">
-        <span class="pref-hint" id="postcodeHint"></span>
-      </div>
-      <div class="pref-row">
-        <label>Minimum condition</label>
-        <select id="optCondition">
-          <option value="VG">VG (Very Good)</option>
-          <option value="VG+" selected>VG+ (Very Good Plus)</option>
-          <option value="NM or M-">NM / M- (Near Mint)</option>
-        </select>
-      </div>
-      <div class="pref-row">
-        <label>Min seller rating</label>
-        <select id="optRating">
-          <option value="95">95%+</option>
-          <option value="98" selected>98%+</option>
-          <option value="99">99%+</option>
-          <option value="0">Any</option>
-        </select>
-      </div>
-      <div class="pref-row">
-        <label>Max price per record</label>
-        <input type="number" id="optMaxPrice" placeholder="No limit" min="1" max="9999" step="1">
-      </div>
-
-      <div class="discogs-sync-row" id="discogsSyncRow">
-        <div class="discogs-sync-header">
-          <img src="img/discogs.png" style="width:13px;height:13px;opacity:0.7;vertical-align:middle;margin-right:5px">
-          <span>Discogs marketplace sellers</span>
-        </div>
-        <div class="discogs-sync-done" id="discogsSyncDone" style="display:none"></div>
-        <div class="discogs-ext-hint" id="discogsExtHint">
-          <p>Scan all Discogs Marketplace vendors for your wantlist — then include them in the optimizer.</p>
-          <a class="discogs-ext-cta" href="extension.html">⛏ Add Wax Digger Extension →</a>
-        </div>
-      </div>
-
-      <!-- Pinned sellers from Seller Intelligence tab -->
-      <div class="opt-pinned-hint" id="optPinnedHint" style="display:none"></div>
-
-      <button class="optimize-btn" id="optimizeRunBtn" onclick="runOptimizer()">Find Best Cart</button>
-    </div>
-
-    <!-- Progress -->
-    <div class="optimizer-progress" id="optimizerProgress" style="display:none">
-      <div class="opt-progress-flavor" id="optProgressFlavor"></div>
-      <div class="opt-progress-bar-track"><div class="opt-progress-bar-fill" id="optProgressFill"></div></div>
-      <div class="opt-progress-text" id="optProgressText"></div>
-    </div>
-
-    <!-- Results -->
-    <div class="optimizer-results" id="optimizerResults" style="display:none">
-      <div class="opt-summary" id="optSummary"></div>
-      <div class="opt-breakdown" id="optBreakdown"></div>
-      <div class="opt-cart" id="optCart"></div>
-      <div class="opt-uncovered" id="optUncovered"></div>
-      <button class="optimize-btn opt-rerun-btn" onclick="showOptimizerPrefs()">Change Preferences</button>
-    </div>
   </div>
 </div>
 

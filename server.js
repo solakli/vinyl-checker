@@ -3671,7 +3671,24 @@ app.post('/api/cart/:username', function(req, res) {
         var wid   = req.body.wantlistId;
         var store = req.body.store;
         if (!wid || !store) return res.status(400).json({ error: 'wantlistId and store required' });
-        db.addToCart(user.id, wid, store, req.body.price, req.body.priceUsd);
+        var opts = {
+            condition:      req.body.condition      || null,
+            shipsFrom:      req.body.shipsFrom      || null,
+            listingUrl:     req.body.listingUrl     || null,
+            sourceType:     req.body.sourceType     || 'store',
+            sellerUsername: req.body.sellerUsername || null,
+            sellerRating:   req.body.sellerRating   || null
+        };
+        db.addToCart(user.id, wid, store, req.body.price, req.body.priceUsd, opts);
+        res.json({ ok: true, count: db.getCartCount(user.id) });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// More-specific routes first to avoid param capture
+app.delete('/api/cart/:username/item/:wantlistId', function(req, res) {
+    try {
+        var user = db.getOrCreateUser(req.params.username);
+        db.removeFromCartByWantlistId(user.id, parseInt(req.params.wantlistId));
         res.json({ ok: true, count: db.getCartCount(user.id) });
     } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -3690,6 +3707,81 @@ app.delete('/api/cart/:username', function(req, res) {
         db.clearCart(user.id);
         res.json({ ok: true, count: 0 });
     } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Auto-fill cart: run optimizer on items NOT already in cart, return suggestions
+app.post('/api/auto-fill/:username', function(req, res) {
+    try {
+        var user = db.getOrCreateUser(req.params.username);
+        var coveredIds = Array.isArray(req.body.coveredIds) ? req.body.coveredIds.map(Number) : [];
+        var buyerCountry    = req.body.countryCode   || 'US';
+        var minCondition    = req.body.minCondition  || 'VG+';
+        var minSellerRating = parseFloat(req.body.minSellerRating || 98);
+        var maxPriceUsd     = req.body.maxPriceUsd ? parseFloat(req.body.maxPriceUsd) : null;
+
+        var wantlist = db.getActiveWantlist(user.id).filter(function(w) {
+            return coveredIds.indexOf(w.id) === -1;
+        });
+        if (wantlist.length === 0) return res.json({ groups: [], grandTotalUsd: 0, grandShippingUsd: 0, covered: 0, total: 0 });
+
+        var sourceOpts = { buyerCountry: buyerCountry, maxPriceUsd: maxPriceUsd };
+        var storeInventory = {
+            gramaphone: db.getInStockInventory('gramaphone'),
+            further:    db.getInStockInventory('further'),
+            octopus:    db.getInStockInventory('octopus')
+        };
+        var scanResults  = db.getLatestInStockResults(user.id);
+        var storeOptimizer = require('./lib/store-optimizer');
+        var optimizer    = require('./lib/optimizer');
+        var scanSources  = storeOptimizer.buildStoreSources(wantlist, scanResults, sourceOpts);
+        var extListings  = db.getDiscogsListings(user.id);
+        var extSources   = storeOptimizer.buildDiscogsSources(wantlist, extListings, sourceOpts);
+
+        var raw = optimizer.runOptimizer(wantlist, storeInventory, {}, {
+            buyerCountry:    buyerCountry,
+            minCondition:    minCondition,
+            minSellerRating: minSellerRating,
+            maxPriceUsd:     maxPriceUsd
+        }, scanSources.concat(extSources));
+
+        var groups = raw.cart.map(function(c) {
+            return {
+                sourceId:       c.source.sourceId,
+                sourceName:     c.source.sourceName,
+                sourceType:     c.source.sourceType,
+                country:        c.source.country,
+                sellerUsername: c.source.sellerUsername || null,
+                sellerRating:   c.source.sellerRating   || null,
+                shippingCostUsd: c.shippingCostUsd,
+                subtotalUsd:    c.subtotalUsd,
+                totalUsd:       c.totalUsd,
+                items: c.assignedListings.map(function(l) {
+                    return {
+                        wantlistId: l.itemId,
+                        artist:     l.artist     || '',
+                        title:      l.title      || '',
+                        catno:      l.catno      || '',
+                        priceUsd:   l.priceUsd,
+                        condition:  l.condition  || '',
+                        url:        l.url        || '',
+                        shipsFrom:  c.source.country
+                    };
+                })
+            };
+        });
+
+        res.json({
+            groups:          groups,
+            covered:         raw.covered,
+            total:           wantlist.length,
+            grandTotalUsd:   raw.grandTotalUsd,
+            grandShippingUsd: raw.grandShippingUsd,
+            uncoveredItems:  raw.uncoveredItems.map(function(w) { return { artist: w.artist, title: w.title }; })
+        });
+    } catch(e) {
+        console.error('[auto-fill]', e.message);
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // Admin dashboard — HTML page

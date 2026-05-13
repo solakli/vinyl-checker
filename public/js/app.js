@@ -528,11 +528,7 @@ function connectSSE(username, force) {
     render();
     // Load gem scores async — re-renders cards with badges once ready
     fetchGemScores(username);
-    // Show optimizer banner when there are in-stock results
-    var inStockCount = resultsData.filter(function(i) { return i.stores && i.stores.some(function(s) { return s.inStock; }); }).length;
-    if (inStockCount > 0) {
-      document.getElementById('optimizerBanner').style.display = 'flex';
-    }
+    // (optimizer banner removed — cart view is a primary tab now)
     // Check for changes detected by background rescans
     fetchChanges(username);
 
@@ -677,6 +673,9 @@ async function loadExisting(username) {
   if (_optimizerPollTimer) { clearInterval(_optimizerPollTimer); _optimizerPollTimer = null; }
   _lastOptimizerResult = null;
   _activeOptimizerJobId = null;
+  _cartLoaded = false;
+  _cartItems = [];
+  _cartAutoFill = null;
   updateNavCartBadge(null);
 
   // Restore saved optimizer result for this user (persists across page reloads)
@@ -693,13 +692,6 @@ async function loadExisting(username) {
   _discoverCache    = null;
   _sellerIntelData  = null;   // clear seller intel on user switch
   _pinnedSellers    = {};
-  var overlay = document.getElementById('optimizerOverlay');
-  if (overlay) overlay.style.display = 'none';
-  var banner = document.getElementById('optimizerBanner');
-  if (banner) banner.style.display = 'none';
-  var trigger = document.getElementById('optimizeTrigger');
-  if (trigger) trigger.style.display = 'none';
-
   // Check if a scan is still running on the server
   var scanning = await checkScanAndResume(username);
   if (!scanning) await loadResultsForUser(username);
@@ -727,11 +719,6 @@ async function loadResultsForUser(username) {
         updateStats();
         render();
         fetchGemScores(username); // decorate cards with gem badges
-        // Show optimizer banner if any in-stock items exist
-        var inStockCount = resultsData.filter(function(i) { return i.stores && i.stores.some(function(s) { return s.inStock; }); }).length;
-        if (inStockCount > 0) {
-          document.getElementById('optimizerBanner').style.display = 'flex';
-        }
         // Check for changes after loading results
         fetchChanges(username);
       } else if (isOAuthed) {
@@ -2331,6 +2318,10 @@ async function disconnectDiscogs() {
     if (u) localStorage.removeItem('gd-optimizer-' + u);
   } catch(e) {}
   updateNavCartBadge(null);
+  _cartLoaded = false;
+  _cartItems = [];
+  _cartAutoFill = null;
+  updateCartNavBadge(0);
   // Reset UI to welcome
   document.getElementById('userBar').style.display = 'none';
   document.getElementById('connectDiscogsHeader').style.display = 'none';
@@ -2697,6 +2688,10 @@ window.addEventListener('waxdigger:syncstate', function (e) {
 
 // Show the prefs/settings panel inside the overlay (called by rerunOptimizer and fallback).
 function _showOptimizerPrefsPanel(username) {
+  // Optimizer overlay removed — redirect to cart view
+  switchView('cart', null);
+  return;
+  /* eslint-disable no-unreachable */
   document.getElementById('optimizerPrefs').style.display = 'block';
   document.getElementById('optimizerProgress').style.display = 'none';
   document.getElementById('optimizerResults').style.display = 'none';
@@ -2837,79 +2832,11 @@ function _updateSellerSyncBanner(state) {
 }
 
 /**
- * Open optimizer modal.
- * - If a result is already in memory → show it immediately.
- * - Else if the server has a completed result from the last 24 h → restore it.
- * - Else → show the prefs/run form.
+ * Open optimizer — now redirects to the Cart view.
+ * Kept as a stub so existing call sites still work.
  */
 function openOptimizer() {
-  document.getElementById('optimizerOverlay').style.display = 'flex';
-  var username = getCurrentUsername();
-
-  // 1. In-memory cache (same session) — show results immediately
-  if (_lastOptimizerResult) {
-    document.getElementById('optimizerPrefs').style.display = 'none';
-    document.getElementById('optimizerProgress').style.display = 'none';
-    document.getElementById('optimizerResults').style.display = 'block';
-    showOptimizerResults(_lastOptimizerResult);
-    return;
-  }
-
-  // 2. A job is actively running — re-attach to its progress view
-  if (_activeOptimizerJobId) {
-    document.getElementById('optimizerPrefs').style.display = 'none';
-    document.getElementById('optimizerProgress').style.display = 'block';
-    document.getElementById('optimizerResults').style.display = 'none';
-    // Fetch current state and re-attach poll so user sees live progress
-    fetch('api/optimize/job/' + _activeOptimizerJobId)
-      .then(function(r) { return r.json(); })
-      .then(function(job) {
-        if (job.status === 'done') {
-          // Completed while modal was closed — show result
-          _lastOptimizerResult = job.result;
-          _activeOptimizerJobId = null;
-          document.getElementById('optimizerProgress').style.display = 'none';
-          document.getElementById('optimizerResults').style.display = 'block';
-          showOptimizerResults(job.result);
-        } else if (job.status === 'failed') {
-          _activeOptimizerJobId = null;
-          _showOptimizerPrefsPanel(username);
-        } else {
-          // Still pending/processing — re-attach poll
-          _updateOptimizerProgress(job);
-          pollOptimizerJob(_activeOptimizerJobId);
-        }
-      })
-      .catch(function() { _showOptimizerPrefsPanel(username); });
-    return;
-  }
-
-  // 3. Show a brief "Loading…" state while we check the server cache
-  document.getElementById('optimizerPrefs').style.display = 'none';
-  document.getElementById('optimizerProgress').style.display = 'block';
-  document.getElementById('optimizerResults').style.display = 'none';
-  document.getElementById('optProgressFill').style.width = '10%';
-  document.getElementById('optProgressText').textContent = 'Loading last result…';
-
-  if (!username) { _showOptimizerPrefsPanel(username); return; }
-
-  fetch('api/optimize/latest/' + encodeURIComponent(username))
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.found && data.result) {
-        // Restore cached result — no need to re-run
-        _lastOptimizerResult = data.result;
-        document.getElementById('optimizerProgress').style.display = 'none';
-        document.getElementById('optimizerResults').style.display = 'block';
-        showOptimizerResults(data.result);
-      } else {
-        // No recent result — fall through to the prefs form
-        _showOptimizerPrefsPanel(username);
-      }
-    })
-    .catch(function() {
-      _showOptimizerPrefsPanel(username);
-    });
+  switchView('cart', null);
 }
 
 /**
@@ -2917,8 +2844,7 @@ function openOptimizer() {
  * so users can change settings and re-run without the cache check.
  */
 function rerunOptimizer() {
-  document.getElementById('optimizerOverlay').style.display = 'flex';
-  _showOptimizerPrefsPanel(getCurrentUsername());
+  switchView('cart', null);
 }
 
 function checkDiscogsSyncStatus() {
@@ -2940,34 +2866,11 @@ function checkDiscogsSyncStatus() {
     }).catch(function() {});
 }
 
-document.getElementById('optimizerClose').addEventListener('click', function() {
-  document.getElementById('optimizerOverlay').style.display = 'none';
-  _stopOptimizerFlavor();
-});
-
-document.getElementById('optimizerOverlay').addEventListener('click', function(e) {
-  if (e.target === this) { this.style.display = 'none'; _stopOptimizerFlavor(); }
-});
-
-document.getElementById('optPostcode').addEventListener('input', function() {
-  var hint = document.getElementById('postcodeHint');
-  var pc = this.value.trim();
-  if (!pc) { hint.textContent = ''; return; }
-  // Simple postcode-to-country detection for hint display only
-  if (/^\d{5}(-\d{4})?$/.test(pc)) hint.textContent = 'US';
-  else if (/^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i.test(pc)) hint.textContent = 'UK';
-  else if (/^[A-Z]\d[A-Z]\d[A-Z]\d$/i.test(pc)) hint.textContent = 'Canada';
-  else if (/^[2-9]\d{3}$/.test(pc)) hint.textContent = 'Australia';
-  else if (/^\d{4}[A-Z]{2}$/i.test(pc)) hint.textContent = 'Netherlands';
-  else if (/^\d{3}-?\d{4}$/.test(pc)) hint.textContent = 'Japan';
-  else if (/^\d{5}$/.test(pc)) hint.textContent = 'DE / FR / IT / ES';
-  else hint.textContent = '';
-});
+// (optimizerClose and optimizerOverlay event listeners removed with panel)
 
 function showOptimizerPrefs() {
-  document.getElementById('optimizerPrefs').style.display = 'block';
-  document.getElementById('optimizerProgress').style.display = 'none';
-  document.getElementById('optimizerResults').style.display = 'none';
+  // Optimizer panel removed — redirect to cart view
+  switchView('cart', null);
 }
 
 function getCurrentUsername() {
@@ -3063,116 +2966,16 @@ function _stopOptimizerFlavor(finalMsg) {
 }
 
 function runOptimizer() {
-  var username = getCurrentUsername();
-  if (!username) { alert('No username found. Please scan your wantlist first.'); return; }
-
-  var postcode  = document.getElementById('optPostcode').value.trim();
-  var condition = document.getElementById('optCondition').value;
-  var rating    = document.getElementById('optRating').value;
-  var maxPrice  = document.getElementById('optMaxPrice').value.trim();
-
-  // Switch to progress view
-  document.getElementById('optimizerPrefs').style.display = 'none';
-  document.getElementById('optimizerProgress').style.display = 'block';
-  document.getElementById('optimizerResults').style.display = 'none';
-  document.getElementById('optProgressFill').style.width = '2%';
-  document.getElementById('optProgressFlavor').textContent = 'Getting in line…';
-  document.getElementById('optProgressText').textContent = '';
-  document.getElementById('optimizeRunBtn').disabled = true;
-  _startOptimizerFlavor('pending');
-
-  var body = { postcode: postcode, minCondition: condition, minSellerRating: parseFloat(rating) };
-  if (maxPrice) body.maxPriceUsd = parseFloat(maxPrice);
-  // Include pinned sellers from Seller Intelligence tab (if any)
-  var pinned = _siPinnedForOptimizer && _siPinnedForOptimizer.length
-    ? _siPinnedForOptimizer
-    : Object.keys(_pinnedSellers);
-  if (pinned.length) body.pinnedSellers = pinned;
-
-  // Submit job
-  fetch('api/optimize/' + encodeURIComponent(username), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  })
-  .then(function(r) { return r.json(); })
-  .then(function(data) {
-    if (data.error) throw new Error(data.error);
-    _activeOptimizerJobId = data.jobId;
-    pollOptimizerJob(data.jobId);
-  })
-  .catch(function(e) {
-    _activeOptimizerJobId = null;
-    document.getElementById('optimizeRunBtn').disabled = false;
-    document.getElementById('optProgressText').textContent = '⚠ ' + e.message;
-  });
+  // Legacy optimizer replaced by cart view auto-fill
+  switchView('cart', null);
 }
 
 function pollOptimizerJob(jobId) {
-  if (_optimizerPollTimer) clearInterval(_optimizerPollTimer);
-
-  _optimizerPollTimer = setInterval(function() {
-    fetch('api/optimize/job/' + jobId)
-    .then(function(r) { return r.json(); })
-    .then(function(job) {
-      _updateOptimizerProgress(job);
-
-      if (job.status === 'done') {
-        clearInterval(_optimizerPollTimer);
-        _optimizerPollTimer = null;
-        _activeOptimizerJobId = null;
-        _stopOptimizerFlavor('Your cart is ready ⛏');
-        document.getElementById('optimizeRunBtn').disabled = false;
-        document.getElementById('optProgressFill').style.width = '100%';
-        document.getElementById('optProgressText').textContent = '';
-        setTimeout(function() { showOptimizerResults(job.result); }, 400);
-        _notifyOptimizerDone();
-      } else if (job.status === 'failed') {
-        clearInterval(_optimizerPollTimer);
-        _optimizerPollTimer = null;
-        _activeOptimizerJobId = null;
-        _stopOptimizerFlavor('Something went wrong');
-        document.getElementById('optimizeRunBtn').disabled = false;
-        document.getElementById('optProgressText').textContent = '⚠ ' + (job.error || 'Optimization failed');
-      }
-    })
-    .catch(function() {});
-  }, 2500);
+  // Legacy optimizer removed — no-op
 }
 
 function _updateOptimizerProgress(job) {
-  var fill = document.getElementById('optProgressFill');
-  var text = document.getElementById('optProgressText');
-
-  if (job.status === 'pending') {
-    var pos = job.queuePosition || 0;
-    text.textContent = pos > 0 ? 'Position ' + (pos + 1) + ' in queue' : '';
-    fill.style.width = '2%';
-    _startOptimizerFlavor('pending');
-
-  } else if (job.status === 'processing') {
-    var p = job.progress || {};
-
-    // Stats line (small, below bar) = server message with real numbers
-    text.textContent = p.message || '';
-
-    // Flavor phase — switch to right pool when phase changes
-    if (p.phase && p.phase !== _optimizerFlavorPhase) {
-      _startOptimizerFlavor(p.phase);
-    }
-
-    // Progress bar
-    if (p.phase === 'discogs' && p.total > 0) {
-      var pct = Math.min(95, 10 + Math.round(((p.done || 0) / p.total) * 80));
-      fill.style.width = pct + '%';
-    } else if (p.phase === 'optimize') {
-      fill.style.width = '97%';
-    } else if (p.phase === 'stores') {
-      fill.style.width = '8%';
-    } else if (p.phase === 'wantlist') {
-      fill.style.width = '4%';
-    }
-  }
+  // Legacy optimizer removed — no-op
 }
 
 function _notifyOptimizerDone() {
@@ -3210,81 +3013,24 @@ function updateNavCartBadge(result) {
 }
 
 function viewFullCart() {
-  if (!_lastOptimizerResult) { openOptimizer(); return; }
-  // Open modal, skip prefs, jump straight to results
-  document.getElementById('optimizerOverlay').style.display = 'flex';
-  document.getElementById('optimizerPrefs').style.display = 'none';
-  document.getElementById('optimizerProgress').style.display = 'none';
-  document.getElementById('optimizerResults').style.display = 'block';
-  showOptimizerResults(_lastOptimizerResult);
+  switchView('cart', null);
 }
 
 function updateSidebarOptimizer(result) {
   _lastOptimizerResult = result;
-  // Persist across page reloads — keyed per user so switching users clears it
-  try {
-    var u = getCurrentUsername();
-    if (u) localStorage.setItem('gd-optimizer-' + u, JSON.stringify(result));
-  } catch(e) {}
+  // Optimizer sidebar removed — no-op
+  if (!result) return;
 
-  updateNavCartBadge(result);
-
-  var empty = document.getElementById('sidebarEmpty');
-  var sidebarRes = document.getElementById('sidebarResults');
-  if (!sidebarRes) return;
-
-  if (empty) empty.style.display = 'none';
-  sidebarRes.style.display = 'block';
-
-  // ALL sellers sorted by record count
-  var allEntries = (result.cart || []).slice()
-    .sort(function(a, b) { return b.items.length - a.items.length || b.totalUsd - a.totalUsd; });
-
-  var totalItems = (result.cart || []).reduce(function(s, e) { return s + e.items.length; }, 0);
-  var covPct = result.total > 0 ? Math.round((result.covered / result.total) * 100) : 0;
-
-  var sellerRowsHtml = allEntries.map(function(entry) {
-    var logoFile = storeLogoMap[entry.sourceName] || '';
-    var logoInner = logoFile
-      ? '<img src="img/' + logoFile + '" alt="">'
-      : entry.sourceName.charAt(0).toUpperCase();
-    var isDiscogs = entry.sourceType !== 'store';
-    var sellerLink = isDiscogs
-      ? 'https://www.discogs.com/seller/' + encodeURIComponent(entry.sourceName) + '/profile'
-      : (entry.items[0] && entry.items[0].url ? entry.items[0].url : '#');
-    return '<a class="sidebar-seller" href="' + sellerLink + '" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="' + (isDiscogs ? 'View on Discogs' : 'Visit store') + '">' +
-      '<div class="sidebar-seller-logo">' + logoInner + '</div>' +
-      '<div class="sidebar-seller-info">' +
-        '<div class="sidebar-seller-name">' + escapeHtml(entry.sourceName) + (isDiscogs ? ' <span class="sidebar-seller-source">Discogs</span>' : '') + '</div>' +
-        '<div class="sidebar-seller-items">' + entry.items.length + ' record' + (entry.items.length !== 1 ? 's' : '') +
-          (entry.shippingCostUsd === 0 ? ' · <span class="sidebar-free-ship">free ship</span>' : ' · +$' + entry.shippingCostUsd.toFixed(0) + ' ship') +
-        '</div>' +
-      '</div>' +
-      '<div class="sidebar-seller-price">$' + entry.totalUsd.toFixed(2) + '</div>' +
-    '</a>';
-  }).join('');
-
-  sidebarRes.innerHTML =
-    '<div class="sidebar-opt-sub">' + result.covered + '/' + result.total + ' records covered · ' + covPct + '%</div>' +
-    '<div class="sidebar-opt-stats">' +
-      '<div class="sidebar-stat-row"><span>Records</span><span>$' + result.grandRecordsUsd.toFixed(2) + '</span></div>' +
-      '<div class="sidebar-stat-row"><span>Est. Shipping</span><span>$' + result.grandShippingUsd.toFixed(2) + '</span></div>' +
-      '<div class="sidebar-stat-row total"><span>Total Cost</span><span>$' + result.grandTotalUsd.toFixed(2) + '</span></div>' +
-    '</div>' +
-    '<div class="sidebar-sellers-scroll">' + sellerRowsHtml + '</div>' +
-    '<button class="btn-checkout" onclick="viewFullCart()">⛏ VIEW FULL CART</button>' +
-    '<button class="btn-rerun-optimizer" onclick="rerunOptimizer()">↺ Optimise again</button>';
 }
 
 function showOptimizerResults(result) {
-  document.getElementById('optimizerProgress').style.display = 'none';
-  document.getElementById('optimizerResults').style.display = 'block';
-
-  // Also populate sidebar
+  // Legacy optimizer panel removed — redirect to cart view
   updateSidebarOptimizer(result);
-
-  // ── Summary stats ─────────────────────────────────────────────
+  switchView('cart', null);
+  return;
+  /* eslint-disable no-unreachable */
   var summaryEl = document.getElementById('optSummary');
+  if (!summaryEl) return;
   summaryEl.innerHTML = [
     statBlock('$' + result.grandTotalUsd.toFixed(2), 'Total Cost'),
     statBlock('$' + result.grandRecordsUsd.toFixed(2), 'Records'),
@@ -3464,6 +3210,7 @@ function switchView(view, linkEl, opts) {
   document.getElementById('view-discover').style.display   = view === 'discover'   ? 'block' : 'none';
   document.getElementById('view-profile').style.display    = view === 'profile'    ? 'block' : 'none';
   document.getElementById('view-mix').style.display        = view === 'mix'        ? 'block' : 'none';
+  document.getElementById('view-cart').style.display       = view === 'cart'       ? 'block' : 'none';
   document.getElementById('headerControls').style.display  = isWantlist ? '' : 'none';
   document.querySelector('.app-layout').style.display      = isWantlist ? '' : 'none';
 
@@ -3482,6 +3229,7 @@ function switchView(view, linkEl, opts) {
     if (view === 'collection') loadCollection(false);
     if (view === 'discover')   loadDiscover();
     if (view === 'profile')    loadProfile();
+    if (view === 'cart')       loadCartView();
   }
 }
 
@@ -4128,6 +3876,10 @@ var _discoverSort        = 'items';
 var _discoverGenreFilter = null;
 var _activeDiscoverStore = null;
 var _discoverCartSet     = {};
+var _cartItems           = [];   // full cart item objects from /api/cart
+var _cartAutoFill        = null; // auto-fill suggestions
+var _cartPrefs           = { countryCode: 'US', minCondition: 'VG+', minSellerRating: 98 };
+var _cartLoaded          = false;
 var _forYouFilter        = 'all';      // 'all' | 'artist' | 'style'
 var _forYouStoreFilter   = 'all';      // 'all' | storeName
 var _inStockVendor       = 'all';      // 'all' | storeName | 'discogs'
@@ -4709,6 +4461,13 @@ function renderDiscogsSection() {
           var listingsLabel = item.numListings > 1 ? item.numListings + ' listings' : '1 listing';
 
           var linkAttr = item.listingUrl ? ' onclick="window.open(\'' + escapeAttr(item.listingUrl) + '\',\'_blank\')"' : '';
+          var dgCartKey = String(item.wantlistId) + ':' + (item.seller || '');
+          var dgInCart  = !!_discoverCartSet[dgCartKey];
+          var dgCartClick = 'event.stopPropagation();addToCartFull(' + item.wantlistId + ',\'' + escapeAttr(item.seller || '') + '\',\'' +
+            escapeAttr(item.cheapestStr || '') + '\',' + (item.cheapestUsd || 0) + ',' +
+            '{condition:\'' + escapeAttr(item.condition || '') + '\',shipsFrom:\'' + escapeAttr(item.shipsFrom || '') + '\',' +
+            'listingUrl:\'' + escapeAttr(item.listingUrl || '') + '\',sourceType:\'discogs\',sellerUsername:\'' + escapeAttr(item.seller || '') + '\',' +
+            'sellerRating:' + (item.sellerRating != null ? item.sellerRating : 'null') + '})';
 
           return '<div class="disc-dg-card"' + linkAttr + '>' +
             '<div class="disc-dg-art-wrap">' + artHtml + '</div>' +
@@ -4722,6 +4481,11 @@ function renderDiscogsSection() {
                 sellerHtml + shipsHtml +
                 '<span class="disc-dg-count">' + listingsLabel + '</span>' +
               '</div>' +
+              '<button class="disc-dg-cart-btn' + (dgInCart ? ' in-cart' : '') + '" ' +
+                'data-key="' + escapeAttr(dgCartKey) + '" ' +
+                'onclick="' + dgCartClick + '">' +
+                (dgInCart ? '✓' : '+') +
+              '</button>' +
             '</div>' +
           '</div>';
         }).join('') +
@@ -4786,6 +4550,7 @@ function renderDiscogsBySeller(items) {
           '<span class="disc-seller-name">' + escapeHtml(seller.username) + '</span>' +
           ratingHtml + shipsHtml + countHtml +
           '<span class="disc-seller-total-wrap">' + totalHtml + '<span class="disc-seller-arrow">→</span></span>' +
+          '<button class="disc-seller-add-btn" onclick="event.stopPropagation();addAllFromDiscogsSellerByName(\'' + escapeAttr(seller.username) + '\')">+ Add all</button>' +
         '</div>' +
         (thumbsHtml ? '<div class="disc-seller-thumbs">' + thumbsHtml + '</div>' : '') +
       '</div>';
@@ -4975,9 +4740,366 @@ function updateCartBadge(count) {
   }
 }
 
+function updateCartNavBadge(count) {
+  var badge = document.getElementById('cartNavBadge');
+  if (!badge) return;
+  if (count > 0) { badge.textContent = count; badge.style.display = 'inline-flex'; }
+  else badge.style.display = 'none';
+}
+
 // Helper: escape for use in HTML attribute onclick= strings
 function escapeAttr(s) {
   return String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CART VIEW
+// ═══════════════════════════════════════════════════════════════
+
+function loadCartView(force) {
+  var username = getCurrentUsername();
+  if (!username) return;
+  var el = document.getElementById('cartBody');
+  if (!el) return;
+  if (_cartLoaded && !force) { renderCartView(); return; }
+  el.innerHTML = '<div class="cart-loading">Loading cart…</div>';
+  fetch('api/cart/' + encodeURIComponent(username))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      _cartItems = data.cart || [];
+      _cartLoaded = true;
+      // Rebuild _discoverCartSet from loaded items
+      _discoverCartSet = {};
+      _cartItems.forEach(function(c) { _discoverCartSet[String(c.wantlist_id) + ':' + c.store] = true; });
+      updateCartBadge(_cartItems.length);
+      updateCartNavBadge(_cartItems.length);
+      renderCartView();
+    }).catch(function() {
+      if (el) el.innerHTML = '<div class="cart-empty">Could not load cart.</div>';
+    });
+}
+
+function renderCartView() {
+  var el = document.getElementById('cartBody');
+  if (!el) return;
+  var username = getCurrentUsername();
+  if (!username) { el.innerHTML = '<div class="cart-empty">Enter your Discogs username to start.</div>'; return; }
+
+  if (_cartItems.length === 0 && !_cartAutoFill) {
+    el.innerHTML =
+      '<div class="cart-empty-state">' +
+        '<div class="cart-empty-icon">🛒</div>' +
+        '<div class="cart-empty-title">Your cart is empty</div>' +
+        '<div class="cart-empty-hint">Browse <a href="#" onclick="switchView(\'discover\',null);switchDiscoverTab(\'inStock\');return false;">Discover → In Stock</a> to add records, or auto-fill from your wantlist.</div>' +
+        '<button class="cart-autofill-btn" onclick="autoFillCart()">⚡ Auto-fill from wantlist</button>' +
+      '</div>';
+    return;
+  }
+
+  // Group items by store
+  var groups = {};
+  _cartItems.forEach(function(item) {
+    var key = item.store;
+    if (!groups[key]) groups[key] = { store: item.store, sourceType: item.source_type || 'store', country: item.ships_from || '', sellerRating: item.seller_rating, sellerUsername: item.seller_username, items: [] };
+    groups[key].items.push(item);
+  });
+
+  var SHIP_RATES = { 'DE': 15, 'GB': 12, 'US': 5, 'JP': 20, 'NL': 14, 'FR': 14, 'IT': 16, 'AU': 25 };
+  var buyerCountry = _cartPrefs.countryCode || 'US';
+
+  var grandTotal = 0;
+  var grandShipping = 0;
+  var grandRecords = 0;
+
+  var groupsHtml = Object.keys(groups).map(function(key) {
+    var g = groups[key];
+    var subtotal = g.items.reduce(function(n, i) { return n + (i.price_usd || 0); }, 0);
+    var fromCountry = g.country || '';
+    var shipEst = fromCountry === buyerCountry ? 0 : (SHIP_RATES[fromCountry] || (g.sourceType === 'discogs' ? 15 : 12));
+    var total = subtotal + shipEst;
+    grandTotal    += total;
+    grandShipping += shipEst;
+    grandRecords  += subtotal;
+
+    var isDiscogs = g.sourceType === 'discogs';
+    var sourceIcon = isDiscogs ? '💿' : '🏪';
+    var ratingHtml = g.sellerRating ? '<span class="cg-rating">★' + parseFloat(g.sellerRating).toFixed(1) + '%</span>' : '';
+    var countryHtml = fromCountry ? '<span class="cg-country">📦 ' + fromCountry + '</span>' : '';
+
+    var itemsHtml = g.items.map(function(item) {
+      var condHtml = item.condition ? '<span class="cg-item-cond">' + escapeHtml(item.condition.split(' ')[0]) + '</span>' : '';
+      var priceHtml = item.price_usd ? '<span class="cg-item-price">$' + item.price_usd.toFixed(2) + '</span>' : (item.price ? '<span class="cg-item-price">' + escapeHtml(item.price) + '</span>' : '');
+      var linkHtml = item.listing_url ? '<a class="cg-item-link" href="' + escapeHtml(item.listing_url) + '" target="_blank" rel="noopener">↗</a>' : '';
+      var thumbHtml = item.thumb ? '<img class="cg-item-thumb" src="' + escapeHtml(item.thumb) + '" loading="lazy" alt="" onerror="this.style.display=\'none\'">' : '<div class="cg-item-thumb-ph">♪</div>';
+      return '<div class="cg-item-row">' +
+        thumbHtml +
+        '<div class="cg-item-info">' +
+          '<span class="cg-item-artist">' + escapeHtml(item.artist || '') + '</span>' +
+          '<span class="cg-item-title">'  + escapeHtml(item.title  || '') + '</span>' +
+        '</div>' +
+        '<div class="cg-item-right">' + condHtml + priceHtml + linkHtml +
+          '<button class="cg-remove-btn" onclick="removeCartItem(' + item.wantlist_id + ',\'' + escapeAttr(item.store) + '\')">×</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    var storeLabel = isDiscogs ? (g.sellerUsername || g.store) : g.store;
+
+    return '<div class="cart-group">' +
+      '<div class="cg-header">' +
+        '<span class="cg-icon">' + sourceIcon + '</span>' +
+        '<span class="cg-name">' + escapeHtml(storeLabel) + '</span>' +
+        '<span class="cg-count">' + g.items.length + ' record' + (g.items.length !== 1 ? 's' : '') + '</span>' +
+        ratingHtml + countryHtml +
+      '</div>' +
+      '<div class="cg-items">' + itemsHtml + '</div>' +
+      '<div class="cg-footer">' +
+        '<span class="cg-records-cost">Records: $' + subtotal.toFixed(2) + '</span>' +
+        '<span class="cg-ship-cost">+ Ship: ~$' + shipEst.toFixed(0) + '</span>' +
+        '<span class="cg-group-total">= $' + total.toFixed(2) + '</span>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  // Prefs bar
+  var prefsHtml =
+    '<div class="cart-prefs-bar">' +
+      '<label>Ship to: <select class="cart-pref-select" onchange="setCartPref(\'countryCode\',this.value)">' +
+        ['US','GB','DE','FR','NL','JP','AU','CA'].map(function(c) {
+          return '<option value="' + c + '"' + (c === _cartPrefs.countryCode ? ' selected' : '') + '>' + c + '</option>';
+        }).join('') +
+      '</select></label>' +
+      '<label>Min condition: <select class="cart-pref-select" onchange="setCartPref(\'minCondition\',this.value)">' +
+        ['VG','VG+','NM or M-'].map(function(c) {
+          return '<option value="' + c + '"' + (c === _cartPrefs.minCondition ? ' selected' : '') + '>' + c + '</option>';
+        }).join('') +
+      '</select></label>' +
+      '<label>Min rating: <select class="cart-pref-select" onchange="setCartPref(\'minSellerRating\',parseFloat(this.value))">' +
+        [['95','95%+'],['98','98%+'],['99','99%+'],['0','Any']].map(function(p) {
+          return '<option value="' + p[0] + '"' + (String(_cartPrefs.minSellerRating) === p[0] ? ' selected' : '') + '>' + p[1] + '</option>';
+        }).join('') +
+      '</select></label>' +
+    '</div>';
+
+  // Auto-fill suggestions
+  var autoFillHtml = '';
+  if (_cartAutoFill && _cartAutoFill.groups && _cartAutoFill.groups.length > 0) {
+    autoFillHtml =
+      '<div class="cart-autofill-results">' +
+        '<div class="caf-header">⚡ Auto-fill suggestions — ' + _cartAutoFill.covered + ' of ' + _cartAutoFill.total + ' uncovered items found</div>' +
+        _cartAutoFill.groups.map(function(g, idx) {
+          return '<div class="caf-group">' +
+            '<div class="caf-group-header">' +
+              '<span class="caf-name">' + escapeHtml(g.sourceName) + '</span>' +
+              '<span class="caf-count">' + g.items.length + ' records</span>' +
+              '<span class="caf-ship">~$' + (g.shippingCostUsd || 0).toFixed(0) + ' ship</span>' +
+              '<span class="caf-total">$' + (g.totalUsd || 0).toFixed(2) + ' total</span>' +
+            '</div>' +
+            '<div class="caf-items">' +
+              g.items.slice(0, 5).map(function(item) {
+                return '<div class="caf-item">' +
+                  '<span class="caf-item-artist">' + escapeHtml(item.artist) + '</span>' +
+                  '<span class="caf-item-title">' + escapeHtml(item.title) + '</span>' +
+                  (item.condition ? '<span class="caf-item-cond">' + escapeHtml(item.condition.split(' ')[0]) + '</span>' : '') +
+                  (item.priceUsd ? '<span class="caf-item-price">$' + item.priceUsd.toFixed(2) + '</span>' : '') +
+                '</div>';
+              }).join('') +
+              (g.items.length > 5 ? '<div class="caf-more">+' + (g.items.length - 5) + ' more</div>' : '') +
+            '</div>' +
+            '<button class="caf-add-btn" onclick="addAutoFillGroupByIndex(' + idx + ')">+ Add all from ' + escapeHtml(g.sourceName) + '</button>' +
+          '</div>';
+        }).join('') +
+      '</div>';
+  }
+
+  var uncovered = 0;
+  if (_cartAutoFill && _cartAutoFill.total) {
+    uncovered = _cartAutoFill.total - _cartItems.length;
+  }
+
+  el.innerHTML =
+    '<div class="cart-header">' +
+      '<h2 class="cart-title">Cart <span class="cart-item-count">' + _cartItems.length + ' items</span></h2>' +
+      '<div class="cart-grand-total">~$' + grandTotal.toFixed(2) + ' total</div>' +
+    '</div>' +
+    prefsHtml +
+    groupsHtml +
+    '<div class="cart-summary-bar">' +
+      '<span class="csb-records">Records: $' + grandRecords.toFixed(2) + '</span>' +
+      '<span class="csb-ship">Shipping: ~$' + grandShipping.toFixed(2) + '</span>' +
+      '<span class="csb-total">Total: $' + grandTotal.toFixed(2) + '</span>' +
+    '</div>' +
+    '<div class="cart-autofill-section">' +
+      '<button class="cart-autofill-btn" id="cartAutoFillBtn" onclick="autoFillCart()">⚡ Auto-fill remaining</button>' +
+    '</div>' +
+    autoFillHtml +
+    '<div class="cart-actions-bar">' +
+      '<button class="cart-clear-btn" onclick="clearFullCart()">Clear cart</button>' +
+    '</div>';
+}
+
+function setCartPref(key, val) {
+  _cartPrefs[key] = val;
+  renderCartView();
+}
+
+function removeCartItem(wantlistId, store) {
+  var username = getCurrentUsername();
+  if (!username) return;
+  fetch('api/cart/' + encodeURIComponent(username) + '/item/' + wantlistId, { method: 'DELETE' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      _cartItems = _cartItems.filter(function(i) { return i.wantlist_id !== wantlistId; });
+      var cartKey = String(wantlistId) + ':' + store;
+      delete _discoverCartSet[cartKey];
+      updateCartBadge(data.count || 0);
+      updateCartNavBadge(data.count || 0);
+      renderCartView();
+    });
+}
+
+function clearFullCart() {
+  var username = getCurrentUsername();
+  if (!username) return;
+  if (!confirm('Clear your entire cart?')) return;
+  fetch('api/cart/' + encodeURIComponent(username), { method: 'DELETE' })
+    .then(function(r) { return r.json(); })
+    .then(function() {
+      _cartItems = [];
+      _cartAutoFill = null;
+      _discoverCartSet = {};
+      updateCartBadge(0);
+      updateCartNavBadge(0);
+      renderCartView();
+      renderDiscover();
+    });
+}
+
+function autoFillCart() {
+  var username = getCurrentUsername();
+  if (!username) return;
+  var btn = document.getElementById('cartAutoFillBtn');
+  if (btn) { btn.textContent = '⚡ Finding best sellers…'; btn.disabled = true; }
+
+  var coveredIds = _cartItems.map(function(i) { return i.wantlist_id; });
+  fetch('api/auto-fill/' + encodeURIComponent(username), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      coveredIds:      coveredIds,
+      countryCode:     _cartPrefs.countryCode,
+      minCondition:    _cartPrefs.minCondition,
+      minSellerRating: _cartPrefs.minSellerRating
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    _cartAutoFill = data;
+    renderCartView();
+  })
+  .catch(function() {
+    if (btn) { btn.textContent = '⚡ Auto-fill remaining'; btn.disabled = false; }
+  });
+}
+
+function addAutoFillGroupByIndex(idx) {
+  if (!_cartAutoFill || !_cartAutoFill.groups[idx]) return;
+  var g = _cartAutoFill.groups[idx];
+  var username = getCurrentUsername();
+  if (!username) return;
+
+  var promises = g.items.map(function(item) {
+    return fetch('api/cart/' + encodeURIComponent(username), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        wantlistId:     item.wantlistId,
+        store:          g.sourceName,
+        priceUsd:       item.priceUsd,
+        price:          item.priceUsd ? '$' + item.priceUsd.toFixed(2) : '',
+        condition:      item.condition || '',
+        shipsFrom:      item.shipsFrom || g.country || '',
+        listingUrl:     item.url       || '',
+        sourceType:     g.sourceType   || 'store'
+      })
+    }).then(function(r) { return r.json(); });
+  });
+
+  Promise.all(promises).then(function() {
+    _cartAutoFill.groups = _cartAutoFill.groups.filter(function(grp, i) { return i !== idx; });
+    _cartLoaded = false;
+    loadCartView(true);
+  });
+}
+
+function addToCartFull(wantlistId, store, priceStr, priceUsd, opts) {
+  var username = getCurrentUsername();
+  if (!username) return;
+  opts = opts || {};
+  fetch('api/cart/' + encodeURIComponent(username), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      wantlistId:     wantlistId,
+      store:          store,
+      price:          priceStr,
+      priceUsd:       priceUsd,
+      condition:      opts.condition      || '',
+      shipsFrom:      opts.shipsFrom      || '',
+      listingUrl:     opts.listingUrl     || '',
+      sourceType:     opts.sourceType     || 'store',
+      sellerUsername: opts.sellerUsername || null,
+      sellerRating:   opts.sellerRating   || null
+    })
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    var cartKey = String(wantlistId) + ':' + store;
+    _discoverCartSet[cartKey] = true;
+    _cartLoaded = false; // force reload next visit to cart
+    updateCartBadge(data.count || 0);
+    updateCartNavBadge(data.count || 0);
+    updateCartButtons(cartKey, true);
+  });
+}
+
+function addAllFromDiscogsSeller(username, releases) {
+  var appUser = getCurrentUsername();
+  if (!appUser) return;
+  var promises = releases.map(function(item) {
+    return fetch('api/cart/' + encodeURIComponent(appUser), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        wantlistId:     item.wantlistId,
+        store:          username,
+        price:          item.cheapestStr || '',
+        priceUsd:       item.cheapestUsd || null,
+        condition:      item.condition   || '',
+        shipsFrom:      item.shipsFrom   || '',
+        listingUrl:     item.listingUrl  || '',
+        sourceType:     'discogs',
+        sellerUsername: username,
+        sellerRating:   item.sellerRating || null
+      })
+    }).then(function(r) { return r.json(); });
+  });
+  Promise.all(promises).then(function(results) {
+    var lastCount = results.length > 0 ? (results[results.length-1].count || 0) : 0;
+    releases.forEach(function(item) {
+      var cartKey = String(item.wantlistId) + ':' + username;
+      _discoverCartSet[cartKey] = true;
+    });
+    _cartLoaded = false;
+    updateCartBadge(lastCount);
+    updateCartNavBadge(lastCount);
+    setDiscogsView(_discogsView);
+  });
+}
+
+function addAllFromDiscogsSellerByName(username) {
+  if (!_discoverData || !_discoverData.discogsListings) return;
+  var releases = _discoverData.discogsListings.filter(function(i) { return i.seller === username; });
+  if (!releases.length) return;
+  addAllFromDiscogsSeller(username, releases);
 }
 
 
@@ -5088,26 +5210,12 @@ function clearAllPins() {
 }
 
 function runOptimizerWithPinned() {
-  var pinned = Object.keys(_pinnedSellers);
-  if (!pinned.length) { openOptimizer(); return; }
-  // Store pinned in state so the optimizer sends it
-  _siPinnedForOptimizer = pinned;
-  // Navigate to the wantlist tab and open optimizer
-  switchView('wantlist');
-  setTimeout(function() {
-    openOptimizerWithPinned(pinned);
-  }, 300);
+  // Now routes to cart view instead of optimizer modal
+  switchView('cart', null);
 }
 
 function openOptimizerWithPinned(pinned) {
-  openOptimizer();
-  // Show pinned sellers in the optimizer prefs panel
-  setTimeout(function() {
-    var pinnedHint = document.getElementById('optPinnedHint');
-    if (!pinnedHint) return;
-    pinnedHint.style.display = 'block';
-    pinnedHint.textContent = '📌 Pinned: ' + pinned.join(', ');
-  }, 100);
+  switchView('cart', null);
 }
 
 var _siPinnedForOptimizer = [];
