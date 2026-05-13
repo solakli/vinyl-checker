@@ -9988,7 +9988,14 @@ body.light .opt-pinned-hint { background: rgba(200,160,0,0.06); border-color: rg
 .cg-name { font-family:'Oswald',sans-serif; font-size:1.05rem; font-weight:500; color:var(--text); }
 .cg-count { font-size:12px; color:var(--text-muted); background:rgba(255,255,255,0.07); padding:2px 8px; border-radius:20px; }
 .cg-rating { font-size:12px; color:#4caf87; }
+.cg-num-ratings { color:var(--text-muted); font-weight:400; }
+.cg-cond-breakdown { font-size:11px; color:var(--text-muted); background:rgba(255,255,255,0.06); padding:2px 7px; border-radius:10px; }
 .cg-country { font-size:12px; color:var(--text-muted); }
+.cg-genre-tags { display:flex; flex-wrap:wrap; gap:4px; }
+.cg-genre-tag { font-size:10px; padding:2px 7px; border-radius:10px; background:rgba(201,168,76,0.12); color:var(--gold); }
+/* Warning state — item or group below pref threshold */
+.cg-warn { color:#e8a838 !important; }
+.cg-item-warn { background:rgba(232,168,56,0.04); }
 
 /* Cart item rows */
 .cg-items { border-top:1px solid var(--border); }
@@ -10033,8 +10040,12 @@ body.light .opt-pinned-hint { background: rgba(200,160,0,0.06); border-color: rg
 .caf-group-header { display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
 .caf-name { font-weight:600; font-family:'Oswald',sans-serif; color:var(--text); }
 .caf-count { font-size:12px; color:var(--text-muted); }
+.caf-rating { font-size:11px; color:#4caf87; }
+.caf-num-ratings { color:var(--text-muted); font-weight:400; }
+.caf-country { font-size:11px; color:var(--text-muted); }
 .caf-ship { font-size:12px; color:var(--text-muted); }
 .caf-total { font-weight:600; color:var(--text); margin-left:auto; }
+.cart-prefs-note { font-size:11px; color:var(--text-muted); margin-left:auto; font-style:italic; }
 .caf-item { display:flex; gap:8px; font-size:12px; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.04); }
 .caf-item-artist { color:var(--text-muted); }
 .caf-item-title { color:var(--text); font-weight:500; flex:1; }

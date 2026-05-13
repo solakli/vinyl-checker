@@ -367,6 +367,7 @@ function initTables() {
     try { db.exec('ALTER TABLE cart ADD COLUMN source_type TEXT DEFAULT \'store\''); } catch(e) {}
     try { db.exec('ALTER TABLE cart ADD COLUMN seller_username TEXT'); } catch(e) {}
     try { db.exec('ALTER TABLE cart ADD COLUMN seller_rating REAL'); } catch(e) {}
+    try { db.exec('ALTER TABLE cart ADD COLUMN seller_num_ratings INTEGER'); } catch(e) {}
 
     // Collection table — mirrors user's Discogs collection (records they own)
     db.exec(`
@@ -2154,8 +2155,10 @@ function getDiscoverData(userId) {
 function getCartItems(userId) {
     return getDb().prepare(`
         SELECT c.id, c.wantlist_id, c.store, c.price, c.price_usd, c.added_at,
-               c.condition, c.ships_from, c.listing_url, c.source_type, c.seller_username, c.seller_rating,
-               w.artist, w.title, w.year, w.thumb, w.discogs_id, w.catno, w.label
+               c.condition, c.ships_from, c.listing_url, c.source_type,
+               c.seller_username, c.seller_rating, c.seller_num_ratings,
+               w.artist, w.title, w.year, w.thumb, w.discogs_id, w.catno, w.label,
+               w.genres, w.styles
         FROM cart c
         JOIN wantlist w ON w.id = c.wantlist_id
         WHERE c.user_id = ?
@@ -2169,11 +2172,12 @@ function addToCart(userId, wantlistId, store, price, priceUsd, opts) {
         // First remove any existing entry for this wantlist item (one source per item)
         getDb().prepare('DELETE FROM cart WHERE user_id = ? AND wantlist_id = ?').run(userId, wantlistId);
         return getDb().prepare(`
-            INSERT INTO cart (user_id, wantlist_id, store, price, price_usd, condition, ships_from, listing_url, source_type, seller_username, seller_rating, added_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            INSERT INTO cart (user_id, wantlist_id, store, price, price_usd, condition, ships_from, listing_url, source_type, seller_username, seller_rating, seller_num_ratings, added_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
         `).run(userId, wantlistId, store, price || null, priceUsd || null,
                opts.condition || null, opts.shipsFrom || null, opts.listingUrl || null,
-               opts.sourceType || 'store', opts.sellerUsername || null, opts.sellerRating || null);
+               opts.sourceType || 'store', opts.sellerUsername || null, opts.sellerRating || null,
+               opts.sellerNumRatings || null);
     } catch(e) { return null; }
 }
 

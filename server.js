@@ -3670,12 +3670,13 @@ app.post('/api/cart/:username', function(req, res) {
         var store = req.body.store;
         if (!wid || !store) return res.status(400).json({ error: 'wantlistId and store required' });
         var opts = {
-            condition:      req.body.condition      || null,
-            shipsFrom:      req.body.shipsFrom      || null,
-            listingUrl:     req.body.listingUrl     || null,
-            sourceType:     req.body.sourceType     || 'store',
-            sellerUsername: req.body.sellerUsername || null,
-            sellerRating:   req.body.sellerRating   || null
+            condition:         req.body.condition         || null,
+            shipsFrom:         req.body.shipsFrom         || null,
+            listingUrl:        req.body.listingUrl        || null,
+            sourceType:        req.body.sourceType        || 'store',
+            sellerUsername:    req.body.sellerUsername    || null,
+            sellerRating:      req.body.sellerRating      || null,
+            sellerNumRatings:  req.body.sellerNumRatings  || null
         };
         db.addToCart(user.id, wid, store, req.body.price, req.body.priceUsd, opts);
         res.json({ ok: true, count: db.getCartCount(user.id) });
@@ -3745,12 +3746,13 @@ app.post('/api/auto-fill/:username', function(req, res) {
 
         var groups = raw.cart.map(function(c) {
             return {
-                sourceId:       c.source.sourceId,
-                sourceName:     c.source.sourceName,
-                sourceType:     c.source.sourceType,
-                country:        c.source.country,
-                sellerUsername: c.source.sellerUsername || null,
-                sellerRating:   c.source.sellerRating   || null,
+                sourceId:         c.source.sourceId,
+                sourceName:       c.source.sourceName,
+                sourceType:       c.source.sourceType,
+                country:          c.source.country,
+                sellerUsername:   c.source.sellerUsername   || null,
+                sellerRating:     c.source.sellerRating     || null,
+                sellerNumRatings: c.source.sellerNumRatings || null,
                 shippingCostUsd: c.shippingCostUsd,
                 subtotalUsd:    c.subtotalUsd,
                 totalUsd:       c.totalUsd,

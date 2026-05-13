@@ -4491,7 +4491,8 @@ function renderDiscogsSection() {
             escapeAttr(item.cheapestStr || '') + '\',' + (item.cheapestUsd || 0) + ',' +
             '{condition:\'' + escapeAttr(item.condition || '') + '\',shipsFrom:\'' + escapeAttr(item.shipsFrom || '') + '\',' +
             'listingUrl:\'' + escapeAttr(item.listingUrl || '') + '\',sourceType:\'discogs\',sellerUsername:\'' + escapeAttr(item.seller || '') + '\',' +
-            'sellerRating:' + (item.sellerRating != null ? item.sellerRating : 'null') + '})';
+            'sellerRating:' + (item.sellerRating != null ? item.sellerRating : 'null') + ',' +
+            'sellerNumRatings:' + (item.sellerNumRatings != null ? item.sellerNumRatings : 'null') + '})';
 
           return '<div class="disc-dg-card"' + linkAttr + '>' +
             '<div class="disc-dg-art-wrap">' + artHtml + '</div>' +
@@ -4820,16 +4821,34 @@ function renderCartView() {
     return;
   }
 
+  // Condition rank for pref comparison
+  var COND_RANK = { 'M': 7, 'NM': 6, 'VG+': 5, 'VG': 4, 'G+': 3, 'G': 2, 'F': 1, 'P': 0 };
+  var PREF_COND_RANK = { 'VG': 4, 'VG+': 5, 'NM or M-': 6 };
+  // Valid 2-letter country codes we recognise (filter out "XX" and other junk)
+  var VALID_COUNTRIES = { 'US':1,'GB':1,'DE':1,'FR':1,'NL':1,'JP':1,'AU':1,'CA':1,'BE':1,'ES':1,'IT':1,'PT':1,'SE':1,'NO':1,'DK':1,'FI':1,'CH':1,'AT':1,'PL':1,'CZ':1,'HU':1,'GR':1,'BR':1,'MX':1,'ZA':1,'NZ':1,'SG':1,'KR':1 };
+
+  var buyerCountry = _cartPrefs.countryCode || 'US';
+  var minCondition = _cartPrefs.minCondition || 'VG+';
+  var minRating    = parseFloat(_cartPrefs.minSellerRating || 98);
+  var minCondRank  = PREF_COND_RANK[minCondition] || 5;
+
   // Group items by store
   var groups = {};
   _cartItems.forEach(function(item) {
     var key = item.store;
-    if (!groups[key]) groups[key] = { store: item.store, sourceType: item.source_type || 'store', country: item.ships_from || '', sellerRating: item.seller_rating, sellerUsername: item.seller_username, items: [] };
+    if (!groups[key]) groups[key] = {
+      store: item.store,
+      sourceType: item.source_type || 'store',
+      country: item.ships_from || '',
+      sellerRating: item.seller_rating,
+      sellerNumRatings: item.seller_num_ratings,
+      sellerUsername: item.seller_username,
+      items: []
+    };
     groups[key].items.push(item);
   });
 
   var SHIP_RATES = { 'DE': 15, 'GB': 12, 'US': 5, 'JP': 20, 'NL': 14, 'FR': 14, 'IT': 16, 'AU': 25 };
-  var buyerCountry = _cartPrefs.countryCode || 'US';
 
   var grandTotal = 0;
   var grandShipping = 0;
@@ -4838,7 +4857,8 @@ function renderCartView() {
   var groupsHtml = Object.keys(groups).map(function(key) {
     var g = groups[key];
     var subtotal = g.items.reduce(function(n, i) { return n + (i.price_usd || 0); }, 0);
-    var fromCountry = g.country || '';
+    // Validate country code — hide nonsense like "XX"
+    var fromCountry = (g.country && VALID_COUNTRIES[g.country]) ? g.country : '';
     var shipEst = fromCountry === buyerCountry ? 0 : (SHIP_RATES[fromCountry] || (g.sourceType === 'discogs' ? 15 : 12));
     var total = subtotal + shipEst;
     grandTotal    += total;
@@ -4847,15 +4867,60 @@ function renderCartView() {
 
     var isDiscogs = g.sourceType === 'discogs';
     var sourceIcon = isDiscogs ? '💿' : '🏪';
-    var ratingHtml = g.sellerRating ? '<span class="cg-rating">★' + parseFloat(g.sellerRating).toFixed(1) + '%</span>' : '';
-    var countryHtml = fromCountry ? '<span class="cg-country">📦 ' + fromCountry + '</span>' : '';
 
+    // ── Header metadata (different per source type) ──────────────────────────
+    var headerMeta = '';
+    if (isDiscogs) {
+      // Seller rating + num ratings
+      if (g.sellerRating != null) {
+        var ratingWarn = minRating > 0 && g.sellerRating < minRating;
+        headerMeta +=
+          '<span class="cg-rating' + (ratingWarn ? ' cg-warn' : '') + '">' +
+            (ratingWarn ? '⚠ ' : '★') + parseFloat(g.sellerRating).toFixed(1) + '%' +
+            (g.sellerNumRatings ? '<span class="cg-num-ratings"> (' + g.sellerNumRatings.toLocaleString() + ')</span>' : '') +
+          '</span>';
+      }
+      // Condition breakdown: NM×2 · VG+×1
+      var condCounts = {};
+      g.items.forEach(function(item) {
+        var abbr = condAbbr(item.condition);
+        if (abbr) condCounts[abbr] = (condCounts[abbr] || 0) + 1;
+      });
+      var condKeys = Object.keys(condCounts).sort(function(a, b) { return (COND_RANK[b] || 0) - (COND_RANK[a] || 0); });
+      if (condKeys.length > 0) {
+        headerMeta += '<span class="cg-cond-breakdown">' +
+          condKeys.map(function(c) { return c + (condCounts[c] > 1 ? '×' + condCounts[c] : ''); }).join(' · ') +
+        '</span>';
+      }
+      // Ships from
+      if (fromCountry) headerMeta += '<span class="cg-country">📦 ' + fromCountry + '</span>';
+    } else {
+      // 3rd party store: genre tags from wantlist items
+      var genreSet = {};
+      g.items.forEach(function(item) {
+        if (item.genres) item.genres.split('|').forEach(function(gn) { gn = gn.trim(); if (gn) genreSet[gn] = true; });
+        if (item.styles) item.styles.split('|').forEach(function(st) { st = st.trim(); if (st) genreSet[st] = true; });
+      });
+      var topGenres = Object.keys(genreSet).slice(0, 4);
+      if (topGenres.length > 0) {
+        headerMeta += '<div class="cg-genre-tags">' +
+          topGenres.map(function(gn) { return '<span class="cg-genre-tag">' + escapeHtml(gn) + '</span>'; }).join('') +
+        '</div>';
+      }
+      if (fromCountry) headerMeta += '<span class="cg-country">📦 ' + fromCountry + '</span>';
+    }
+
+    // ── Item rows ─────────────────────────────────────────────────────────────
     var itemsHtml = g.items.map(function(item) {
-      var condHtml = item.condition ? '<span class="cg-item-cond">' + escapeHtml(condAbbr(item.condition)) + '</span>' : '';
+      var abbr = condAbbr(item.condition);
+      var condBelow = isDiscogs && item.condition && (COND_RANK[abbr] || 0) < minCondRank;
+      var condHtml = item.condition
+        ? '<span class="cg-item-cond' + (condBelow ? ' cg-warn' : '') + '">' + (condBelow ? '⚠ ' : '') + escapeHtml(abbr) + '</span>'
+        : '';
       var priceHtml = item.price_usd ? '<span class="cg-item-price">$' + item.price_usd.toFixed(2) + '</span>' : (item.price ? '<span class="cg-item-price">' + escapeHtml(item.price) + '</span>' : '');
       var linkHtml = item.listing_url ? '<a class="cg-item-link" href="' + escapeHtml(item.listing_url) + '" target="_blank" rel="noopener">↗</a>' : '';
       var thumbHtml = item.thumb ? '<img class="cg-item-thumb" src="' + escapeHtml(item.thumb) + '" loading="lazy" alt="" onerror="this.style.display=\'none\'">' : '<div class="cg-item-thumb-ph">♪</div>';
-      return '<div class="cg-item-row">' +
+      return '<div class="cg-item-row' + (condBelow ? ' cg-item-warn' : '') + '">' +
         thumbHtml +
         '<div class="cg-item-info">' +
           '<span class="cg-item-artist">' + escapeHtml(item.artist || '') + '</span>' +
@@ -4874,7 +4939,7 @@ function renderCartView() {
         '<span class="cg-icon">' + sourceIcon + '</span>' +
         '<span class="cg-name">' + escapeHtml(storeLabel) + '</span>' +
         '<span class="cg-count">' + g.items.length + ' record' + (g.items.length !== 1 ? 's' : '') + '</span>' +
-        ratingHtml + countryHtml +
+        headerMeta +
       '</div>' +
       '<div class="cg-items">' + itemsHtml + '</div>' +
       '<div class="cg-footer">' +
@@ -4885,7 +4950,7 @@ function renderCartView() {
     '</div>';
   }).join('');
 
-  // Prefs bar
+  // Prefs bar — condition & rating only apply to Discogs sellers
   var prefsHtml =
     '<div class="cart-prefs-bar">' +
       '<label>Ship to: <select class="cart-pref-select" onchange="setCartPref(\'countryCode\',this.value)">' +
@@ -4893,16 +4958,17 @@ function renderCartView() {
           return '<option value="' + c + '"' + (c === _cartPrefs.countryCode ? ' selected' : '') + '>' + c + '</option>';
         }).join('') +
       '</select></label>' +
-      '<label>Min condition: <select class="cart-pref-select" onchange="setCartPref(\'minCondition\',this.value)">' +
+      '<label title="Applies to Discogs sellers only">Min cond: <select class="cart-pref-select" onchange="setCartPref(\'minCondition\',this.value)">' +
         ['VG','VG+','NM or M-'].map(function(c) {
           return '<option value="' + c + '"' + (c === _cartPrefs.minCondition ? ' selected' : '') + '>' + c + '</option>';
         }).join('') +
       '</select></label>' +
-      '<label>Min rating: <select class="cart-pref-select" onchange="setCartPref(\'minSellerRating\',parseFloat(this.value))">' +
+      '<label title="Applies to Discogs sellers only">Min rating: <select class="cart-pref-select" onchange="setCartPref(\'minSellerRating\',parseFloat(this.value))">' +
         [['95','95%+'],['98','98%+'],['99','99%+'],['0','Any']].map(function(p) {
           return '<option value="' + p[0] + '"' + (String(_cartPrefs.minSellerRating) === p[0] ? ' selected' : '') + '>' + p[1] + '</option>';
         }).join('') +
       '</select></label>' +
+      '<span class="cart-prefs-note">💿 condition &amp; rating = Discogs only</span>' +
     '</div>';
 
   // Auto-fill suggestions
@@ -4912,10 +4978,18 @@ function renderCartView() {
       '<div class="cart-autofill-results">' +
         '<div class="caf-header">⚡ Auto-fill suggestions — ' + _cartAutoFill.covered + ' of ' + _cartAutoFill.total + ' uncovered items found</div>' +
         _cartAutoFill.groups.map(function(g, idx) {
+          var cafIsDiscogs = g.sourceType === 'discogs';
+          var cafRatingHtml = (cafIsDiscogs && g.sellerRating != null)
+            ? '<span class="caf-rating">★' + parseFloat(g.sellerRating).toFixed(1) + '%' +
+              (g.sellerNumRatings ? ' <span class="caf-num-ratings">(' + g.sellerNumRatings.toLocaleString() + ')</span>' : '') +
+              '</span>'
+            : '';
+          var cafCountryHtml = (g.country && VALID_COUNTRIES[g.country]) ? '<span class="caf-country">📦 ' + g.country + '</span>' : '';
           return '<div class="caf-group">' +
             '<div class="caf-group-header">' +
               '<span class="caf-name">' + escapeHtml(g.sourceName) + '</span>' +
-              '<span class="caf-count">' + g.items.length + ' records</span>' +
+              '<span class="caf-count">' + g.items.length + ' record' + (g.items.length !== 1 ? 's' : '') + '</span>' +
+              cafRatingHtml + cafCountryHtml +
               '<span class="caf-ship">~$' + (g.shippingCostUsd || 0).toFixed(0) + ' ship</span>' +
               '<span class="caf-total">$' + (g.totalUsd || 0).toFixed(2) + ' total</span>' +
             '</div>' +
@@ -4943,7 +5017,7 @@ function renderCartView() {
 
   el.innerHTML =
     '<div class="cart-header">' +
-      '<h2 class="cart-title">Cart <span class="cart-item-count">' + _cartItems.length + ' items</span></h2>' +
+      '<h2 class="cart-title">Cart <span class="cart-item-count">' + _cartItems.length + ' item' + (_cartItems.length !== 1 ? 's' : '') + '</span></h2>' +
       '<div class="cart-grand-total">~$' + grandTotal.toFixed(2) + ' total</div>' +
     '</div>' +
     prefsHtml +
@@ -5042,9 +5116,12 @@ function addAutoFillGroupByIndex(idx) {
         priceUsd:       item.priceUsd,
         price:          item.priceUsd ? '$' + item.priceUsd.toFixed(2) : '',
         condition:      item.condition || '',
-        shipsFrom:      item.shipsFrom || g.country || '',
-        listingUrl:     item.url       || '',
-        sourceType:     g.sourceType   || 'store'
+        shipsFrom:        item.shipsFrom        || g.country || '',
+        listingUrl:       item.url              || '',
+        sourceType:       g.sourceType          || 'store',
+        sellerUsername:   g.sellerUsername      || null,
+        sellerRating:     g.sellerRating        || null,
+        sellerNumRatings: g.sellerNumRatings    || null
       })
     }).then(function(r) { return r.json(); });
   });
@@ -5071,9 +5148,10 @@ function addToCartFull(wantlistId, store, priceStr, priceUsd, opts) {
       condition:      opts.condition      || '',
       shipsFrom:      opts.shipsFrom      || '',
       listingUrl:     opts.listingUrl     || '',
-      sourceType:     opts.sourceType     || 'store',
-      sellerUsername: opts.sellerUsername || null,
-      sellerRating:   opts.sellerRating   || null
+      sourceType:        opts.sourceType        || 'store',
+      sellerUsername:    opts.sellerUsername    || null,
+      sellerRating:      opts.sellerRating      || null,
+      sellerNumRatings:  opts.sellerNumRatings  || null
     })
   }).then(function(r) { return r.json(); }).then(function(data) {
     var cartKey = String(wantlistId) + ':' + store;
@@ -5100,9 +5178,10 @@ function addAllFromDiscogsSeller(username, releases) {
         condition:      item.condition   || '',
         shipsFrom:      item.shipsFrom   || '',
         listingUrl:     item.listingUrl  || '',
-        sourceType:     'discogs',
-        sellerUsername: username,
-        sellerRating:   item.sellerRating || null
+        sourceType:        'discogs',
+        sellerUsername:    username,
+        sellerRating:      item.sellerRating      || null,
+        sellerNumRatings:  item.sellerNumRatings  || null
       })
     }).then(function(r) { return r.json(); });
   });
