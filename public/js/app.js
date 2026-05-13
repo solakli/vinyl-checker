@@ -3902,7 +3902,7 @@ var _activeDiscoverStore = null;
 var _discoverCartSet     = {};
 var _cartItems           = [];   // full cart item objects from /api/cart
 var _cartAutoFill        = null; // auto-fill suggestions
-var _cartPrefs           = { countryCode: 'US', minCondition: 'VG+', minSellerRating: 98 };
+var _cartPrefs           = { countryCode: 'US', minCondition: 'VG+', minSellerRating: 98, maxPriceUsd: null };
 var _cartLoaded          = false;
 var _forYouFilter        = 'all';      // 'all' | 'artist' | 'style'
 var _forYouStoreFilter   = 'all';      // 'all' | storeName
@@ -4810,229 +4810,249 @@ function renderCartView() {
   var username = getCurrentUsername();
   if (!username) { el.innerHTML = '<div class="cart-empty">Enter your Discogs username to start.</div>'; return; }
 
-  if (_cartItems.length === 0 && !_cartAutoFill) {
-    el.innerHTML =
-      '<div class="cart-empty-state">' +
-        '<div class="cart-empty-icon">🛒</div>' +
-        '<div class="cart-empty-title">Your cart is empty</div>' +
-        '<div class="cart-empty-hint">Browse <a href="#" onclick="switchView(\'discover\',null);switchDiscoverTab(\'inStock\');return false;">Discover → In Stock</a> to add records, or auto-fill from your wantlist.</div>' +
-        '<button class="cart-autofill-btn" onclick="autoFillCart()">⚡ Auto-fill from wantlist</button>' +
-      '</div>';
-    return;
-  }
-
-  // Condition rank for pref comparison
+  // ── Constants ──────────────────────────────────────────────────────────────
   var COND_RANK = { 'M': 7, 'NM': 6, 'VG+': 5, 'VG': 4, 'G+': 3, 'G': 2, 'F': 1, 'P': 0 };
   var PREF_COND_RANK = { 'VG': 4, 'VG+': 5, 'NM or M-': 6 };
-  // Valid 2-letter country codes we recognise (filter out "XX" and other junk)
   var VALID_COUNTRIES = { 'US':1,'GB':1,'DE':1,'FR':1,'NL':1,'JP':1,'AU':1,'CA':1,'BE':1,'ES':1,'IT':1,'PT':1,'SE':1,'NO':1,'DK':1,'FI':1,'CH':1,'AT':1,'PL':1,'CZ':1,'HU':1,'GR':1,'BR':1,'MX':1,'ZA':1,'NZ':1,'SG':1,'KR':1 };
+  var SHIP_RATES = { 'DE': 15, 'GB': 12, 'US': 5, 'JP': 20, 'NL': 14, 'FR': 14, 'IT': 16, 'AU': 25 };
 
-  var buyerCountry = _cartPrefs.countryCode || 'US';
-  var minCondition = _cartPrefs.minCondition || 'VG+';
+  var buyerCountry = _cartPrefs.countryCode    || 'US';
+  var minCondition = _cartPrefs.minCondition   || 'VG+';
   var minRating    = parseFloat(_cartPrefs.minSellerRating || 98);
+  var maxPriceUsd  = _cartPrefs.maxPriceUsd    || null;
   var minCondRank  = PREF_COND_RANK[minCondition] || 5;
 
-  // Group items by store
+  // ── Build and split groups ─────────────────────────────────────────────────
   var groups = {};
   _cartItems.forEach(function(item) {
     var key = item.store;
     if (!groups[key]) groups[key] = {
-      store: item.store,
-      sourceType: item.source_type || 'store',
-      country: item.ships_from || '',
-      sellerRating: item.seller_rating,
-      sellerNumRatings: item.seller_num_ratings,
-      sellerUsername: item.seller_username,
-      items: []
+      store: item.store, sourceType: item.source_type || 'store',
+      country: item.ships_from || '', sellerRating: item.seller_rating,
+      sellerNumRatings: item.seller_num_ratings, sellerUsername: item.seller_username, items: []
     };
     groups[key].items.push(item);
   });
+  var storeGroups = [], discogsGroups = [];
+  Object.keys(groups).forEach(function(k) {
+    (groups[k].sourceType === 'discogs' ? discogsGroups : storeGroups).push(groups[k]);
+  });
 
-  var SHIP_RATES = { 'DE': 15, 'GB': 12, 'US': 5, 'JP': 20, 'NL': 14, 'FR': 14, 'IT': 16, 'AU': 25 };
+  // ── Cost helpers ────────────────────────────────────────────────────────────
+  function groupCost(g) {
+    var fc = (g.country && VALID_COUNTRIES[g.country]) ? g.country : '';
+    var sub = g.items.reduce(function(n, i) { return n + (i.price_usd || 0); }, 0);
+    var ship = fc === buyerCountry ? 0 : (SHIP_RATES[fc] || (g.sourceType === 'discogs' ? 15 : 12));
+    return { subtotal: sub, ship: ship, total: sub + ship, country: fc };
+  }
+  function secTot(arr) {
+    return arr.reduce(function(a, g) {
+      var c = groupCost(g); a.rec += c.subtotal; a.ship += c.ship; a.total += c.total; a.n += g.items.length; return a;
+    }, { rec: 0, ship: 0, total: 0, n: 0 });
+  }
+  var sTot = secTot(storeGroups), dTot = secTot(discogsGroups);
+  var grandTotal = sTot.total + dTot.total;
+  var grandRec   = sTot.rec   + dTot.rec;
+  var grandShip  = sTot.ship  + dTot.ship;
 
-  var grandTotal = 0;
-  var grandShipping = 0;
-  var grandRecords = 0;
-
-  var groupsHtml = Object.keys(groups).map(function(key) {
-    var g = groups[key];
-    var subtotal = g.items.reduce(function(n, i) { return n + (i.price_usd || 0); }, 0);
-    // Validate country code — hide nonsense like "XX"
-    var fromCountry = (g.country && VALID_COUNTRIES[g.country]) ? g.country : '';
-    var shipEst = fromCountry === buyerCountry ? 0 : (SHIP_RATES[fromCountry] || (g.sourceType === 'discogs' ? 15 : 12));
-    var total = subtotal + shipEst;
-    grandTotal    += total;
-    grandShipping += shipEst;
-    grandRecords  += subtotal;
-
+  // ── Render one cart group ────────────────────────────────────────────────────
+  function renderGroupHtml(g) {
+    var cost = groupCost(g);
     var isDiscogs = g.sourceType === 'discogs';
-    var sourceIcon = isDiscogs ? '💿' : '🏪';
-
-    // ── Header metadata (different per source type) ──────────────────────────
     var headerMeta = '';
     if (isDiscogs) {
-      // Seller rating + num ratings
       if (g.sellerRating != null) {
-        var ratingWarn = minRating > 0 && g.sellerRating < minRating;
-        headerMeta +=
-          '<span class="cg-rating' + (ratingWarn ? ' cg-warn' : '') + '">' +
-            (ratingWarn ? '⚠ ' : '★') + parseFloat(g.sellerRating).toFixed(1) + '%' +
-            (g.sellerNumRatings ? '<span class="cg-num-ratings"> (' + g.sellerNumRatings.toLocaleString() + ')</span>' : '') +
-          '</span>';
-      }
-      // Condition breakdown: NM×2 · VG+×1
-      var condCounts = {};
-      g.items.forEach(function(item) {
-        var abbr = condAbbr(item.condition);
-        if (abbr) condCounts[abbr] = (condCounts[abbr] || 0) + 1;
-      });
-      var condKeys = Object.keys(condCounts).sort(function(a, b) { return (COND_RANK[b] || 0) - (COND_RANK[a] || 0); });
-      if (condKeys.length > 0) {
-        headerMeta += '<span class="cg-cond-breakdown">' +
-          condKeys.map(function(c) { return c + (condCounts[c] > 1 ? '×' + condCounts[c] : ''); }).join(' · ') +
+        var rw = minRating > 0 && g.sellerRating < minRating;
+        headerMeta += '<span class="cg-rating' + (rw ? ' cg-warn' : '') + '">' +
+          (rw ? '⚠ ' : '★') + parseFloat(g.sellerRating).toFixed(1) + '%' +
+          (g.sellerNumRatings ? '<span class="cg-num-ratings"> (' + g.sellerNumRatings.toLocaleString() + ')</span>' : '') +
         '</span>';
       }
-      // Ships from
-      if (fromCountry) headerMeta += '<span class="cg-country">📦 ' + fromCountry + '</span>';
+      var cc = {};
+      g.items.forEach(function(i) { var a = condAbbr(i.condition); if (a) cc[a] = (cc[a]||0)+1; });
+      var ck = Object.keys(cc).sort(function(a,b){ return (COND_RANK[b]||0)-(COND_RANK[a]||0); });
+      if (ck.length) headerMeta += '<span class="cg-cond-breakdown">' + ck.map(function(c){ return c+(cc[c]>1?'×'+cc[c]:''); }).join(' · ') + '</span>';
+      if (cost.country) headerMeta += '<span class="cg-country">📦 ' + cost.country + '</span>';
     } else {
-      // 3rd party store: genre tags from wantlist items
-      var genreSet = {};
-      g.items.forEach(function(item) {
-        if (item.genres) item.genres.split('|').forEach(function(gn) { gn = gn.trim(); if (gn) genreSet[gn] = true; });
-        if (item.styles) item.styles.split('|').forEach(function(st) { st = st.trim(); if (st) genreSet[st] = true; });
+      var gs = {};
+      g.items.forEach(function(i) {
+        if (i.genres) i.genres.split('|').forEach(function(x){ x=x.trim(); if(x) gs[x]=true; });
+        if (i.styles) i.styles.split('|').forEach(function(x){ x=x.trim(); if(x) gs[x]=true; });
       });
-      var topGenres = Object.keys(genreSet).slice(0, 4);
-      if (topGenres.length > 0) {
-        headerMeta += '<div class="cg-genre-tags">' +
-          topGenres.map(function(gn) { return '<span class="cg-genre-tag">' + escapeHtml(gn) + '</span>'; }).join('') +
-        '</div>';
-      }
-      if (fromCountry) headerMeta += '<span class="cg-country">📦 ' + fromCountry + '</span>';
+      var tg = Object.keys(gs).slice(0,4);
+      if (tg.length) headerMeta += '<div class="cg-genre-tags">' + tg.map(function(g){ return '<span class="cg-genre-tag">'+escapeHtml(g)+'</span>'; }).join('') + '</div>';
+      if (cost.country) headerMeta += '<span class="cg-country">📦 ' + cost.country + '</span>';
     }
-
-    // ── Item rows ─────────────────────────────────────────────────────────────
     var itemsHtml = g.items.map(function(item) {
       var abbr = condAbbr(item.condition);
-      var condBelow = isDiscogs && item.condition && (COND_RANK[abbr] || 0) < minCondRank;
-      var condHtml = item.condition
-        ? '<span class="cg-item-cond' + (condBelow ? ' cg-warn' : '') + '">' + (condBelow ? '⚠ ' : '') + escapeHtml(abbr) + '</span>'
-        : '';
-      var priceHtml = item.price_usd ? '<span class="cg-item-price">$' + item.price_usd.toFixed(2) + '</span>' : (item.price ? '<span class="cg-item-price">' + escapeHtml(item.price) + '</span>' : '');
-      var linkHtml = item.listing_url ? '<a class="cg-item-link" href="' + escapeHtml(item.listing_url) + '" target="_blank" rel="noopener">↗</a>' : '';
-      var thumbHtml = item.thumb ? '<img class="cg-item-thumb" src="' + escapeHtml(item.thumb) + '" loading="lazy" alt="" onerror="this.style.display=\'none\'">' : '<div class="cg-item-thumb-ph">♪</div>';
-      return '<div class="cg-item-row' + (condBelow ? ' cg-item-warn' : '') + '">' +
-        thumbHtml +
-        '<div class="cg-item-info">' +
-          '<span class="cg-item-artist">' + escapeHtml(item.artist || '') + '</span>' +
-          '<span class="cg-item-title">'  + escapeHtml(item.title  || '') + '</span>' +
-        '</div>' +
-        '<div class="cg-item-right">' + condHtml + priceHtml + linkHtml +
-          '<button class="cg-remove-btn" onclick="removeCartItem(' + item.wantlist_id + ',\'' + escapeAttr(item.store) + '\')">×</button>' +
-        '</div>' +
-      '</div>';
+      var cb = isDiscogs && item.condition && (COND_RANK[abbr]||0) < minCondRank;
+      var pb = isDiscogs && maxPriceUsd && item.price_usd && item.price_usd > maxPriceUsd;
+      var condHtml = item.condition ? '<span class="cg-item-cond'+(cb?' cg-warn':'')+'">'+  (cb?'⚠ ':'')+escapeHtml(abbr)+'</span>' : '';
+      var priceHtml = item.price_usd
+        ? '<span class="cg-item-price'+(pb?' cg-warn':'')+'">$'+item.price_usd.toFixed(2)+'</span>'
+        : (item.price ? '<span class="cg-item-price">'+escapeHtml(item.price)+'</span>' : '');
+      var linkHtml = item.listing_url ? '<a class="cg-item-link" href="'+escapeHtml(item.listing_url)+'" target="_blank" rel="noopener">↗</a>' : '';
+      var thumbHtml = item.thumb ? '<img class="cg-item-thumb" src="'+escapeHtml(item.thumb)+'" loading="lazy" alt="" onerror="this.style.display=\'none\'">' : '<div class="cg-item-thumb-ph">♪</div>';
+      return '<div class="cg-item-row'+(cb||pb?' cg-item-warn':'')+'">'+thumbHtml+
+        '<div class="cg-item-info"><span class="cg-item-artist">'+escapeHtml(item.artist||'')+'</span><span class="cg-item-title">'+escapeHtml(item.title||'')+'</span></div>'+
+        '<div class="cg-item-right">'+condHtml+priceHtml+linkHtml+
+          '<button class="cg-remove-btn" onclick="removeCartItem('+item.wantlist_id+',\''+escapeAttr(item.store)+'\')">×</button>'+
+        '</div></div>';
     }).join('');
-
-    var storeLabel = isDiscogs ? (g.sellerUsername || g.store) : g.store;
-
-    return '<div class="cart-group">' +
-      '<div class="cg-header">' +
-        '<span class="cg-icon">' + sourceIcon + '</span>' +
-        '<span class="cg-name">' + escapeHtml(storeLabel) + '</span>' +
-        '<span class="cg-count">' + g.items.length + ' record' + (g.items.length !== 1 ? 's' : '') + '</span>' +
-        headerMeta +
-      '</div>' +
-      '<div class="cg-items">' + itemsHtml + '</div>' +
-      '<div class="cg-footer">' +
-        '<span class="cg-records-cost">Records: $' + subtotal.toFixed(2) + '</span>' +
-        '<span class="cg-ship-cost">+ Ship: ~$' + shipEst.toFixed(0) + '</span>' +
-        '<span class="cg-group-total">= $' + total.toFixed(2) + '</span>' +
-      '</div>' +
+    var label = isDiscogs ? (g.sellerUsername || g.store) : g.store;
+    return '<div class="cart-group">'+
+      '<div class="cg-header">'+
+        '<span class="cg-name">'+escapeHtml(label)+'</span>'+
+        '<span class="cg-count">'+g.items.length+' record'+(g.items.length!==1?'s':'')+'</span>'+
+        headerMeta+
+      '</div>'+
+      '<div class="cg-items">'+itemsHtml+'</div>'+
+      '<div class="cg-footer">'+
+        '<span class="cg-records-cost">Records: $'+cost.subtotal.toFixed(2)+'</span>'+
+        '<span class="cg-ship-cost">+ Ship: ~$'+cost.ship.toFixed(0)+'</span>'+
+        '<span class="cg-group-total">= $'+cost.total.toFixed(2)+'</span>'+
+      '</div>'+
     '</div>';
-  }).join('');
+  }
 
-  // Prefs bar — condition & rating only apply to Discogs sellers
-  var prefsHtml =
-    '<div class="cart-prefs-bar">' +
-      '<label>Ship to: <select class="cart-pref-select" onchange="setCartPref(\'countryCode\',this.value)">' +
+  // ── Toggle button helper ───────────────────────────────────────────────────
+  function toggles(label, prefKey, opts, isFloat) {
+    return '<div class="cart-filter-group">'+
+      '<span class="cfg-label">'+label+'</span>'+
+      '<div class="cart-toggles">'+
+        opts.map(function(o) {
+          var active = isFloat ? parseFloat(_cartPrefs[prefKey]) === parseFloat(o[0]) : _cartPrefs[prefKey] === o[0];
+          var setter = isFloat ? 'setCartPref(\''+prefKey+'\','+o[0]+')' : 'setCartPref(\''+prefKey+'\',\''+o[0]+'\')';
+          return '<button class="cart-toggle'+(active?' active':'')+'" onclick="'+setter+'">'+o[1]+'</button>';
+        }).join('')+
+      '</div>'+
+    '</div>';
+  }
+
+  // ── Global prefs bar (Ship to only) ───────────────────────────────────────
+  var globalBar =
+    '<div class="cart-global-prefs">'+
+      '<span class="cgp-label">📦 Ship to</span>'+
+      '<div class="cart-toggles">'+
         ['US','GB','DE','FR','NL','JP','AU','CA'].map(function(c) {
-          return '<option value="' + c + '"' + (c === _cartPrefs.countryCode ? ' selected' : '') + '>' + c + '</option>';
-        }).join('') +
-      '</select></label>' +
-      '<label title="Applies to Discogs sellers only">Min cond: <select class="cart-pref-select" onchange="setCartPref(\'minCondition\',this.value)">' +
-        ['VG','VG+','NM or M-'].map(function(c) {
-          return '<option value="' + c + '"' + (c === _cartPrefs.minCondition ? ' selected' : '') + '>' + c + '</option>';
-        }).join('') +
-      '</select></label>' +
-      '<label title="Applies to Discogs sellers only">Min rating: <select class="cart-pref-select" onchange="setCartPref(\'minSellerRating\',parseFloat(this.value))">' +
-        [['95','95%+'],['98','98%+'],['99','99%+'],['0','Any']].map(function(p) {
-          return '<option value="' + p[0] + '"' + (String(_cartPrefs.minSellerRating) === p[0] ? ' selected' : '') + '>' + p[1] + '</option>';
-        }).join('') +
-      '</select></label>' +
-      '<span class="cart-prefs-note">💿 condition &amp; rating = Discogs only</span>' +
+          return '<button class="cart-toggle'+(c===buyerCountry?' active':'')+'" onclick="setCartPref(\'countryCode\',\''+c+'\')">'+c+'</button>';
+        }).join('')+
+      '</div>'+
+      (grandTotal > 0 ? '<span class="cgp-grand">~$'+grandTotal.toFixed(0)+' total</span>' : '')+
     '</div>';
 
-  // Auto-fill suggestions
-  var autoFillHtml = '';
+  // ── 3rd Party Stores section ───────────────────────────────────────────────
+  var storeBody = storeGroups.length > 0
+    ? storeGroups.map(renderGroupHtml).join('')
+    : '<div class="cart-section-empty">'+
+        'No store items yet — '+
+        '<a href="#" onclick="switchView(\'discover\',null);switchDiscoverTab(\'inStock\');return false;">browse In Stock →</a>'+
+      '</div>';
+
+  var storeSection =
+    '<div class="cart-section cart-section-stores">'+
+      '<div class="cart-section-head">'+
+        '<span class="csh-icon">🏪</span>'+
+        '<span class="csh-title">3rd Party Stores</span>'+
+        (sTot.n > 0 ? '<span class="csh-pill">'+sTot.n+' record'+(sTot.n!==1?'s':'')+' · ~$'+sTot.total.toFixed(0)+'</span>' : '')+
+        '<a href="#" class="csh-browse" onclick="switchView(\'discover\',null);switchDiscoverTab(\'inStock\');return false;">+ Browse In Stock</a>'+
+      '</div>'+
+      storeBody+
+    '</div>';
+
+  // ── Discogs filter bar ─────────────────────────────────────────────────────
+  var discogsFilters =
+    '<div class="cart-discogs-filters">'+
+      '<div class="cdf-row">'+
+        toggles('Min condition', 'minCondition',
+          [['VG','VG'],['VG+','VG+'],['NM or M-','NM']], false)+
+        toggles('Min seller rating', 'minSellerRating',
+          [['0','Any'],['95','95%+'],['98','98%+'],['99','99%+']], true)+
+        '<div class="cart-filter-group">'+
+          '<span class="cfg-label">Max $/record</span>'+
+          '<div class="cdf-price-wrap">'+
+            '<span class="cdf-currency">$</span>'+
+            '<input type="number" class="cdf-price-input" min="1" max="9999" '+
+              'value="'+(maxPriceUsd||'')+'" placeholder="any" '+
+              'onchange="setCartPref(\'maxPriceUsd\', this.value ? parseFloat(this.value) : null)">'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+      '<button class="cart-smart-fill" id="cartAutoFillBtn" onclick="autoFillCart()">⚡ Smart fill Discogs</button>'+
+    '</div>';
+
+  // ── Auto-fill suggestions ─────────────────────────────────────────────────
+  var cafHtml = '';
   if (_cartAutoFill && _cartAutoFill.groups && _cartAutoFill.groups.length > 0) {
-    autoFillHtml =
-      '<div class="cart-autofill-results">' +
-        '<div class="caf-header">⚡ Auto-fill suggestions — ' + _cartAutoFill.covered + ' of ' + _cartAutoFill.total + ' uncovered items found</div>' +
+    cafHtml =
+      '<div class="cart-autofill-results">'+
+        '<div class="caf-header">'+
+          '<span class="caf-hdr-label">⚡ '+_cartAutoFill.covered+' of '+_cartAutoFill.total+' uncovered items found</span>'+
+          '<span class="caf-hdr-note">Add a group, then re-run Smart fill</span>'+
+        '</div>'+
         _cartAutoFill.groups.map(function(g, idx) {
-          var cafIsDiscogs = g.sourceType === 'discogs';
-          var cafRatingHtml = (cafIsDiscogs && g.sellerRating != null)
-            ? '<span class="caf-rating">★' + parseFloat(g.sellerRating).toFixed(1) + '%' +
-              (g.sellerNumRatings ? ' <span class="caf-num-ratings">(' + g.sellerNumRatings.toLocaleString() + ')</span>' : '') +
-              '</span>'
-            : '';
-          var cafCountryHtml = (g.country && VALID_COUNTRIES[g.country]) ? '<span class="caf-country">📦 ' + g.country + '</span>' : '';
-          return '<div class="caf-group">' +
-            '<div class="caf-group-header">' +
-              '<span class="caf-name">' + escapeHtml(g.sourceName) + '</span>' +
-              '<span class="caf-count">' + g.items.length + ' record' + (g.items.length !== 1 ? 's' : '') + '</span>' +
-              cafRatingHtml + cafCountryHtml +
-              '<span class="caf-ship">~$' + (g.shippingCostUsd || 0).toFixed(0) + ' ship</span>' +
-              '<span class="caf-total">$' + (g.totalUsd || 0).toFixed(2) + ' total</span>' +
-            '</div>' +
-            '<div class="caf-items">' +
-              g.items.slice(0, 5).map(function(item) {
-                return '<div class="caf-item">' +
-                  '<span class="caf-item-artist">' + escapeHtml(item.artist) + '</span>' +
-                  '<span class="caf-item-title">' + escapeHtml(item.title) + '</span>' +
-                  (item.condition ? '<span class="caf-item-cond">' + escapeHtml(condAbbr(item.condition)) + '</span>' : '') +
-                  (item.priceUsd ? '<span class="caf-item-price">$' + item.priceUsd.toFixed(2) + '</span>' : '') +
-                '</div>';
-              }).join('') +
-              (g.items.length > 5 ? '<div class="caf-more">+' + (g.items.length - 5) + ' more</div>' : '') +
-            '</div>' +
-            '<button class="caf-add-btn" onclick="addAutoFillGroupByIndex(' + idx + ')">+ Add all from ' + escapeHtml(g.sourceName) + '</button>' +
+          var isd = g.sourceType === 'discogs';
+          var rHtml = (isd && g.sellerRating != null)
+            ? '<span class="caf-rating">★'+parseFloat(g.sellerRating).toFixed(1)+'%'+(g.sellerNumRatings?' <span class="caf-num-ratings">('+g.sellerNumRatings.toLocaleString()+')</span>':'')+' </span>' : '';
+          var ctHtml = (g.country && VALID_COUNTRIES[g.country]) ? '<span class="caf-country">📦 '+g.country+'</span>' : '';
+          return '<div class="caf-group">'+
+            '<div class="caf-group-header">'+
+              '<span class="caf-type">'+(isd?'💿':'🏪')+'</span>'+
+              '<span class="caf-name">'+escapeHtml(g.sourceName)+'</span>'+
+              '<span class="caf-count">'+g.items.length+' rec'+(g.items.length!==1?'s':'')+'</span>'+
+              rHtml+ctHtml+
+              '<span class="caf-ship">~$'+(g.shippingCostUsd||0).toFixed(0)+' ship</span>'+
+              '<span class="caf-total">$'+(g.totalUsd||0).toFixed(2)+'</span>'+
+              '<button class="caf-add-btn" onclick="addAutoFillGroupByIndex('+idx+')">+ Add</button>'+
+            '</div>'+
+            '<div class="caf-chips">'+
+              g.items.slice(0,5).map(function(item){
+                return '<span class="caf-chip">'+
+                  escapeHtml(item.artist)+' — '+escapeHtml(item.title)+
+                  (item.condition?' <em>'+escapeHtml(condAbbr(item.condition))+'</em>':'')+
+                  (item.priceUsd?' $'+item.priceUsd.toFixed(0):'')+'</span>';
+              }).join('')+
+              (g.items.length > 5 ? '<span class="caf-chip caf-chip-more">+' + (g.items.length - 5) + ' more</span>' : '')+
+            '</div>'+
           '</div>';
-        }).join('') +
+        }).join('')+
       '</div>';
   }
 
-  var uncovered = 0;
-  if (_cartAutoFill && _cartAutoFill.total) {
-    uncovered = _cartAutoFill.total - _cartItems.length;
-  }
+  // ── Discogs sellers section ────────────────────────────────────────────────
+  var discogsBody = discogsGroups.length > 0 ? discogsGroups.map(renderGroupHtml).join('') : '';
+
+  var discogsSection =
+    '<div class="cart-section cart-section-discogs">'+
+      '<div class="cart-section-head">'+
+        '<span class="csh-icon">💿</span>'+
+        '<span class="csh-title">Discogs Sellers</span>'+
+        (dTot.n > 0 ? '<span class="csh-pill">'+dTot.n+' record'+(dTot.n!==1?'s':'')+' · ~$'+dTot.total.toFixed(0)+'</span>' : '')+
+        '<a href="#" class="csh-browse" onclick="switchView(\'discover\',null);switchDiscoverTab(\'sellers\');return false;">+ Browse sellers</a>'+
+      '</div>'+
+      discogsFilters+
+      discogsBody+
+      (discogsGroups.length === 0 && !_cartAutoFill ?
+        '<div class="cart-section-empty">Set your filters above and hit Smart fill, or <a href="#" onclick="switchView(\'discover\',null);switchDiscoverTab(\'sellers\');return false;">browse sellers →</a></div>' : '')+
+      cafHtml+
+    '</div>';
+
+  // ── Summary bar + assemble ─────────────────────────────────────────────────
+  var summaryHtml = _cartItems.length > 0
+    ? '<div class="cart-summary-bar">'+
+        '<span class="csb-records">Records: $'+grandRec.toFixed(2)+'</span>'+
+        '<span class="csb-ship">Shipping: ~$'+grandShip.toFixed(2)+'</span>'+
+        '<span class="csb-total">Total: $'+grandTotal.toFixed(2)+'</span>'+
+        '<button class="cart-clear-btn" onclick="clearFullCart()">Clear cart</button>'+
+      '</div>'
+    : '';
 
   el.innerHTML =
-    '<div class="cart-header">' +
-      '<h2 class="cart-title">Cart <span class="cart-item-count">' + _cartItems.length + ' item' + (_cartItems.length !== 1 ? 's' : '') + '</span></h2>' +
-      '<div class="cart-grand-total">~$' + grandTotal.toFixed(2) + ' total</div>' +
-    '</div>' +
-    prefsHtml +
-    groupsHtml +
-    '<div class="cart-summary-bar">' +
-      '<span class="csb-records">Records: $' + grandRecords.toFixed(2) + '</span>' +
-      '<span class="csb-ship">Shipping: ~$' + grandShipping.toFixed(2) + '</span>' +
-      '<span class="csb-total">Total: $' + grandTotal.toFixed(2) + '</span>' +
-    '</div>' +
-    '<div class="cart-autofill-section">' +
-      '<button class="cart-autofill-btn" id="cartAutoFillBtn" onclick="autoFillCart()">⚡ Auto-fill remaining</button>' +
-    '</div>' +
-    autoFillHtml +
-    '<div class="cart-actions-bar">' +
-      '<button class="cart-clear-btn" onclick="clearFullCart()">Clear cart</button>' +
+    '<div class="cart-wrap2">'+
+      globalBar+
+      storeSection+
+      discogsSection+
+      summaryHtml+
     '</div>';
 }
 
@@ -5087,7 +5107,8 @@ function autoFillCart() {
       coveredIds:      coveredIds,
       countryCode:     _cartPrefs.countryCode,
       minCondition:    _cartPrefs.minCondition,
-      minSellerRating: _cartPrefs.minSellerRating
+      minSellerRating: _cartPrefs.minSellerRating,
+      maxPriceUsd:     _cartPrefs.maxPriceUsd || null
     })
   })
   .then(function(r) { return r.json(); })
