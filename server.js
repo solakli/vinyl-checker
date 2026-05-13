@@ -3715,7 +3715,8 @@ app.post('/api/auto-fill/:username', function(req, res) {
         var buyerCountry    = req.body.countryCode   || 'US';
         var minCondition    = req.body.minCondition  || 'VG+';
         var minSellerRating = parseFloat(req.body.minSellerRating || 98);
-        var maxPriceUsd     = req.body.maxPriceUsd ? parseFloat(req.body.maxPriceUsd) : null;
+        // Default $300 cap — filters JPY prices incorrectly stored as USD (¥30000 → $300 is fine, ¥30000 → $30000 is not)
+        var maxPriceUsd = req.body.maxPriceUsd ? parseFloat(req.body.maxPriceUsd) : 300;
 
         var wantlist = db.getActiveWantlist(user.id).filter(function(w) {
             return coveredIds.indexOf(w.id) === -1;

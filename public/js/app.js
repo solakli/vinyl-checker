@@ -3,6 +3,30 @@
 let resultsData = [];
 let isScanning = false;
 
+// ── Condition abbreviation map ──
+var COND_ABBR = {
+  'Mint (M)':                   'M',
+  'Near Mint (NM or M-)':       'NM',
+  'Very Good Plus (VG+)':       'VG+',
+  'Very Good (VG)':             'VG',
+  'Good Plus (G+)':             'G+',
+  'Good (G)':                   'G',
+  'Fair (F)':                   'F',
+  'Poor (P)':                   'P'
+};
+function condAbbr(raw) {
+  if (!raw) return '';
+  var s = (raw || '').replace(/\s+/g, ' ').trim();
+  if (COND_ABBR[s]) return COND_ABBR[s];
+  if (/Near Mint|NM or M-/i.test(s))       return 'NM';
+  if (/Very Good Plus|VG\+/i.test(s))      return 'VG+';
+  if (/Very Good/i.test(s))                return 'VG';
+  if (/^Mint/i.test(s))                    return 'M';
+  if (/Good Plus|G\+/i.test(s))            return 'G+';
+  if (/Good/i.test(s))                     return 'G';
+  return s.substring(0, 4);
+}
+
 // ── Gem Intelligence cache: discogs_id → gem score data ──
 var _gemScoreMap   = {};
 var _gemScoreUser  = null;
@@ -4447,7 +4471,7 @@ function renderDiscogsSection() {
             : '<span class="disc-dg-price-na">—</span>';
 
           var condBadge = item.condition
-            ? '<span class="disc-dg-cond">' + escapeHtml(item.condition.split(' ')[0]) + '</span>'
+            ? '<span class="disc-dg-cond">' + escapeHtml(condAbbr(item.condition)) + '</span>'
             : '';
 
           var sellerHtml = item.seller
@@ -4827,7 +4851,7 @@ function renderCartView() {
     var countryHtml = fromCountry ? '<span class="cg-country">📦 ' + fromCountry + '</span>' : '';
 
     var itemsHtml = g.items.map(function(item) {
-      var condHtml = item.condition ? '<span class="cg-item-cond">' + escapeHtml(item.condition.split(' ')[0]) + '</span>' : '';
+      var condHtml = item.condition ? '<span class="cg-item-cond">' + escapeHtml(condAbbr(item.condition)) + '</span>' : '';
       var priceHtml = item.price_usd ? '<span class="cg-item-price">$' + item.price_usd.toFixed(2) + '</span>' : (item.price ? '<span class="cg-item-price">' + escapeHtml(item.price) + '</span>' : '');
       var linkHtml = item.listing_url ? '<a class="cg-item-link" href="' + escapeHtml(item.listing_url) + '" target="_blank" rel="noopener">↗</a>' : '';
       var thumbHtml = item.thumb ? '<img class="cg-item-thumb" src="' + escapeHtml(item.thumb) + '" loading="lazy" alt="" onerror="this.style.display=\'none\'">' : '<div class="cg-item-thumb-ph">♪</div>';
@@ -4900,7 +4924,7 @@ function renderCartView() {
                 return '<div class="caf-item">' +
                   '<span class="caf-item-artist">' + escapeHtml(item.artist) + '</span>' +
                   '<span class="caf-item-title">' + escapeHtml(item.title) + '</span>' +
-                  (item.condition ? '<span class="caf-item-cond">' + escapeHtml(item.condition.split(' ')[0]) + '</span>' : '') +
+                  (item.condition ? '<span class="caf-item-cond">' + escapeHtml(condAbbr(item.condition)) + '</span>' : '') +
                   (item.priceUsd ? '<span class="caf-item-price">$' + item.priceUsd.toFixed(2) + '</span>' : '') +
                 '</div>';
               }).join('') +
