@@ -1423,11 +1423,10 @@ app.post('/api/deploy', function (req, res) {
                 console.log('[deploy] package.json changed — running npm install');
                 execSync('cd ' + appDir + ' && npm install --production 2>&1');
             }
-            // Restart server via detached shell — kill current process on port 5052,
-            // then re-launch with setsid so the child outlives the current process.
-            console.log('[deploy] Restarting server...');
+            // Restart via PM2 which is the process owner — avoids duplicate processes
+            console.log('[deploy] Restarting via pm2...');
             var child = require('child_process').spawn('bash', ['-c',
-                'sleep 1 && fuser -k ' + PORT + '/tcp 2>/dev/null; sleep 1 && cd ' + appDir + ' && setsid node server.js >> /tmp/vinyl.log 2>&1'
+                'sleep 1 && pm2 restart vinyl-checker'
             ], { detached: true, stdio: 'ignore' });
             child.unref();
         } catch (e) {
