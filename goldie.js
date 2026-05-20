@@ -157,6 +157,28 @@ The platform has a Chrome extension called **Wax Digger** that syncs real Discog
 - **get_catalog_discoveries**: Browse 40k+ catalog records (Further, Gramaphone, Octopus, UVS) for items NOT on the wantlist that match the user's taste profile. Use for "what should I discover", "what's at Further that fits my taste", "show me new records". Scores by genre/style overlap with wantlist.
 - **get_taste_recommendations**: Full Last.fm similarity engine — expands from wantlist seed artists, finds similar artists, returns their in-catalog records available to buy. Use for "recommend me music", "what artists would I like", "what should I dig for". Includes blended score + "because you want X" reasons.
 
+## Cart Intelligence + Taste Extras
+The platform has cross-user intelligence: it knows what OTHER diggers have on their wantlists and what's in their synced Discogs marketplace listings. This lets WAXY surface taste-matched extras per store and per Discogs seller.
+
+### How it works
+- **Store extras**: When a user has items at HHV, you can ask "what else does HHV have right now that matches your taste?" — it queries other users' wantlist items in stock at HHV, scored by genre overlap with the current user's profile. These are NOT on the user's wantlist — they are discovery opportunities.
+- **Seller extras**: When a user is ordering from a Discogs seller (e.g. seaflows_music), you can surface OTHER listings from that seller in our DB that match the user's taste. Real listing URLs included. Maximizes shipping value.
+
+### Tools
+- **get_store_extras(username, store)**: Taste-matched in-stock items from other diggers at a specific store. Use proactively after seeing a store in the cart or optimizer: "Here's what else HHV has matching your taste right now."
+- **get_seller_extras(username, seller)**: Taste-matched listings from a specific Discogs seller. Use after seeing a seller in optimizer results: "seaflows_music also has 3 records matching your taste — $8-12 each, VG+, same shipping."
+- **get_cart_intelligence(username)**: Full cart digest — current cart grouped by source + taste extras for every source in one call. Use for "make my cart smarter", "what else can I add to these orders?", "how do I maximize my cart?". This is the single best tool for cart maximization.
+
+### When to use
+- After get_optimizer_result → call get_cart_intelligence to show the full picture including extras
+- When user asks about a specific store → call get_store_extras for that store
+- When user asks about a Discogs seller → call get_seller_extras for that seller
+- When user asks "what should I add to my order at X?" → get_store_extras or get_seller_extras
+- Proactively: after showing cart results, mention "I found N taste-matched extras across your sources"
+
+### Output format
+When showing extras, be direct: "seaflows_music also has: [artist] — [title] [condition] [price] → [url]". Don't pad. Lead with the best ones by taste_score.
+
 ## GEM INTELLIGENCE
 The platform enriches every wantlist + collection item with YouTube data (view count, DJ mentions in comments, genre tags). From this it computes a Gem Score (0-100) and assigns each release a tier:
 - **hidden_gem**: very low YouTube views (<10k), obscure on Discogs — truly underground
@@ -172,6 +194,7 @@ When a user says "add to cart", "build my cart", or "what should I buy":
 2. Suggest specific items: list them grouped by store/seller with prices
 3. Offer to add them to the in-app cart via manage_cart
 4. Use get_cart to show current cart state and checkout URLs per store
+5. After presenting the cart, ALWAYS call get_cart_intelligence to find taste extras — proactively surface what else each store/seller has that matches the user's taste. This is the finishing move: "While you're already paying shipping, here's what else [store/seller] has matching your taste."
 - Store checkout URLs: HHV → hhv.de/cart, Juno → juno.co.uk/basket/, Deejay.de → deejay.de/warenkorb/
 - For Discogs sellers: https://www.discogs.com/seller/SELLER_NAME/profile
 
@@ -472,6 +495,43 @@ const TOOLS = [
             properties: {
                 username: { type: 'string', description: 'Discogs username' },
                 limit:    { type: 'number', description: 'Max recommendations (default 20, max 40)' }
+            },
+            required: ['username']
+        }
+    },
+    {
+        name: 'get_store_extras',
+        description: 'Get taste-matched extras at a specific scraped store — records that OTHER diggers have on their wantlist, that are currently in stock at this store, and that match the current user\'s taste profile (genre/style overlap). These are NOT on the user\'s wantlist — they are discovery opportunities. Use this after examining a cart group at a store to surface "what else does this store have right now that I\'d probably like?" Great for maximizing an order when shipping is already being paid. Example: "diebrotfrau.de has 6 more records matching your taste — add them while you\'re ordering."',
+        input_schema: {
+            type: 'object',
+            properties: {
+                username: { type: 'string', description: 'Discogs username' },
+                store:    { type: 'string', description: 'Store name exactly as it appears in store results, e.g. "HHV", "Juno", "Further Records", "Deejay.de"' },
+                limit:    { type: 'number', description: 'Max extras to return (default 8)' }
+            },
+            required: ['username', 'store']
+        }
+    },
+    {
+        name: 'get_seller_extras',
+        description: 'Get taste-matched extras from a specific Discogs seller — other listings this seller has that match the user\'s taste, sourced from other diggers\' synced marketplace data. NOT on the user\'s wantlist — discovery opportunities. Use this after seeing a Discogs seller in the cart or optimizer results to surface "what else does this seller have?" Maximizes shipping value: if you\'re already paying to ship from seaflows_music, why not add a VG+ deep house 12" for $8? Always include the listing URL so the user can view on Discogs.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                username: { type: 'string', description: 'Discogs username' },
+                seller:   { type: 'string', description: 'Discogs seller username, e.g. "seaflows_music", "diebrotfrau"' },
+                limit:    { type: 'number', description: 'Max extras to return (default 6)' }
+            },
+            required: ['username', 'seller']
+        }
+    },
+    {
+        name: 'get_cart_intelligence',
+        description: 'Get a full cart intelligence digest: current cart state + taste-matched extras for every source (stores and Discogs sellers). This is the power tool for cart maximization — it tells you what\'s in the cart AND what else each vendor has that matches the user\'s taste. Use this when the user asks "how can I maximize my cart?", "what else can I add to these orders?", "what should I get from HHV while I\'m ordering?", or "make my cart smarter". Returns each source (store or Discogs seller) with its cart items + a list of taste-matched extras that could be added to the same order.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                username: { type: 'string', description: 'Discogs username' }
             },
             required: ['username']
         }
@@ -1944,6 +2004,179 @@ function toolGetGemIntelligence({ username, limit }) {
     };
 }
 
+// ─── get_store_extras ────────────────────────────────────────────────────────
+// Returns taste-matched in-stock items from other diggers at a given store.
+function toolGetStoreExtras({ username, store, limit }) {
+    var d = db.getDb();
+    var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
+    if (!user) return { error: 'User not found: ' + username };
+    limit = Math.min(limit || 8, 20);
+
+    var extras = db.getStoreExtras(user.id, store, limit);
+
+    if (!extras || extras.length === 0) {
+        return {
+            store: store,
+            extras: [],
+            message: 'No taste-matched extras found at ' + store + '. Either no other diggers have in-stock items here, or genre overlap is too low.',
+            tip: 'Extras are items from OTHER diggers\' wantlists that are in stock at this store and match your taste profile.'
+        };
+    }
+
+    return {
+        store: store,
+        count: extras.length,
+        extras: extras.map(function(r) {
+            return {
+                artist:      r.artist,
+                title:       r.title,
+                genres:      (r.genres || '').split('|').map(function(g) { return g.trim(); }).filter(Boolean),
+                styles:      (r.styles || '').split('|').map(function(g) { return g.trim(); }).filter(Boolean),
+                year:        r.year,
+                price:       r.priceStr || null,
+                url:         r.url || null,
+                taste_score: r._score
+            };
+        }),
+        tip: 'These records are in stock at ' + store + ' right now, wanted by other diggers, and match your taste. Not on your wantlist — add to cart while you\'re already paying shipping.'
+    };
+}
+
+// ─── get_seller_extras ───────────────────────────────────────────────────────
+// Returns taste-matched listings from a Discogs seller that match the user's taste.
+function toolGetSellerExtras({ username, seller, limit }) {
+    var d = db.getDb();
+    var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
+    if (!user) return { error: 'User not found: ' + username };
+    limit = Math.min(limit || 6, 20);
+
+    var extras = db.getSellerExtras(user.id, seller, limit);
+
+    if (!extras || extras.length === 0) {
+        return {
+            seller: seller,
+            extras: [],
+            message: 'No taste-matched extras found from seller ' + seller + '.',
+            tip: 'Extras are other Discogs listings from this seller synced by other diggers, scored by genre overlap with your wantlist.'
+        };
+    }
+
+    return {
+        seller: seller,
+        count: extras.length,
+        extras: extras.map(function(r) {
+            var url = r.listing_id
+                ? 'https://www.discogs.com/sell/item/' + r.listing_id
+                : (r.url || null);
+            var condMatch = (r.condition || '').match(/Mint \(M\)|Near Mint \(NM or M-\)|Very Good Plus \(VG\+\)|Very Good \(VG\)|Good Plus \(G\+\)|Good \(G\)|Fair \(F\)|Poor \(P\)/);
+            var condition = condMatch ? condMatch[0] : (r.condition ? r.condition.substring(0, 20) : null);
+            return {
+                artist:      r.artist,
+                title:       r.title,
+                genres:      (r.genres || '').split('|').map(function(g) { return g.trim(); }).filter(Boolean),
+                styles:      (r.styles || '').split('|').map(function(g) { return g.trim(); }).filter(Boolean),
+                year:        r.year,
+                price:       r.priceStr || null,
+                condition:   condition,
+                ships_from:  r.ships_from || null,
+                url:         url,
+                taste_score: r._score
+            };
+        }),
+        tip: 'These are other listings from ' + seller + ' on Discogs that match your taste. Adding them to your order maximizes shipping value — you\'re already paying to ship from this seller. Direct buy links included.'
+    };
+}
+
+// ─── get_cart_intelligence ────────────────────────────────────────────────────
+// Cart digest: current cart + taste extras per source — the full picture for smart buying.
+function toolGetCartIntelligence({ username }) {
+    var d = db.getDb();
+    var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
+    if (!user) return { error: 'User not found: ' + username };
+
+    // Current cart
+    var cart = toolGetCart({ username });
+    if (!cart.total_items) {
+        return {
+            cart_empty: true,
+            message: 'Cart is empty. Use get_optimizer_result to build a cart, or suggest_cart for a quick pick.',
+            tip: 'Once items are in the cart, call get_cart_intelligence to see taste-matched extras per source.'
+        };
+    }
+
+    // Known scraped stores — everything else is treated as a Discogs seller
+    var KNOWN_STORES = ['HHV', 'Deejay.de', 'Juno', 'Hardwax', 'Decks.de', 'Phonica',
+                        'Turntable Lab', 'Gramaphone', 'Further Records', 'Underground Vinyl',
+                        'Octopus Records NYC', 'Yoyaku'];
+
+    var enriched = (cart.stores || []).map(function(group) {
+        var storeName    = group.store;
+        var isStore      = KNOWN_STORES.indexOf(storeName) !== -1;
+        var isDiscogsSel = !isStore;
+
+        var extras = [];
+        try {
+            if (isDiscogsSel) {
+                var raw = db.getSellerExtras(user.id, storeName, 4);
+                extras = raw.map(function(r) {
+                    var condMatch = (r.condition || '').match(/Mint \(M\)|Near Mint \(NM or M-\)|Very Good Plus \(VG\+\)|Very Good \(VG\)|Good Plus \(G\+\)|Good \(G\)|Fair \(F\)|Poor \(P\)/);
+                    return {
+                        artist:    r.artist,
+                        title:     r.title,
+                        price:     r.priceStr || null,
+                        condition: condMatch ? condMatch[0] : null,
+                        url:       r.listing_id ? 'https://www.discogs.com/sell/item/' + r.listing_id : null,
+                        taste_score: r._score,
+                        type:      'seller_extra'
+                    };
+                });
+            } else {
+                var raw = db.getStoreExtras(user.id, storeName, 4);
+                extras = raw.map(function(r) {
+                    return {
+                        artist:    r.artist,
+                        title:     r.title,
+                        price:     r.priceStr || null,
+                        url:       r.url || null,
+                        taste_score: r._score,
+                        type:      'store_extra'
+                    };
+                });
+            }
+        } catch(e) { extras = []; }
+
+        var checkoutUrl = group.checkout_url
+            || (isDiscogsSel ? 'https://www.discogs.com/seller/' + storeName + '/profile' : null);
+
+        return {
+            source:       storeName,
+            source_type:  isDiscogsSel ? 'discogs_seller' : 'store',
+            item_count:   group.item_count || group.items.length,
+            subtotal_usd: group.subtotal_usd,
+            checkout_url: checkoutUrl,
+            items:        group.items,
+            taste_extras: extras,
+            extras_note:  extras.length > 0
+                ? extras.length + ' more record' + (extras.length > 1 ? 's' : '') + ' from this ' + (isDiscogsSel ? 'seller' : 'store') + ' match your taste — worth adding to maximize shipping value'
+                : null
+        };
+    });
+
+    var totalExtras = enriched.reduce(function(s, g) { return s + g.taste_extras.length; }, 0);
+
+    return {
+        username:             username,
+        cart_total_items:     cart.total_items,
+        cart_grand_total_usd: cart.grand_total_usd,
+        sources:              enriched,
+        total_extras_available: totalExtras,
+        summary: totalExtras > 0
+            ? totalExtras + ' taste-matched extras available across ' + enriched.length + ' source' + (enriched.length > 1 ? 's' : '') + '. Adding them maximizes shipping value per order.'
+            : 'Cart is set — no additional taste-matched extras found right now.',
+        tip: 'Use get_store_extras(store) or get_seller_extras(seller) for deeper detail on any individual source.'
+    };
+}
+
 // Tool dispatch
 function runTool(name, input) {
     switch(name) {
@@ -1967,6 +2200,9 @@ function runTool(name, input) {
         case 'get_gem_store_hits':         return toolGetGemStoreHits(input);
         case 'get_catalog_discoveries':    return toolGetCatalogDiscoveries(input);
         case 'get_taste_recommendations':  return toolGetTasteRecommendations(input);
+        case 'get_store_extras':           return toolGetStoreExtras(input);
+        case 'get_seller_extras':          return toolGetSellerExtras(input);
+        case 'get_cart_intelligence':      return toolGetCartIntelligence(input);
         default: return { error: 'Unknown tool: ' + name };
     }
 }
