@@ -3788,6 +3788,31 @@ app.post('/api/auto-fill/:username', function(req, res) {
     }
 });
 
+// ── Store taste extras: cross-user in-stock items at a store matching user taste ──
+app.get('/api/store-extras/:username/:store', function(req, res) {
+    try {
+        var user  = db.getOrCreateUser(req.params.username);
+        var store = decodeURIComponent(req.params.store);
+        var extras = db.getStoreExtras(user.id, store, 6);
+        res.json({ extras: extras.map(function(r) {
+            return {
+                artist:   r.artist,
+                title:    r.title,
+                thumb:    r.thumb,
+                genres:   r.genres,
+                styles:   r.styles,
+                year:     r.year,
+                priceStr: r.priceStr,
+                url:      r.url,
+                score:    r._score
+            };
+        })});
+    } catch(e) {
+        console.error('[store-extras]', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ── Store smart-fill: build optimal store orders from in-stock scan results ──
 app.post('/api/auto-fill-stores/:username', function(req, res) {
     try {

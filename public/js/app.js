@@ -700,6 +700,8 @@ async function loadExisting(username) {
   _cartLoaded = false;
   _cartItems = [];
   _cartAutoFill = null;
+  _cartStoreAutoFill = null;
+  _storeExtrasCache = {};
   updateNavCartBadge(null);
 
   // Restore saved optimizer result for this user (persists across page reloads)
@@ -2345,6 +2347,8 @@ async function disconnectDiscogs() {
   _cartLoaded = false;
   _cartItems = [];
   _cartAutoFill = null;
+  _cartStoreAutoFill = null;
+  _storeExtrasCache = {};
   updateCartNavBadge(0);
   // Reset UI to welcome
   document.getElementById('userBar').style.display = 'none';
@@ -3903,6 +3907,7 @@ var _discoverCartSet     = {};
 var _cartItems           = [];   // full cart item objects from /api/cart
 var _cartAutoFill        = null; // Discogs auto-fill suggestions
 var _cartStoreAutoFill   = null; // store smart-fill suggestions
+var _storeExtrasCache    = {};   // storeName → { extras:[], fetched:true }
 var _cartPrefs           = { countryCode: 'US', minCondition: 'VG+', minSellerRating: 98, maxPriceUsd: null, minStoreItems: 1, minSellerItems: 2 };
 var _cartLoaded          = false;
 var _forYouFilter        = 'all';      // 'all' | 'artist' | 'style'
@@ -4590,12 +4595,26 @@ function renderStoreCard(s) {
     ? '<img class="disc-card-logo" src="img/' + logo + '" alt="" onerror="this.style.display=\'none\'">'
     : '<div class="disc-card-logo" style="background:#222;border-radius:3px"></div>';
 
+  // Group-level cart state
+  var inCartCount  = s.items.filter(function(item) { return !!_discoverCartSet[String(item.wantlistId) + ':' + s.store]; }).length;
+  var allInCart    = inCartCount === s.items.length;
+  var someInCart   = inCartCount > 0 && !allInCart;
+  var remaining    = s.items.length - inCartCount;
+  var addAllLabel  = allInCart  ? '✓ All in cart'
+                   : someInCart ? '+ Add remaining ' + remaining
+                   :              '+ Add all ' + s.items.length + ' to cart';
+  var addAllClick  = 'event.stopPropagation();addAllToCartFromStore(\'' + escapeAttr(s.store) + '\')';
+  var addAllBtn    = '<button class="disc-add-all-btn' + (allInCart ? ' all-in-cart' : '') + '" ' +
+                    (allInCart ? 'disabled ' : '') + 'onclick="' + addAllClick + '">' + addAllLabel + '</button>';
+
   var costHtml = s.itemsWithPrice > 0
     ? '<div class="disc-cost-records">~$' + s.totalRecordUsd.toFixed(0) + ' records</div>' +
       '<span class="disc-cost-sep">+</span>' +
       '<div class="disc-cost-ship">~$' + s.shippingUsd.toFixed(0) + ' ship</div>' +
-      '<div class="disc-cost-total">~$' + (s.totalWithShipping || 0).toFixed(0) + '</div>'
-    : '<div class="disc-cost-ship" style="color:#555">' + s.itemCount + ' item' + (s.itemCount !== 1 ? 's' : '') + ' — prices not available</div>';
+      '<div class="disc-cost-total">~$' + (s.totalWithShipping || 0).toFixed(0) + '</div>' +
+      addAllBtn
+    : '<div class="disc-cost-ship" style="color:#555">' + s.itemCount + ' item' + (s.itemCount !== 1 ? 's' : '') + ' — prices not available</div>' +
+      addAllBtn;
 
   var tagHtml = s.topGenres.slice(0,3).map(function(g) {
     return '<span class="disc-tag genre">' + escapeHtml(g) + '</span>';
@@ -4653,7 +4672,7 @@ function renderDiscoverItems(s) {
       '<div class="disc-item-discogs">'   + discogsHtml + '</div>' +
       '<div class="disc-item-actions">' + linkHtml +
         '<button class="disc-cart-btn' + (inCart ? ' in-cart' : '') + '" data-key="' + escapeAttr(cartKey) + '" onclick="' + cartClick + '">' +
-          (inCart ? '✓ Saved' : '+ Save') + '</button>' +
+          (inCart ? '✓ In Cart' : '+ Cart') + '</button>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -4718,6 +4737,62 @@ function toggleCart(wantlistId, store, priceStr, priceUsd) {
       updateDiscCartRow();
     }).catch(function(e) { console.error('[cart]', e); });
   }
+}
+
+function fetchStoreExtras(storeName) {
+  if (_storeExtrasCache[storeName]) return; // already fetched or fetching
+  _storeExtrasCache[storeName] = { extras: [], fetching: true };
+  var username = getCurrentUsername();
+  if (!username) return;
+  fetch('api/store-extras/' + encodeURIComponent(username) + '/' + encodeURIComponent(storeName))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      _storeExtrasCache[storeName] = { extras: data.extras || [], fetched: true };
+      if (data.extras && data.extras.length > 0) renderCartView(); // re-render to show extras
+    })
+    .catch(function() {
+      _storeExtrasCache[storeName] = { extras: [], fetched: true };
+    });
+}
+
+function addAllToCartFromStore(storeName) {
+  var username = getCurrentUsername();
+  if (!username) return;
+  var s = (_discoverData && _discoverData.stores || []).find(function(st) { return st.store === storeName; });
+  if (!s) return;
+
+  var toAdd = s.items.filter(function(item) {
+    return !_discoverCartSet[String(item.wantlistId) + ':' + s.store];
+  });
+  if (toAdd.length === 0) return;
+
+  var promises = toAdd.map(function(item) {
+    return fetch('api/cart/' + encodeURIComponent(username), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        wantlistId:  item.wantlistId,
+        store:       s.store,
+        price:       item.priceStr  || '',
+        priceUsd:    item.priceUsd  || null,
+        condition:   item.condition || '',
+        shipsFrom:   s.country      || '',
+        listingUrl:  item.url       || '',
+        sourceType:  'store'
+      })
+    }).then(function(r) { return r.json(); })
+      .then(function(data) {
+        _discoverCartSet[String(item.wantlistId) + ':' + s.store] = true;
+        updateCartBadge(data.count || 0);
+        updateCartNavBadge(data.count || 0);
+      });
+  });
+
+  Promise.all(promises).then(function() {
+    renderInStockBody(); // re-render so button flips to "✓ All in cart"
+    updateDiscCartRow();
+    _cartLoaded = false; // force cart reload next time cart tab opens
+  });
 }
 
 function updateCartButtons(cartKey, inCart) {
@@ -4903,6 +4978,34 @@ function renderCartView() {
         '</div></div>';
     }).join('');
     var label = isDiscogs ? (g.sellerUsername || g.store) : g.store;
+
+    // Taste extras — show for store groups, fetch if not cached
+    var extrasHtml = '';
+    if (!isDiscogs) {
+      var cached = _storeExtrasCache[g.store];
+      if (!cached) {
+        // Kick off fetch, re-render when done
+        fetchStoreExtras(g.store);
+        extrasHtml = ''; // will appear after fetch
+      } else if (cached.extras && cached.extras.length > 0) {
+        extrasHtml =
+          '<div class="cg-extras">'+
+            '<div class="cg-extras-label">✦ Also at '+escapeHtml(g.store)+' — matches your taste</div>'+
+            '<div class="caf-chips">'+
+              cached.extras.map(function(e) {
+                var chip = '<span class="cg-extra-chip">';
+                if (e.thumb) chip += '<img class="cg-extra-thumb" src="'+escapeHtml(e.thumb)+'" loading="lazy" alt="" onerror="this.style.display=\'none\'">';
+                chip += '<span class="cg-extra-info"><em>'+escapeHtml(e.artist||'')+'</em> '+escapeHtml(e.title||'')+'</span>';
+                if (e.priceStr) chip += '<span class="cg-extra-price">'+escapeHtml(e.priceStr)+'</span>';
+                if (e.url) chip += '<a class="cg-extra-link" href="'+escapeHtml(e.url)+'" target="_blank" rel="noopener">↗</a>';
+                chip += '</span>';
+                return chip;
+              }).join('')+
+            '</div>'+
+          '</div>';
+      }
+    }
+
     return '<div class="cart-group">'+
       '<div class="cg-header">'+
         '<span class="cg-name">'+escapeHtml(label)+'</span>'+
@@ -4915,6 +5018,7 @@ function renderCartView() {
         '<span class="cg-ship-cost">+ Ship: ~$'+cost.ship.toFixed(0)+'</span>'+
         '<span class="cg-group-total">= $'+cost.total.toFixed(2)+'</span>'+
       '</div>'+
+      extrasHtml+
     '</div>';
   }
 

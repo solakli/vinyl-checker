@@ -769,6 +769,63 @@ function getLatestInStockResults(userId) {
     `).all(userId);
 }
 
+/**
+ * Taste extras: in-stock items at a store from OTHER users' wantlists
+ * that the current user doesn't already have on their wantlist.
+ * Sorted by genre overlap with user's top genres.
+ */
+function getStoreExtras(userId, storeName, limit) {
+    limit = limit || 8;
+    // Get user's top genres/styles from their wantlist
+    var userGenres = getDb().prepare(`
+        SELECT genres, styles FROM wantlist WHERE user_id = ? AND active = 1
+    `).all(userId);
+
+    // Build a genre frequency map
+    var genreFreq = {};
+    userGenres.forEach(function(w) {
+        (w.genres || '').split('|').concat((w.styles || '').split('|')).forEach(function(g) {
+            g = g.trim();
+            if (g) genreFreq[g] = (genreFreq[g] || 0) + 1;
+        });
+    });
+    var topGenres = Object.keys(genreFreq).sort(function(a, b) { return genreFreq[b] - genreFreq[a]; }).slice(0, 10);
+
+    // Fetch cross-user in-stock items at this store not on user's wantlist
+    var rows = getDb().prepare(`
+        SELECT DISTINCT w.artist, w.title, w.thumb, w.genres, w.styles, w.year,
+               sr.matches, w.discogs_id
+        FROM store_results sr
+        JOIN wantlist w ON w.id = sr.wantlist_id
+        WHERE sr.store = ?
+          AND sr.in_stock = 1
+          AND w.user_id != ?
+          AND w.discogs_id NOT IN (
+              SELECT discogs_id FROM wantlist WHERE user_id = ? AND active = 1
+          )
+        GROUP BY w.discogs_id
+        HAVING sr.checked_at = MAX(sr.checked_at)
+        LIMIT 50
+    `).all(storeName, userId, userId);
+
+    // Score by genre overlap with user taste
+    rows.forEach(function(row) {
+        var rowGenres = (row.genres || '').split('|').concat((row.styles || '').split('|')).map(function(g) { return g.trim(); });
+        row._score = rowGenres.reduce(function(s, g) { return s + (genreFreq[g] || 0); }, 0);
+        // Parse price from first match
+        try {
+            var m = JSON.parse(row.matches || '[]');
+            row.priceStr = m[0] && m[0].price ? m[0].price : null;
+            row.url      = m[0] && m[0].url   ? m[0].url   : null;
+        } catch(e) { row.priceStr = null; row.url = null; }
+    });
+
+    return rows
+        .filter(function(r) { return r._score > 0; }) // only genre-matching records
+        .sort(function(a, b) { return b._score - a._score; })
+        .slice(0, limit);
+}
+
 function getItemsNeedingCheck(userId) {
     var d = getDb();
 
@@ -2211,6 +2268,7 @@ module.exports = {
     saveStoreResults: saveStoreResults,
     getStoreResults: getStoreResults,
     getLatestInStockResults: getLatestInStockResults,
+    getStoreExtras: getStoreExtras,
     getItemsNeedingCheck: getItemsNeedingCheck,
     saveDiscogsPrice: saveDiscogsPrice,
     getDiscogsPrice: getDiscogsPrice,

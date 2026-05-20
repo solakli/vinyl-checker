@@ -10079,6 +10079,23 @@ body.light .opt-pinned-hint { background: rgba(200,160,0,0.06); border-color: rg
 .cart-clear-btn { background:none; border:1px solid var(--border); color:var(--text-muted); border-radius:6px; padding:6px 14px; font-size:13px; cursor:pointer; }
 .cart-clear-btn:hover { color:#e55; border-color:#e55; }
 
+/* ── In Stock: Add all to cart button ───────────────────────── */
+.disc-add-all-btn { background:rgba(201,168,76,0.12); border:1px solid rgba(201,168,76,0.35); color:var(--gold); border-radius:7px; padding:5px 13px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; margin-left:auto; transition:all .12s cubic-bezier(.2,.8,.3,1); }
+.disc-add-all-btn:hover { background:rgba(201,168,76,0.25); border-color:var(--gold); transform:translateY(-1px); box-shadow:0 3px 12px rgba(201,168,76,0.25); }
+.disc-add-all-btn:active { transform:scale(0.96); }
+.disc-add-all-btn.all-in-cart { background:rgba(76,175,135,0.12); border-color:rgba(76,175,135,0.35); color:#4caf87; cursor:default; }
+
+/* ── Cart taste extras ───────────────────────────────────────── */
+.cg-extras { padding:10px 18px 14px; border-top:1px solid rgba(255,255,255,0.04); background:rgba(201,168,76,0.03); }
+.cg-extras-label { font-size:11px; color:var(--gold); font-weight:600; letter-spacing:0.3px; margin-bottom:8px; opacity:0.8; }
+.cg-extra-chip { display:inline-flex; align-items:center; gap:5px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.07); border-radius:8px; padding:4px 8px; font-size:11px; color:var(--text-muted); margin:2px; }
+.cg-extra-thumb { width:22px; height:22px; border-radius:3px; object-fit:cover; flex-shrink:0; }
+.cg-extra-info em { color:var(--text-muted); font-style:normal; }
+.cg-extra-info { max-width:160px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cg-extra-price { color:var(--gold); font-weight:600; white-space:nowrap; }
+.cg-extra-link { color:var(--text-muted); text-decoration:none; font-size:10px; }
+.cg-extra-link:hover { color:var(--gold); }
+
 /* ── Auto-fill suggestions ───────────────────────────────────── */
 .cart-autofill-results { margin:16px 18px 18px; }
 .caf-header { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px; flex-wrap:wrap; gap:6px; }
