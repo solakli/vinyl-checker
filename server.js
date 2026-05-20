@@ -3000,6 +3000,8 @@ app.get('/api/seller-intelligence/:username', function (req, res) {
                     sellerUsername:   l.seller_username,
                     sellerRating:     null,   // accumulated below — take best non-null
                     sellerNumRatings: null,
+                    shipsFrom:        l.ships_from || 'XX',
+                    actualShippingUsd: null,  // first non-null shipping_to_usd seen
                     recordCount:      0,
                     mCount:           0,
                     nmCount:          0,
@@ -3010,6 +3012,10 @@ app.get('/api/seller-intelligence/:username', function (req, res) {
                     gradeScoreSum:    0,
                     records:          []
                 };
+            }
+            // Capture first non-null shipping cost (proves seller ships to buyer's country)
+            if (sellerMap[l.seller_username].actualShippingUsd == null && l.shipping_to_usd != null) {
+                sellerMap[l.seller_username].actualShippingUsd = l.shipping_to_usd;
             }
 
             var s = sellerMap[l.seller_username];
@@ -3065,6 +3071,13 @@ app.get('/api/seller-intelligence/:username', function (req, res) {
             });
             delete s.gradeScoreSum;
             return s;
+        });
+
+        // Filter out sellers who can't ship to the buyer's country.
+        // ships_from='XX' means Discogs showed "Unavailable in [your country]" — no point showing them.
+        // We keep them only if a real shipping cost was captured (proves shipping IS possible).
+        sellers = sellers.filter(function (s) {
+            return (s.shipsFrom || 'XX') !== 'XX' || s.actualShippingUsd != null;
         });
 
         // Default sort: most records first
