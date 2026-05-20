@@ -74,7 +74,8 @@ async function startSync(server, username) {
         allListings = allListings.concat(sellers);
 
         await setProgress({ running: true, done: i + 1, total: _items.length, found: allListings.length });
-        await sleep(400);
+        // Discogs API rate limit: 60 req/min authenticated → 1 req/sec safe ceiling
+        await sleep(1100);
     }
 
     // Post to server
@@ -108,25 +109,108 @@ async function getDiscogsCookieHeader() {
 }
 
 // ── Fetch + parse Discogs marketplace page ────────────────────────────────────
+// Primary: REST API → stable field names, personalized shipping_price when logged in.
+// Fallback: HTML scraping (parseHtml) in case the API is down or returns 0 listings.
 async function fetchMarketplacePage(discogsId, wantlistId, cookieHeader) {
+
+    // ── 1. Discogs REST API ───────────────────────────────────────────────────
+    try {
+        var apiUrl = 'https://api.discogs.com/marketplace/listings' +
+                     '?release_id=' + discogsId +
+                     '&status=For+Sale&currency=USD&per_page=100&sort=price&sort_order=asc';
+        var apiRes = await fetch(apiUrl, {
+            headers: {
+                'Cookie':          cookieHeader,
+                'User-Agent':      'WaxDigger/1.0 +https://waxdigger.ai',
+                'Accept':          'application/json',
+                'Accept-Language': 'en-US,en;q=0.9'
+            }
+        });
+
+        var remaining = apiRes.headers.get('X-Discogs-Ratelimit-Remaining') || '?';
+        console.log('[WaxDigger] API', discogsId, '→', apiRes.status, '| rate-limit remaining:', remaining);
+
+        if (apiRes.status === 429) {
+            // Rate-limited — log and return [] (sync will resume next time)
+            console.warn('[WaxDigger] Rate limited by Discogs API for', discogsId, '— skipping');
+            return [];
+        }
+
+        if (apiRes.ok) {
+            var apiData    = await apiRes.json();
+            var apiListings = (apiData.listings || []).filter(function (l) {
+                return l.seller && l.seller.username;
+            });
+
+            if (apiListings.length > 0) {
+                var results = apiListings.map(function (l) {
+                    // ships_from is a top-level string in the REST API ("Germany", "United States", …)
+                    var shipsFrom = l.ships_from || (l.seller && l.seller.location) || '';
+
+                    // shipping_price is personalised to the logged-in buyer's registered address.
+                    // With currency=USD the value is already converted to USD.
+                    var shipPrice = null;
+                    var shipCur   = (l.price && l.price.currency) || 'USD';
+                    if (l.shipping_price && typeof l.shipping_price === 'object' &&
+                        l.shipping_price.value != null) {
+                        shipPrice = l.shipping_price.value;
+                        shipCur   = l.shipping_price.currency || shipCur;
+                    } else if (typeof l.shipping_price === 'number') {
+                        shipPrice = l.shipping_price;
+                    }
+
+                    return {
+                        wantlistId:       wantlistId,
+                        listingId:        l.id,
+                        sellerUsername:   l.seller.username,
+                        sellerRating:     l.seller.stats && parseFloat(l.seller.stats.rating),
+                        sellerNumRatings: l.seller.stats && l.seller.stats.total,
+                        priceOriginal:    l.price && l.price.value,
+                        currency:         (l.price && l.price.currency) || 'USD',
+                        condition:        l.condition || '',
+                        shipsFrom:        shipsFrom,
+                        shippingPrice:    shipPrice,     // personalised cost to buyer (null = not returned)
+                        shippingCurrency: shipCur,
+                        listingUrl:       'https://www.discogs.com/sell/item/' + l.id
+                    };
+                });
+
+                // Debug: show first listing's shipping data so we can verify it's working
+                if (results[0]) {
+                    console.log('[WaxDigger] API sample —',
+                        'shipsFrom:', results[0].shipsFrom,
+                        'shippingPrice:', results[0].shippingPrice,
+                        'shippingCurrency:', results[0].shippingCurrency);
+                }
+                console.log('[WaxDigger] API got', results.length, 'listings for', discogsId);
+                return results;
+            }
+            // API returned ok but 0 listings — fall through to HTML
+            console.log('[WaxDigger] API returned 0 listings for', discogsId, '— trying HTML fallback');
+        }
+    } catch (apiErr) {
+        console.error('[WaxDigger] API error for', discogsId, ':', apiErr.message);
+    }
+
+    // ── 2. Fallback: HTML scraping ────────────────────────────────────────────
     try {
         var url = 'https://www.discogs.com/sell/release/' + discogsId;
         var res = await fetch(url, {
             headers: {
-                'Cookie': cookieHeader,
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Cookie':          cookieHeader,
+                'User-Agent':      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Accept-Language': 'en-US,en;q=0.9'
             }
         });
-        console.log('[WaxDigger]', url, '→', res.status);
+        console.log('[WaxDigger] HTML fallback', discogsId, '→', res.status);
         if (!res.ok) return [];
-        var html    = await res.text();
-        var parsed  = parseHtml(html, wantlistId);
-        console.log('[WaxDigger] parsed', parsed.length, 'listings for', discogsId);
+        var html   = await res.text();
+        var parsed = parseHtml(html, wantlistId);
+        console.log('[WaxDigger] HTML fallback parsed', parsed.length, 'listings for', discogsId);
         return parsed;
     } catch (e) {
-        console.error('[WaxDigger] fetch error for', discogsId, ':', e.message);
+        console.error('[WaxDigger] HTML fallback error for', discogsId, ':', e.message);
         return [];
     }
 }
