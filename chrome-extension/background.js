@@ -115,9 +115,9 @@ async function fetchMarketplacePage(discogsId, wantlistId, cookieHeader) {
 
     // ── 1. Discogs REST API ───────────────────────────────────────────────────
     try {
-        var apiUrl = 'https://api.discogs.com/marketplace/listings' +
+        var apiUrl = 'https://api.discogs.com/marketplace/search' +
                      '?release_id=' + discogsId +
-                     '&status=For+Sale&currency=USD&per_page=100&sort=price&sort_order=asc';
+                     '&type=listing&currency=USD&per_page=100&sort=price&sort_order=asc';
         var apiRes = await fetch(apiUrl, {
             headers: {
                 'Cookie':          cookieHeader,
@@ -138,7 +138,8 @@ async function fetchMarketplacePage(discogsId, wantlistId, cookieHeader) {
 
         if (apiRes.ok) {
             var apiData    = await apiRes.json();
-            var apiListings = (apiData.listings || []).filter(function (l) {
+            // /marketplace/search returns { results: [...] }, not { listings: [...] }
+            var apiListings = (apiData.results || []).filter(function (l) {
                 return l.seller && l.seller.username;
             });
 
