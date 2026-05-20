@@ -179,6 +179,33 @@ The platform has cross-user intelligence: it knows what OTHER diggers have on th
 ### Output format
 When showing extras, be direct: "seaflows_music also has: [artist] — [title] [condition] [price] → [url]". Don't pad. Lead with the best ones by taste_score.
 
+## Record Research + Curation Workflow (THE KEY LOOP)
+
+This is WAXY's most powerful mode. When the user is browsing extras or suggestions and wants to know more before buying:
+
+### The workflow
+1. **WAXY shows extras list** — from get_store_extras / get_seller_extras / get_cart_intelligence. List each record: artist, title, genres, price, condition, year.
+2. **WAXY proactively calls research_record** for the top 2-3 extras using their discogs_id — get the gem data, YouTube stats, DJ mentions WITHOUT waiting to be asked.
+3. **WAXY presents the research inline** — one punchy line per record: gem tier, view count, DJ validation, rarity. Examples:
+   - "💎 Hidden Gem — 847 views, 3 DJ mentions (Ben UFO, Floating Points, Surgeon), 23 Discogs owners — genuinely rare"
+   - "🔥 Club Weapon — DJ-validated, moderate following, €14 NM → [buy link]"
+   - "2,300 views, no DJ mentions yet — solid deep cut, under the radar"
+4. **User says "add that one" or "yes #2"** — WAXY responds with the direct buy link and one sentence on what makes it worth it
+5. **Buy link format**: for Discogs extras → "Here's the listing: [discogs.com/sell/item/XXX] — NM, $8, ships from DE. Add it to your order with seaflows_music."
+
+### research_record tips
+- Always pass discogs_id from the extras result — it's the most reliable lookup
+- Also pass buy_url, price, condition so the tool can echo them back in context
+- If the record isn't enriched yet (no YouTube data), say so honestly and focus on Discogs community data (have/want/rating) instead
+- The verdict field ("💎 Hidden Gem", "🔥 Club Weapon") is the headline — lead with it
+- dj_mentions is the strongest buy signal — if DJs are in the comments, say who
+
+### When user says "add it" / "yes buy it"
+Don't add to Wax Digger cart (extras aren't on wantlist). Instead:
+- For Discogs seller extras: give the buy_url (discogs.com/sell/item/ID) — they click, land on Discogs listing, add to their Discogs cart on the same seller page
+- For store extras: give the store product URL — they click, add to that store's cart manually
+- Frame it: "Here's the link → [URL]. You're already ordering from seaflows_music — add this to the same cart before checkout."
+
 ## GEM INTELLIGENCE
 The platform enriches every wantlist + collection item with YouTube data (view count, DJ mentions in comments, genre tags). From this it computes a Gem Score (0-100) and assigns each release a tier:
 - **hidden_gem**: very low YouTube views (<10k), obscure on Discogs — truly underground
@@ -534,6 +561,22 @@ const TOOLS = [
                 username: { type: 'string', description: 'Discogs username' }
             },
             required: ['username']
+        }
+    },
+    {
+        name: 'research_record',
+        description: 'Deep-dive on a specific record: pulls YouTube data (view count, DJ mentions, genre tags from comments), Discogs community stats (have/want/rating), gem score + tier, and surfaces the direct buy link. Use this when a user expresses interest in a specific record from extras or suggestions — before they commit to buying. Presents: how underground it is (view count + gem tier), who has validated it (DJs in comments), Discogs community sentiment (rating, want/have ratio), and the exact buy URL. Perfect for the "tell me more about this one" moment.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                artist:      { type: 'string', description: 'Artist name' },
+                title:       { type: 'string', description: 'Record title' },
+                discogs_id:  { type: 'number', description: 'Discogs release ID (preferred — pass from extras results for accurate lookup)' },
+                buy_url:     { type: 'string', description: 'Direct buy URL if known (e.g. discogs.com/sell/item/XXX or store product page)' },
+                price:       { type: 'string', description: 'Price string if known (e.g. "$8.95")' },
+                condition:   { type: 'string', description: 'Record condition if known (e.g. "NM", "VG+")' }
+            },
+            required: ['artist', 'title']
         }
     }
 ];
@@ -2030,6 +2073,7 @@ function toolGetStoreExtras({ username, store, limit }) {
             return {
                 artist:      r.artist,
                 title:       r.title,
+                discogs_id:  r.discogs_id || null,
                 genres:      (r.genres || '').split('|').map(function(g) { return g.trim(); }).filter(Boolean),
                 styles:      (r.styles || '').split('|').map(function(g) { return g.trim(); }).filter(Boolean),
                 year:        r.year,
@@ -2038,7 +2082,7 @@ function toolGetStoreExtras({ username, store, limit }) {
                 taste_score: r._score
             };
         }),
-        tip: 'These records are in stock at ' + store + ' right now, wanted by other diggers, and match your taste. Not on your wantlist — add to cart while you\'re already paying shipping.'
+        tip: 'These records are in stock at ' + store + ' right now, wanted by other diggers, and match your taste. Use discogs_id with research_record for gem score, YouTube data, and DJ validation on any item before deciding.'
     };
 }
 
@@ -2073,6 +2117,7 @@ function toolGetSellerExtras({ username, seller, limit }) {
             return {
                 artist:      r.artist,
                 title:       r.title,
+                discogs_id:  r.discogs_id || null,
                 genres:      (r.genres || '').split('|').map(function(g) { return g.trim(); }).filter(Boolean),
                 styles:      (r.styles || '').split('|').map(function(g) { return g.trim(); }).filter(Boolean),
                 year:        r.year,
@@ -2177,6 +2222,115 @@ function toolGetCartIntelligence({ username }) {
     };
 }
 
+// ─── research_record ──────────────────────────────────────────────────────────
+// Deep-dives a single release: YouTube data, gem score, Discogs community stats.
+// Works best with discogs_id (from extras results). Falls back to artist/title search.
+function toolResearchRecord({ artist, title, discogs_id, buy_url, price, condition }) {
+    var d = db.getDb();
+
+    // Resolve discogs_id if not provided — try wantlist/collection search
+    var resolvedId = discogs_id || null;
+    if (!resolvedId) {
+        var q1 = '%' + artist.toLowerCase() + '%';
+        var q2 = '%' + title.toLowerCase() + '%';
+        var found = d.prepare(
+            'SELECT discogs_id FROM wantlist WHERE LOWER(artist) LIKE ? AND LOWER(title) LIKE ? AND discogs_id IS NOT NULL LIMIT 1'
+        ).get(q1, q2);
+        if (!found) found = d.prepare(
+            'SELECT discogs_id FROM collection WHERE LOWER(artist) LIKE ? AND LOWER(title) LIKE ? AND discogs_id IS NOT NULL LIMIT 1'
+        ).get(q1, q2);
+        if (found) resolvedId = found.discogs_id;
+    }
+
+    var sm = resolvedId ? d.prepare('SELECT * FROM streaming_metadata WHERE discogs_id=?').get(resolvedId) : null;
+    var rm = resolvedId ? d.prepare('SELECT * FROM release_meta WHERE discogs_id=?').get(resolvedId) : null;
+
+    var result = {
+        artist:     artist,
+        title:      title,
+        discogs_id: resolvedId,
+        buy_url:    buy_url || null,
+        price:      price || null,
+        condition:  condition || null
+    };
+
+    // ── Discogs community data ──────────────────────────────────────────────
+    if (rm) {
+        result.year          = rm.year    || null;
+        result.country       = rm.country || null;
+        result.community_have = rm.community_have || null;
+        result.community_want = rm.community_want || null;
+        result.avg_rating    = rm.avg_rating ? Math.round(rm.avg_rating * 10) / 10 : null;
+        result.want_have_ratio = (rm.community_have && rm.community_want)
+            ? Math.round((rm.community_want / rm.community_have) * 100) / 100 : null;
+        result.rarity_label  = rm.community_have
+            ? (rm.community_have < 100  ? 'ultra rare — fewer than 100 owners'
+            :  rm.community_have < 500  ? 'rare'
+            :  rm.community_have < 2000 ? 'uncommon'
+            :                             'widely owned')
+            : 'unknown';
+        result.discogs_url   = resolvedId ? 'https://www.discogs.com/release/' + resolvedId : null;
+    }
+
+    // ── YouTube + gem data ──────────────────────────────────────────────────
+    if (sm && sm.youtube_enriched_at) {
+        var commentData = {};
+        try { commentData = JSON.parse(sm.youtube_comment_data || '{}'); } catch(e) {}
+
+        result.youtube_url   = sm.youtube_video_id ? 'https://youtube.com/watch?v=' + sm.youtube_video_id : null;
+        result.view_count    = sm.youtube_view_count || 0;
+        result.like_count    = sm.youtube_like_count || null;
+        result.dj_mentions   = (commentData.djs    || []).slice(0, 8);
+        result.comment_genres = (commentData.genres || []).slice(0, 6);
+        result.era_signals   = (commentData.era    || []).slice(0, 3);
+        result.sounds_like   = (commentData.soundsLike || []).slice(0, 3);
+
+        result.underground_signal = result.view_count === 0   ? 'no YouTube presence — true underground'
+            : result.view_count < 1000  ? 'deep underground — barely any views'
+            : result.view_count < 5000  ? 'very underground'
+            : result.view_count < 20000 ? 'underground'
+            : result.view_count < 100000 ? 'moderate following'
+            : 'widely known';
+
+        // Gem score
+        try {
+            var gs = require('./lib/gem-score');
+            var scored = gs.scoreRelease(sm, rm || null);
+            result.gem_tier  = scored.tier;
+            result.gem_score = scored.gemScore;
+            result.gem_breakdown = scored.breakdown || null;
+        } catch(e) { /* non-fatal */ }
+
+        result.dj_validated = result.dj_mentions && result.dj_mentions.length > 0;
+        result.verdict = result.gem_tier === 'hidden_gem'  ? '💎 Hidden Gem — underground, under-the-radar, exactly the kind of thing you\'re digging for'
+            : result.gem_tier === 'club_weapon' ? '🔥 Club Weapon — DJs are playing this. Validated.'
+            : result.gem_tier === 'deep_cut'    ? '⛏ Deep Cut — niche following, respected in the community'
+            : result.gem_tier === 'known_quantity' ? '📻 Known Quantity — well-known, widely discussed'
+            : 'Not yet fully scored';
+
+    } else if (sm && sm.youtube_video_id) {
+        result.youtube_url       = 'https://youtube.com/watch?v=' + sm.youtube_video_id;
+        result.enrichment_status = 'Video ID found but not yet enriched (no view/comment data yet — enrichment job runs in background)';
+    } else {
+        result.enrichment_status = resolvedId
+            ? 'Not yet in enrichment pipeline — this release hasn\'t been YouTube-searched yet'
+            : 'Not found in platform DB — it\'s from another digger\'s wantlist and may not be enriched yet';
+    }
+
+    // ── Summary for WAXY to present ─────────────────────────────────────────
+    var facts = [];
+    if (result.year)           facts.push(result.year);
+    if (result.country)        facts.push(result.country);
+    if (result.rarity_label)   facts.push(result.community_have + ' owners on Discogs (' + result.rarity_label + ')');
+    if (result.avg_rating)     facts.push(result.avg_rating + '/5 community rating');
+    if (result.underground_signal) facts.push(result.underground_signal);
+    if (result.dj_mentions && result.dj_mentions.length) facts.push('DJ mentions: ' + result.dj_mentions.join(', '));
+    if (result.verdict)        facts.push(result.verdict);
+    result.summary_facts = facts;
+
+    return result;
+}
+
 // Tool dispatch
 function runTool(name, input) {
     switch(name) {
@@ -2203,6 +2357,7 @@ function runTool(name, input) {
         case 'get_store_extras':           return toolGetStoreExtras(input);
         case 'get_seller_extras':          return toolGetSellerExtras(input);
         case 'get_cart_intelligence':      return toolGetCartIntelligence(input);
+        case 'research_record':            return toolResearchRecord(input);
         default: return { error: 'Unknown tool: ' + name };
     }
 }
