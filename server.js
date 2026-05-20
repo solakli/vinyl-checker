@@ -3795,16 +3795,24 @@ app.get('/api/seller-extras/:username/:seller', function(req, res) {
         var seller = decodeURIComponent(req.params.seller);
         var extras = db.getSellerExtras(user.id, seller, 6);
         res.json({ extras: extras.map(function(r) {
+            // Build real Discogs URL from listing_id — extension URLs don't work outside browser
+            var url = r.listing_id
+                ? 'https://www.discogs.com/sell/item/' + r.listing_id
+                : null;
+            // Extract short condition string from raw Discogs condition text
+            var condRaw = r.condition || '';
+            var condMatch = condRaw.match(/Mint \(M\)|Near Mint \(NM or M-\)|Very Good Plus \(VG\+\)|Very Good \(VG\)|Good Plus \(G\+\)|Good \(G\)|Fair \(F\)|Poor \(P\)/);
+            var condition = condMatch ? condMatch[0] : '';
             return {
-                artist:   r.artist,
-                title:    r.title,
-                thumb:    r.thumb,
-                genres:   r.genres,
-                styles:   r.styles,
-                year:     r.year,
-                priceStr: r.priceStr,
-                url:      r.url,
-                condition: r.condition
+                artist:    r.artist,
+                title:     r.title,
+                thumb:     r.thumb,
+                genres:    r.genres,
+                styles:    r.styles,
+                year:      r.year,
+                priceStr:  r.priceStr,
+                url:       url,
+                condition: condition
             };
         })});
     } catch(e) {

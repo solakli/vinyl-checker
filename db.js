@@ -789,7 +789,7 @@ function getSellerExtras(userId, sellerUsername, limit) {
     var rows = getDb().prepare(`
         SELECT DISTINCT w.artist, w.title, w.thumb, w.genres, w.styles, w.year,
                dl.price_usd, dl.price_original, dl.currency, dl.condition,
-               dl.listing_url, dl.ships_from, w.discogs_id
+               dl.listing_url, dl.listing_id, dl.ships_from, w.discogs_id
         FROM discogs_listings dl
         JOIN wantlist w ON w.id = dl.wantlist_id
         WHERE dl.seller_username = ?
