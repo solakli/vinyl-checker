@@ -3788,6 +3788,31 @@ app.post('/api/auto-fill/:username', function(req, res) {
     }
 });
 
+// ── Seller taste extras: other releases a Discogs seller has (cross-user wantlists) ──
+app.get('/api/seller-extras/:username/:seller', function(req, res) {
+    try {
+        var user   = db.getOrCreateUser(req.params.username);
+        var seller = decodeURIComponent(req.params.seller);
+        var extras = db.getSellerExtras(user.id, seller, 6);
+        res.json({ extras: extras.map(function(r) {
+            return {
+                artist:   r.artist,
+                title:    r.title,
+                thumb:    r.thumb,
+                genres:   r.genres,
+                styles:   r.styles,
+                year:     r.year,
+                priceStr: r.priceStr,
+                url:      r.url,
+                condition: r.condition
+            };
+        })});
+    } catch(e) {
+        console.error('[seller-extras]', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ── Store taste extras: cross-user in-stock items at a store matching user taste ──
 app.get('/api/store-extras/:username/:store', function(req, res) {
     try {

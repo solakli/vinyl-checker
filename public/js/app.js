@@ -702,6 +702,7 @@ async function loadExisting(username) {
   _cartAutoFill = null;
   _cartStoreAutoFill = null;
   _storeExtrasCache = {};
+  _sellerExtrasCache = {};
   updateNavCartBadge(null);
 
   // Restore saved optimizer result for this user (persists across page reloads)
@@ -2349,6 +2350,7 @@ async function disconnectDiscogs() {
   _cartAutoFill = null;
   _cartStoreAutoFill = null;
   _storeExtrasCache = {};
+  _sellerExtrasCache = {};
   updateCartNavBadge(0);
   // Reset UI to welcome
   document.getElementById('userBar').style.display = 'none';
@@ -3908,6 +3910,7 @@ var _cartItems           = [];   // full cart item objects from /api/cart
 var _cartAutoFill        = null; // Discogs auto-fill suggestions
 var _cartStoreAutoFill   = null; // store smart-fill suggestions
 var _storeExtrasCache    = {};   // storeName → { extras:[], fetched:true }
+var _sellerExtrasCache   = {};   // sellerUsername → { extras:[], fetched:true }
 var _cartPrefs           = { countryCode: 'US', minCondition: 'VG+', minSellerRating: 98, maxPriceUsd: null, minStoreItems: 1, minSellerItems: 2 };
 var _cartLoaded          = false;
 var _forYouFilter        = 'all';      // 'all' | 'artist' | 'style'
@@ -4739,6 +4742,22 @@ function toggleCart(wantlistId, store, priceStr, priceUsd) {
   }
 }
 
+function fetchSellerExtras(sellerUsername) {
+  if (_sellerExtrasCache[sellerUsername]) return;
+  _sellerExtrasCache[sellerUsername] = { extras: [], fetching: true };
+  var username = getCurrentUsername();
+  if (!username) return;
+  fetch('api/seller-extras/' + encodeURIComponent(username) + '/' + encodeURIComponent(sellerUsername))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      _sellerExtrasCache[sellerUsername] = { extras: data.extras || [], fetched: true };
+      if (data.extras && data.extras.length > 0) renderCartView();
+    })
+    .catch(function() {
+      _sellerExtrasCache[sellerUsername] = { extras: [], fetched: true };
+    });
+}
+
 function fetchStoreExtras(storeName) {
   if (_storeExtrasCache[storeName]) return; // already fetched or fetching
   _storeExtrasCache[storeName] = { extras: [], fetching: true };
@@ -4979,31 +4998,34 @@ function renderCartView() {
     }).join('');
     var label = isDiscogs ? (g.sellerUsername || g.store) : g.store;
 
-    // Taste extras — show for store groups, fetch if not cached
+    // Taste extras — stores: cross-user in-stock items; Discogs: other releases from same seller
     var extrasHtml = '';
-    if (!isDiscogs) {
-      var cached = _storeExtrasCache[g.store];
-      if (!cached) {
-        // Kick off fetch, re-render when done
-        fetchStoreExtras(g.store);
-        extrasHtml = ''; // will appear after fetch
-      } else if (cached.extras && cached.extras.length > 0) {
-        extrasHtml =
-          '<div class="cg-extras">'+
-            '<div class="cg-extras-label">✦ Also at '+escapeHtml(g.store)+' — matches your taste</div>'+
-            '<div class="caf-chips">'+
-              cached.extras.map(function(e) {
-                var chip = '<span class="cg-extra-chip">';
-                if (e.thumb) chip += '<img class="cg-extra-thumb" src="'+escapeHtml(e.thumb)+'" loading="lazy" alt="" onerror="this.style.display=\'none\'">';
-                chip += '<span class="cg-extra-info"><em>'+escapeHtml(e.artist||'')+'</em> '+escapeHtml(e.title||'')+'</span>';
-                if (e.priceStr) chip += '<span class="cg-extra-price">'+escapeHtml(e.priceStr)+'</span>';
-                if (e.url) chip += '<a class="cg-extra-link" href="'+escapeHtml(e.url)+'" target="_blank" rel="noopener">↗</a>';
-                chip += '</span>';
-                return chip;
-              }).join('')+
-            '</div>'+
-          '</div>';
-      }
+    var extrasSource = isDiscogs ? (g.sellerUsername || g.store) : g.store;
+    var extrasLabel  = isDiscogs
+      ? '✦ More from ' + escapeHtml(extrasSource) + ' — matches your taste'
+      : '✦ Also at '   + escapeHtml(extrasSource) + ' — matches your taste';
+    var cachedExtras = isDiscogs ? _sellerExtrasCache[extrasSource] : _storeExtrasCache[extrasSource];
+
+    if (!cachedExtras) {
+      if (isDiscogs) fetchSellerExtras(extrasSource);
+      else           fetchStoreExtras(extrasSource);
+    } else if (cachedExtras.extras && cachedExtras.extras.length > 0) {
+      extrasHtml =
+        '<div class="cg-extras">'+
+          '<div class="cg-extras-label">'+extrasLabel+'</div>'+
+          '<div class="caf-chips">'+
+            cachedExtras.extras.map(function(e) {
+              var chip = '<span class="cg-extra-chip">';
+              if (e.thumb) chip += '<img class="cg-extra-thumb" src="'+escapeHtml(e.thumb)+'" loading="lazy" alt="" onerror="this.style.display=\'none\'">';
+              chip += '<span class="cg-extra-info"><em>'+escapeHtml(e.artist||'')+'</em> '+escapeHtml(e.title||'')+'</span>';
+              if (e.condition) chip += '<span class="cg-extra-cond">'+escapeHtml(condAbbr(e.condition))+'</span>';
+              if (e.priceStr)  chip += '<span class="cg-extra-price">'+escapeHtml(e.priceStr)+'</span>';
+              if (e.url) chip += '<a class="cg-extra-link" href="'+escapeHtml(e.url)+'" target="_blank" rel="noopener">↗</a>';
+              chip += '</span>';
+              return chip;
+            }).join('')+
+          '</div>'+
+        '</div>';
     }
 
     return '<div class="cart-group">'+

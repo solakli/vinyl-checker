@@ -770,6 +770,58 @@ function getLatestInStockResults(userId) {
 }
 
 /**
+ * Seller extras: other releases a Discogs seller has listed (from OTHER users' wantlists)
+ * that the current user doesn't have, scored by genre overlap with user taste.
+ */
+function getSellerExtras(userId, sellerUsername, limit) {
+    limit = limit || 6;
+    var userGenres = getDb().prepare(`
+        SELECT genres, styles FROM wantlist WHERE user_id = ? AND active = 1
+    `).all(userId);
+    var genreFreq = {};
+    userGenres.forEach(function(w) {
+        (w.genres || '').split('|').concat((w.styles || '').split('|')).forEach(function(g) {
+            g = g.trim();
+            if (g) genreFreq[g] = (genreFreq[g] || 0) + 1;
+        });
+    });
+
+    var rows = getDb().prepare(`
+        SELECT DISTINCT w.artist, w.title, w.thumb, w.genres, w.styles, w.year,
+               dl.price_usd, dl.price_original, dl.currency, dl.condition,
+               dl.listing_url, dl.ships_from, w.discogs_id
+        FROM discogs_listings dl
+        JOIN wantlist w ON w.id = dl.wantlist_id
+        WHERE dl.seller_username = ?
+          AND w.user_id != ?
+          AND w.discogs_id NOT IN (
+              SELECT discogs_id FROM wantlist WHERE user_id = ? AND active = 1
+          )
+        GROUP BY w.discogs_id
+        LIMIT 50
+    `).all(sellerUsername, userId, userId);
+
+    rows.forEach(function(row) {
+        var rowGenres = (row.genres || '').split('|').concat((row.styles || '').split('|')).map(function(g) { return g.trim(); });
+        row._score = rowGenres.reduce(function(s, g) { return s + (genreFreq[g] || 0); }, 0);
+        // Format price
+        if (row.price_usd) {
+            row.priceStr = '$' + row.price_usd.toFixed(2);
+        } else if (row.price_original && row.currency) {
+            row.priceStr = row.price_original.toFixed(2) + ' ' + row.currency;
+        } else {
+            row.priceStr = null;
+        }
+        row.url = row.listing_url || null;
+    });
+
+    return rows
+        .filter(function(r) { return r._score > 0; })
+        .sort(function(a, b) { return b._score - a._score; })
+        .slice(0, limit);
+}
+
+/**
  * Taste extras: in-stock items at a store from OTHER users' wantlists
  * that the current user doesn't already have on their wantlist.
  * Sorted by genre overlap with user's top genres.
@@ -2269,6 +2321,7 @@ module.exports = {
     getStoreResults: getStoreResults,
     getLatestInStockResults: getLatestInStockResults,
     getStoreExtras: getStoreExtras,
+    getSellerExtras: getSellerExtras,
     getItemsNeedingCheck: getItemsNeedingCheck,
     saveDiscogsPrice: saveDiscogsPrice,
     getDiscogsPrice: getDiscogsPrice,
