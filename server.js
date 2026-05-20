@@ -3041,7 +3041,7 @@ app.get('/api/seller-intelligence/:username', function (req, res) {
                 priceOriginal: l.price_original,
                 currency:      l.currency,
                 shippingToUsd: l.shipping_to_usd,
-                listingUrl:    l.listing_url,
+                listingUrl:    l.listing_id ? 'https://www.discogs.com/sell/item/' + l.listing_id : null,
                 isRare:        rare,
                 communityWant: l.community_want,
                 communityHave: l.community_have,
@@ -3632,7 +3632,7 @@ app.get('/api/discover/:username', function(req, res) {
                 sellerRating: c ? c.seller_rating : null,
                 condition:    c ? c.condition : null,
                 shipsFrom:    c ? c.ships_from : null,
-                listingUrl:   c ? c.listing_url : null,
+                listingUrl:   c && c.listing_id ? 'https://www.discogs.com/sell/item/' + c.listing_id : null,
             };
         }).sort(function(a, b) { return (a.cheapestUsd || 9999) - (b.cheapestUsd || 9999); });
 

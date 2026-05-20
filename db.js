@@ -2262,14 +2262,31 @@ function getDiscoverData(userId) {
 }
 
 function getCartItems(userId) {
+    // Join discogs_listings to get real listing_id → construct proper Discogs URL.
+    // The chrome extension stores chrome-extension:// URLs in listing_url; we fix
+    // that here by preferring 'https://www.discogs.com/sell/item/{listing_id}'.
     return getDb().prepare(`
         SELECT c.id, c.wantlist_id, c.store, c.price, c.price_usd, c.added_at,
-               c.condition, c.ships_from, c.listing_url, c.source_type,
+               c.condition, c.ships_from, c.source_type,
                c.seller_username, c.seller_rating, c.seller_num_ratings,
                w.artist, w.title, w.year, w.thumb, w.discogs_id, w.catno, w.label,
-               w.genres, w.styles
+               w.genres, w.styles,
+               CASE
+                   WHEN dl.listing_id IS NOT NULL
+                       THEN 'https://www.discogs.com/sell/item/' || dl.listing_id
+                   WHEN c.listing_url NOT LIKE 'chrome-extension://%'
+                    AND c.listing_url NOT LIKE 'moz-extension://%'
+                    AND c.listing_url IS NOT NULL
+                       THEN c.listing_url
+                   ELSE NULL
+               END AS listing_url
         FROM cart c
         JOIN wantlist w ON w.id = c.wantlist_id
+        LEFT JOIN (
+            SELECT wantlist_id, seller_username, MIN(listing_id) AS listing_id
+            FROM discogs_listings
+            GROUP BY wantlist_id, seller_username
+        ) dl ON dl.wantlist_id = c.wantlist_id AND dl.seller_username = c.seller_username
         WHERE c.user_id = ?
         ORDER BY c.store, c.added_at DESC
     `).all(userId);
