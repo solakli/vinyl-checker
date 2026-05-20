@@ -3911,6 +3911,22 @@ var _cartAutoFill        = null; // Discogs auto-fill suggestions
 var _cartStoreAutoFill   = null; // store smart-fill suggestions
 var _storeExtrasCache    = {};   // storeName → { extras:[], fetched:true }
 var _sellerExtrasCache   = {};   // sellerUsername → { extras:[], fetched:true }
+
+// Checkout URLs per scraped store — opens the store's native cart page
+var CART_CHECKOUT_URLS = {
+  'HHV':                 'https://www.hhv.de/cart',
+  'Juno':                'https://www.juno.co.uk/basket/',
+  'Deejay.de':           'https://www.deejay.de/warenkorb/',
+  'Hardwax':             'https://hardwax.com/basket/',
+  'Decks.de':            'https://www.decks.de/cart',
+  'Phonica':             'https://www.phonicarecords.com/basket',
+  'Turntable Lab':       'https://www.turntablelab.com/cart',
+  'Gramaphone':          'https://gramaphonerecords.com/cart/',
+  'Further Records':     'https://www.furtherrecords.com/cart',
+  'Underground Vinyl':   'https://www.undergroundvinyl.net/cart',
+  'Octopus Records NYC': 'https://www.octopusrecordsnyc.com/cart',
+  'Yoyaku':              'https://www.yoyaku.co.jp/cart',
+};
 var _cartPrefs           = { countryCode: 'US', minCondition: 'VG+', minSellerRating: 98, maxPriceUsd: null, minStoreItems: 1, minSellerItems: 2 };
 var _cartLoaded          = false;
 var _forYouFilter        = 'all';      // 'all' | 'artist' | 'style'
@@ -4625,6 +4641,35 @@ function renderStoreCard(s) {
     return '<span class="disc-tag">' + escapeHtml(st) + '</span>';
   }).join('');
 
+  // Taste extras — community picks from other diggers at this store
+  var discExtrasHtml = '';
+  var cachedDiscExtras = _storeExtrasCache[s.store];
+  if (!cachedDiscExtras) {
+    fetchStoreExtras(s.store); // fire & forget; re-renders when done
+  } else if (cachedDiscExtras.extras && cachedDiscExtras.extras.length > 0) {
+    discExtrasHtml =
+      '<div class="cg-extras disc-store-extras">'+
+        '<div class="cg-extras-label">✦ Also at ' + escapeHtml(s.store) + ' — matches your taste</div>'+
+        '<div class="caf-chips">'+
+          cachedDiscExtras.extras.map(function(e) {
+            var chip = '<span class="cg-extra-chip">';
+            if (e.thumb) chip += '<img class="cg-extra-thumb" src="'+escapeHtml(e.thumb)+'" loading="lazy" alt="" onerror="this.style.display=\'none\'">';
+            chip += '<span class="cg-extra-info"><em>'+escapeHtml(e.artist||'')+'</em> '+escapeHtml(e.title||'')+'</span>';
+            if (e.priceStr) chip += '<span class="cg-extra-price">'+escapeHtml(e.priceStr)+'</span>';
+            if (e.url) chip += '<a class="cg-extra-link" href="'+escapeHtml(e.url)+'" target="_blank" rel="noopener">↗</a>';
+            chip += '</span>';
+            return chip;
+          }).join('')+
+        '</div>'+
+      '</div>';
+  }
+
+  // Checkout button for this store
+  var discCheckoutUrl = CART_CHECKOUT_URLS[s.store] || null;
+  var discCheckoutBtn = discCheckoutUrl
+    ? '<a class="disc-store-checkout-btn" href="'+escapeHtml(discCheckoutUrl)+'" target="_blank" rel="noopener">🛒 Go to '+escapeHtml(s.store)+'</a>'
+    : '';
+
   return '<div class="disc-store-card" data-store="' + escapeHtml(s.store) + '">' +
     '<div class="disc-card-header" onclick="toggleDiscoverStore(\'' + escapeAttr(s.store) + '\')">' +
       logoImg +
@@ -4640,6 +4685,8 @@ function renderStoreCard(s) {
       '</div>' +
       renderDiscoverItems(s) +
     '</div>' +
+    discExtrasHtml +
+    (discCheckoutBtn ? '<div class="disc-store-checkout-row">'+discCheckoutBtn+'</div>' : '') +
   '</div>';
 }
 
@@ -4767,7 +4814,10 @@ function fetchStoreExtras(storeName) {
     .then(function(r) { return r.json(); })
     .then(function(data) {
       _storeExtrasCache[storeName] = { extras: data.extras || [], fetched: true };
-      if (data.extras && data.extras.length > 0) renderCartView(); // re-render to show extras
+      if (data.extras && data.extras.length > 0) {
+        renderCartView();    // re-render cart tab if active
+        renderInStockBody(); // re-render discover in-stock tab if active
+      }
     })
     .catch(function() {
       _storeExtrasCache[storeName] = { extras: [], fetched: true };
@@ -5028,6 +5078,16 @@ function renderCartView() {
         '</div>';
     }
 
+    // Checkout button — store cart URL or Discogs seller profile
+    var checkoutUrl = isDiscogs
+      ? 'https://www.discogs.com/seller/' + encodeURIComponent(g.sellerUsername || g.store) + '/profile'
+      : (CART_CHECKOUT_URLS[g.store] || null);
+    var checkoutBtn = checkoutUrl
+      ? '<a class="cg-checkout-btn" href="'+escapeHtml(checkoutUrl)+'" target="_blank" rel="noopener">'+
+          (isDiscogs ? '🛒 Go to seller' : '🛒 Go to '+escapeHtml(g.store))+
+        '</a>'
+      : '';
+
     return '<div class="cart-group">'+
       '<div class="cg-header">'+
         '<span class="cg-name">'+escapeHtml(label)+'</span>'+
@@ -5039,6 +5099,7 @@ function renderCartView() {
         '<span class="cg-records-cost">Records: $'+cost.subtotal.toFixed(2)+'</span>'+
         '<span class="cg-ship-cost">+ Ship: ~$'+cost.ship.toFixed(0)+'</span>'+
         '<span class="cg-group-total">= $'+cost.total.toFixed(2)+'</span>'+
+        checkoutBtn+
       '</div>'+
       extrasHtml+
     '</div>';
