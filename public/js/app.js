@@ -3901,8 +3901,9 @@ var _discoverGenreFilter = null;
 var _activeDiscoverStore = null;
 var _discoverCartSet     = {};
 var _cartItems           = [];   // full cart item objects from /api/cart
-var _cartAutoFill        = null; // auto-fill suggestions
-var _cartPrefs           = { countryCode: 'US', minCondition: 'VG+', minSellerRating: 98, maxPriceUsd: null };
+var _cartAutoFill        = null; // Discogs auto-fill suggestions
+var _cartStoreAutoFill   = null; // store smart-fill suggestions
+var _cartPrefs           = { countryCode: 'US', minCondition: 'VG+', minSellerRating: 98, maxPriceUsd: null, minStoreItems: 1, minSellerItems: 2 };
 var _cartLoaded          = false;
 var _forYouFilter        = 'all';      // 'all' | 'artist' | 'style'
 var _forYouStoreFilter   = 'all';      // 'all' | storeName
@@ -4951,6 +4952,15 @@ function renderCartView() {
         '<a href="#" onclick="switchView(\'discover\',null);switchDiscoverTab(\'inStock\');return false;">browse In Stock →</a>'+
       '</div>';
 
+  var storeFilters =
+    '<div class="cart-store-filters">'+
+      '<div class="cdf-row">'+
+        toggles('Min records/store', 'minStoreItems',
+          [['1','Any'],['2','2+'],['3','3+'],['5','5+']], true)+
+      '</div>'+
+      '<button class="cart-smart-fill cart-smart-fill-stores" onclick="autoFillStores()">🏪 Smart fill stores</button>'+
+    '</div>';
+
   var storeSection =
     '<div class="cart-section cart-section-stores">'+
       '<div class="cart-section-head">'+
@@ -4959,7 +4969,38 @@ function renderCartView() {
         (sTot.n > 0 ? '<span class="csh-pill">'+sTot.n+' record'+(sTot.n!==1?'s':'')+' · ~$'+sTot.total.toFixed(0)+'</span>' : '')+
         '<a href="#" class="csh-browse" onclick="switchView(\'discover\',null);switchDiscoverTab(\'inStock\');return false;">+ Browse In Stock</a>'+
       '</div>'+
+      storeFilters+
       storeBody+
+      (function() {
+        if (!_cartStoreAutoFill || !_cartStoreAutoFill.groups || !_cartStoreAutoFill.groups.length) return '';
+        return '<div class="cart-autofill-results">'+
+          '<div class="caf-header">'+
+            '<span class="caf-hdr-label">🏪 '+_cartStoreAutoFill.covered+' of '+_cartStoreAutoFill.total+' items found across stores</span>'+
+            '<span class="caf-hdr-note">Add an order, then re-run Smart fill</span>'+
+          '</div>'+
+          _cartStoreAutoFill.groups.map(function(g, idx) {
+            var ctHtml = (g.country && VALID_COUNTRIES[g.country]) ? '<span class="caf-country">📦 '+g.country+'</span>' : '';
+            return '<div class="caf-group">'+
+              '<div class="caf-group-header">'+
+                '<span class="caf-type">🏪</span>'+
+                '<span class="caf-name">'+escapeHtml(g.sourceName)+'</span>'+
+                '<span class="caf-count">'+g.items.length+' rec'+(g.items.length!==1?'s':'')+'</span>'+
+                ctHtml+
+                '<span class="caf-ship">~$'+(g.shippingCostUsd||0).toFixed(0)+' ship</span>'+
+                '<span class="caf-total">$'+(g.totalUsd||0).toFixed(2)+'</span>'+
+                '<button class="caf-add-btn" onclick="addStoreAutoFillGroup('+idx+')">+ Add order</button>'+
+              '</div>'+
+              '<div class="caf-chips">'+
+                g.items.slice(0,5).map(function(item){
+                  return '<span class="caf-chip">'+escapeHtml(item.artist)+' — '+escapeHtml(item.title)+
+                    (item.priceUsd?' $'+item.priceUsd.toFixed(0):'')+'</span>';
+                }).join('')+
+                (g.items.length > 5 ? '<span class="caf-chip caf-chip-more">+' + (g.items.length - 5) + ' more</span>' : '')+
+              '</div>'+
+            '</div>';
+          }).join('')+
+        '</div>';
+      })()+
     '</div>';
 
   // ── Discogs filter bar ─────────────────────────────────────────────────────
@@ -4970,6 +5011,8 @@ function renderCartView() {
           [['VG','VG'],['VG+','VG+'],['NM or M-','NM']], false)+
         toggles('Min seller rating', 'minSellerRating',
           [['0','Any'],['95','95%+'],['98','98%+'],['99','99%+']], true)+
+        toggles('Min records/seller', 'minSellerItems',
+          [['1','Any'],['2','2+'],['3','3+'],['5','5+']], true)+
         (function(){
           var sliderVal = maxPriceUsd ? Math.min(maxPriceUsd, 500) : 500;
           var fillPct   = (((sliderVal - 10) / 490) * 100).toFixed(1);
@@ -5121,7 +5164,9 @@ function autoFillCart() {
       countryCode:     _cartPrefs.countryCode,
       minCondition:    _cartPrefs.minCondition,
       minSellerRating: _cartPrefs.minSellerRating,
-      maxPriceUsd:     _cartPrefs.maxPriceUsd || null
+      maxPriceUsd:     _cartPrefs.maxPriceUsd  || null,
+      minStoreItems:   _cartPrefs.minStoreItems  || 1,
+      minSellerItems:  _cartPrefs.minSellerItems || 1
     })
   })
   .then(function(r) { return r.json(); })
@@ -5131,6 +5176,33 @@ function autoFillCart() {
   })
   .catch(function() {
     if (btn) { btn.textContent = '⚡ Auto-fill remaining'; btn.disabled = false; }
+  });
+}
+
+function autoFillStores() {
+  var username = getCurrentUsername();
+  if (!username) return;
+  var btn = document.querySelector('.cart-smart-fill-stores');
+  if (btn) { btn.textContent = '🏪 Finding best stores…'; btn.disabled = true; }
+
+  var coveredIds = _cartItems.filter(function(i) { return i.source_type === 'store'; })
+                             .map(function(i) { return i.wantlist_id; });
+  fetch('api/auto-fill-stores/' + encodeURIComponent(username), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      coveredIds:    coveredIds,
+      countryCode:   _cartPrefs.countryCode,
+      minStoreItems: _cartPrefs.minStoreItems || 1
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    _cartStoreAutoFill = data;
+    renderCartView();
+  })
+  .catch(function() {
+    if (btn) { btn.textContent = '🏪 Smart fill stores'; btn.disabled = false; }
   });
 }
 
@@ -5162,6 +5234,36 @@ function addAutoFillGroupByIndex(idx) {
 
   Promise.all(promises).then(function() {
     _cartAutoFill.groups = _cartAutoFill.groups.filter(function(grp, i) { return i !== idx; });
+    _cartLoaded = false;
+    loadCartView(true);
+  });
+}
+
+function addStoreAutoFillGroup(idx) {
+  if (!_cartStoreAutoFill || !_cartStoreAutoFill.groups[idx]) return;
+  var g = _cartStoreAutoFill.groups[idx];
+  var username = getCurrentUsername();
+  if (!username) return;
+
+  var promises = g.items.map(function(item) {
+    return fetch('api/cart/' + encodeURIComponent(username), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        wantlistId:  item.wantlistId,
+        store:       g.sourceName,
+        priceUsd:    item.priceUsd,
+        price:       item.priceUsd ? '$' + item.priceUsd.toFixed(2) : '',
+        condition:   item.condition || '',
+        shipsFrom:   item.shipsFrom || g.country || '',
+        listingUrl:  item.url || '',
+        sourceType:  'store'
+      })
+    }).then(function(r) { return r.json(); });
+  });
+
+  Promise.all(promises).then(function() {
+    _cartStoreAutoFill.groups = _cartStoreAutoFill.groups.filter(function(grp, i) { return i !== idx; });
     _cartLoaded = false;
     loadCartView(true);
   });

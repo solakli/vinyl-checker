@@ -10001,6 +10001,12 @@ body.light .opt-pinned-hint { background: rgba(200,160,0,0.06); border-color: rg
 .cart-section-empty { padding:18px 20px; font-size:13px; color:var(--text-muted); }
 .cart-section-empty a { color:var(--gold); text-decoration:none; }
 
+/* ── Store filter bar ────────────────────────────────────────── */
+.cart-store-filters { padding:14px 18px 16px; border-bottom:1px solid var(--border); background:rgba(201,168,76,0.04); }
+.cart-smart-fill-stores { background:rgba(201,168,76,0.12) !important; border-color:rgba(201,168,76,0.4) !important; color:var(--gold) !important; }
+.cart-smart-fill-stores:hover { background:rgba(201,168,76,0.22) !important; border-color:var(--gold) !important; box-shadow:0 4px 20px rgba(201,168,76,0.2) !important; }
+.cart-section-stores .cart-toggle.active { background:var(--gold); border-color:var(--gold); color:#000; box-shadow:0 0 12px rgba(201,168,76,0.4); }
+
 /* ── Discogs filter bar ──────────────────────────────────────── */
 .cart-discogs-filters { padding:14px 18px 16px; border-bottom:1px solid var(--border); background:rgba(76,175,135,0.04); }
 .cdf-row { display:flex; gap:20px; align-items:flex-end; flex-wrap:wrap; margin-bottom:14px; }

@@ -3712,9 +3712,11 @@ app.post('/api/auto-fill/:username', function(req, res) {
     try {
         var user = db.getOrCreateUser(req.params.username);
         var coveredIds = Array.isArray(req.body.coveredIds) ? req.body.coveredIds.map(Number) : [];
-        var buyerCountry    = req.body.countryCode   || 'US';
-        var minCondition    = req.body.minCondition  || 'VG+';
+        var buyerCountry    = req.body.countryCode    || 'US';
+        var minCondition    = req.body.minCondition   || 'VG+';
         var minSellerRating = parseFloat(req.body.minSellerRating || 98);
+        var minStoreItems   = parseInt(req.body.minStoreItems   || 1, 10);
+        var minSellerItems  = parseInt(req.body.minSellerItems  || 1, 10);
         // Default $300 cap — filters JPY prices incorrectly stored as USD (¥30000 → $300 is fine, ¥30000 → $30000 is not)
         var maxPriceUsd = req.body.maxPriceUsd ? parseFloat(req.body.maxPriceUsd) : 300;
 
@@ -3740,7 +3742,9 @@ app.post('/api/auto-fill/:username', function(req, res) {
             buyerCountry:    buyerCountry,
             minCondition:    minCondition,
             minSellerRating: minSellerRating,
-            maxPriceUsd:     maxPriceUsd
+            maxPriceUsd:     maxPriceUsd,
+            minStoreItems:   minStoreItems,
+            minSellerItems:  minSellerItems
         }, scanSources.concat(extSources));
 
         var groups = raw.cart.map(function(c) {
@@ -3780,6 +3784,72 @@ app.post('/api/auto-fill/:username', function(req, res) {
         });
     } catch(e) {
         console.error('[auto-fill]', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ── Store smart-fill: build optimal store orders from in-stock scan results ──
+app.post('/api/auto-fill-stores/:username', function(req, res) {
+    try {
+        var user = db.getOrCreateUser(req.params.username);
+        var coveredIds    = Array.isArray(req.body.coveredIds) ? req.body.coveredIds.map(Number) : [];
+        var buyerCountry  = req.body.countryCode  || 'US';
+        var minStoreItems = parseInt(req.body.minStoreItems || 1, 10);
+
+        var wantlist = db.getActiveWantlist(user.id).filter(function(w) {
+            return coveredIds.indexOf(w.id) === -1;
+        });
+        if (wantlist.length === 0) return res.json({ groups: [], covered: 0, total: 0 });
+
+        // Build store sources from latest scan results (HHV, Deejay.de, Further, etc.)
+        var scanResults   = db.getLatestInStockResults(user.id);
+        var storeOptimizer = require('./lib/store-optimizer');
+        var optimizer     = require('./lib/optimizer');
+        var sourceOpts    = { buyerCountry: buyerCountry, maxPriceUsd: 300 };
+        var scanSources   = storeOptimizer.buildStoreSources(wantlist, scanResults, sourceOpts);
+
+        // Only keep store-type sources (not Discogs ext listings)
+        scanSources = scanSources.filter(function(s) { return s.sourceType === 'store'; });
+
+        if (scanSources.length === 0) return res.json({ groups: [], covered: 0, total: wantlist.length });
+
+        var raw = optimizer.optimizeCart(scanSources, wantlist, {
+            minStoreItems:  minStoreItems,
+            minSellerItems: 1
+        });
+
+        var groups = raw.cart.map(function(c) {
+            return {
+                sourceId:        c.source.sourceId,
+                sourceName:      c.source.sourceName,
+                sourceType:      'store',
+                country:         c.source.country || '',
+                shippingCostUsd: c.shippingCostUsd,
+                subtotalUsd:     c.subtotalUsd,
+                totalUsd:        c.totalUsd,
+                items: c.assignedListings.map(function(l) {
+                    return {
+                        wantlistId: l.itemId,
+                        artist:     l.artist  || '',
+                        title:      l.title   || '',
+                        priceUsd:   l.priceUsd,
+                        condition:  l.condition || '',
+                        url:        l.url || '',
+                        shipsFrom:  c.source.country || ''
+                    };
+                })
+            };
+        });
+
+        res.json({
+            groups:  groups,
+            covered: raw.covered,
+            total:   wantlist.length,
+            grandTotalUsd:    raw.grandTotalUsd,
+            grandShippingUsd: raw.grandShippingUsd
+        });
+    } catch(e) {
+        console.error('[auto-fill-stores]', e.message);
         res.status(500).json({ error: e.message });
     }
 });
