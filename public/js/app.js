@@ -2782,34 +2782,54 @@ function triggerDiscogsSync(fromSellersTab) {
   var username = getCurrentUsername();
   if (!username) return;
 
-  if (!_extInstalled) {
-    // Show install prompt — context-aware (sellers tab vs optimizer panel)
-    if (fromSellersTab) {
-      _updateSellerSyncBanner({ noExtension: true });
-    } else {
-      var el = document.getElementById('discInStockBody');
-      if (el) {
-        var banner = document.getElementById('dgSyncBanner') || document.createElement('div');
-        banner.id = 'dgSyncBanner';
-        banner.className = 'dg-sync-banner error';
-        banner.innerHTML = '⚠ Wax Digger Chrome Extension is not installed. ' +
-          '<a href="https://github.com/solakli/vinyl-checker#extension" target="_blank" style="color:var(--gold)">Install it here</a> to sync Discogs prices.';
-        el.insertBefore(banner, el.firstChild);
-      }
-    }
-    return;
-  }
-
-  // Dispatch to content script → background → sync-window
-  var serverUrl = (window.location.origin + window.location.pathname).replace(/\/+$/, '');
-  window.dispatchEvent(new CustomEvent('waxdigger:startsync', {
-    detail: { username: username, serverUrl: serverUrl }
-  }));
-
-  // Optimistically show running state
+  // ── Server-side OAuth sync (no extension needed) ──────────────────────────
   _discogsSyncState = { running: true, done: 0, total: 0, found: 0 };
   if (_inStockVendor === 'discogs') renderInStockBody();
   if (fromSellersTab) _updateSellerSyncBanner(_discogsSyncState);
+
+  fetch('/api/marketplace-sync/' + encodeURIComponent(username), { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) {
+        _discogsSyncState = { running: false, error: data.error };
+        if (fromSellersTab) _updateSellerSyncBanner(_discogsSyncState);
+        return;
+      }
+      // Poll for progress
+      _pollMarketplaceSync(username, fromSellersTab);
+    })
+    .catch(function(e) {
+      _discogsSyncState = { running: false, error: e.message };
+      if (fromSellersTab) _updateSellerSyncBanner(_discogsSyncState);
+    });
+}
+
+function _pollMarketplaceSync(username, fromSellersTab) {
+  fetch('/api/marketplace-sync/' + encodeURIComponent(username) + '/status')
+    .then(function(r) { return r.json(); })
+    .then(function(state) {
+      _discogsSyncState = {
+        running:     state.running,
+        done:        state.done  || 0,
+        total:       state.total || 0,
+        found:       state.done  || 0,   // server counts by release, not listing
+        completedAt: state.completedAt || null,
+        error:       state.error || null
+      };
+      if (_inStockVendor === 'discogs') renderInStockBody();
+      if (fromSellersTab) _updateSellerSyncBanner(_discogsSyncState);
+
+      if (state.running) {
+        setTimeout(function() { _pollMarketplaceSync(username, fromSellersTab); }, 2000);
+      } else if (state.completedAt) {
+        // Refresh seller intel after sync completes
+        setTimeout(function() { loadSellerIntel(true); }, 1500);
+      }
+    })
+    .catch(function() {
+      // Network hiccup — retry poll
+      setTimeout(function() { _pollMarketplaceSync(username, fromSellersTab); }, 3000);
+    });
 }
 
 // Live sync banner inside the Sellers tab
@@ -5690,11 +5710,9 @@ function renderSellerIntelBody() {
   }).join('');
 
   var isSyncing = _discogsSyncState && _discogsSyncState.running;
-  var syncBtnHtml = _extInstalled
-    ? (isSyncing
-        ? '<span class="si-syncing-label">⛏ syncing…</span>'
-        : '<button class="si-sync-btn" onclick="triggerDiscogsSync(true)" title="Sync Discogs marketplace data">⛏ Sync Discogs</button>')
-    : '<a class="si-install-ext-btn" href="extension.html" target="_blank">⛏ Install Extension</a>';
+  var syncBtnHtml = isSyncing
+    ? '<span class="si-syncing-label">⛏ syncing…</span>'
+    : '<button class="si-sync-btn" onclick="triggerDiscogsSync(true)" title="Sync Discogs marketplace data">⛏ Sync Discogs</button>';
 
   var headerHtml =
     '<div class="si-header">' +
