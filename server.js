@@ -2927,7 +2927,30 @@ app.post('/api/discogs-listings/:username', function (req, res) {
             saved += rows.length;
         });
 
-        res.json({ saved: saved, wantlistItems: Object.keys(byWantlist).length });
+        // ── Shipping data health check ────────────────────────────────────────
+        // If >80% of listings have ships_from='XX', Discogs likely changed their
+        // page structure and the extension parser is broken again.
+        var totalSaved = saved;
+        var xxCount = 0;
+        Object.keys(byWantlist).forEach(function(wid) {
+            byWantlist[wid].forEach(function(l) {
+                if (!l.shipsFrom || l.shipsFrom === '' || l.shipsFrom === 'XX') xxCount++;
+            });
+        });
+        var xxRate = totalSaved > 0 ? Math.round((xxCount / totalSaved) * 100) : 0;
+        if (totalSaved >= 50 && xxRate >= 80) {
+            console.warn('[discogs-listings] ⚠ SHIPPING DATA ALERT: ' + xxRate + '% of ' +
+                totalSaved + ' listings have no ships_from. Discogs may have changed ' +
+                'their page structure. Check chrome-extension/background.js parseHtml().');
+        } else {
+            console.log('[discogs-listings] Shipping health: ' + (100 - xxRate) + '% have real ships_from (' + (totalSaved - xxCount) + '/' + totalSaved + ')');
+        }
+
+        res.json({
+            saved: saved,
+            wantlistItems: Object.keys(byWantlist).length,
+            shippingHealth: { xxRate: xxRate, total: totalSaved, withCountry: totalSaved - xxCount }
+        });
     } catch (e) {
         console.error('[discogs-listings] error:', e.message);
         res.status(500).json({ error: e.message });

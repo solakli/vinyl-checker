@@ -301,8 +301,12 @@ function parseHtml(html, wantlistId) {
             var price  = parseFloat(((cell.match(/[\$£€¥]([\d,]+\.?\d*)/) || ['','0'])[1]).replace(/,/g,''));
             var listId = (cell.match(/\/sell\/item\/(\d+)/) || [])[1];
             var cond   = (cell.match(/title="([^"]+)"[^>]*>[^<]*<\/span>\s*<\/td>\s*<td/) || [])[1] || '';
-            // Try to grab ships_from from the row HTML
-            var fromM  = cell.match(/data-country="([^"]+)"/i)
+            // Try to grab ships_from from the row HTML.
+            // Pattern 1 (current layout): <span class="mplabel">Ships From:</span>Norway</li>
+            // Pattern 2: data-country="DE" attribute
+            // Pattern 3: Ships From: inside a tag (older layout)
+            var fromM  = cell.match(/Ships From:<\/span>\s*([A-Za-z][A-Za-z ,]+?)(?:\s*<)/i)
+                      || cell.match(/data-country="([^"]+)"/i)
                       || cell.match(/Ships\s+From[^<]*<[^>]+>\s*([A-Za-z][A-Za-z ]{1,30}?)\s*</i);
             listings.push({
                 wantlistId:      wantlistId,

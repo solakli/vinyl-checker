@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Wax Digger",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Sync Discogs marketplace prices into the Wax Digger cart optimizer",
   "permissions": ["storage", "cookies", "alarms"],
   "host_permissions": [
