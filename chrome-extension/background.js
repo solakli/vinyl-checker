@@ -66,29 +66,45 @@ async function startSync(server, username) {
         return;
     }
 
-    // Fetch each release
+    // Fetch each release and batch-post every 25 so the UI shows progressive results.
+    // saveDiscogsListings() is per-wantlist-item (DELETEs+INSERTs per item), so
+    // partial batches are safe — subsequent batches just add more items.
+    var BATCH_SIZE = 25;
     var allListings = [];
+    var pendingBatch = [];
+
+    async function flushBatch() {
+        if (!pendingBatch.length) return;
+        var toSend = pendingBatch.slice();
+        pendingBatch = [];
+        console.log('[WaxDigger] Flushing batch of', toSend.length, 'listings');
+        try {
+            var r = await fetch(server + '/api/discogs-listings/' + encodeURIComponent(username), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ listings: toSend })
+            });
+            console.log('[WaxDigger] Batch POST result:', r.status);
+        } catch (e) {
+            console.error('[WaxDigger] Batch POST failed:', e.message);
+        }
+    }
+
     for (var i = 0; i < _items.length; i++) {
         var item    = _items[i];
         var sellers = await fetchMarketplacePage(item.item.id, item.wantlistId, cookieHeader);
         allListings = allListings.concat(sellers);
+        pendingBatch = pendingBatch.concat(sellers);
 
         await setProgress({ running: true, done: i + 1, total: _items.length, found: allListings.length });
-        // Discogs API rate limit: 60 req/min authenticated → 1 req/sec safe ceiling
-        await sleep(1100);
-    }
 
-    // Post to server
-    console.log('[WaxDigger] Posting', allListings.length, 'listings to server');
-    try {
-        var postRes = await fetch(server + '/api/discogs-listings/' + encodeURIComponent(username), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ listings: allListings })
-        });
-        console.log('[WaxDigger] POST result:', postRes.status);
-    } catch (e) {
-        console.error('[WaxDigger] Failed to post listings:', e.message);
+        // Flush every BATCH_SIZE releases so the UI shows progressive results
+        if (pendingBatch.length >= BATCH_SIZE || (i === _items.length - 1)) {
+            await flushBatch();
+        }
+
+        // Discogs rate limit: 60 req/min authenticated → 1 req/sec safe ceiling
+        await sleep(1100);
     }
 
     await setProgress({ running: false, done: _items.length, total: _items.length,

@@ -2707,7 +2707,18 @@ window.addEventListener('waxdigger:syncstate', function (e) {
   // ── 5. Update Sellers tab live sync banner ──
   _updateSellerSyncBanner(state);
 
-  // ── 6. When sync completes, refresh seller intel data ──
+  // ── 6. During sync: refresh sellers tab when a new batch has arrived ──
+  // The extension posts every 25 releases, so state.found jumps in chunks.
+  // We reload when: syncing, on sellers tab, found count grew, not already loading.
+  if (state.running && _discoverTab === 'sellers') {
+    var foundGrew = (state.found || 0) > (prev.found || 0);
+    if (foundGrew && !_sellerIntelLoading) {
+      _sellerIntelData = null;
+      loadSellerIntel(true);
+    }
+  }
+
+  // ── 7. When sync completes, refresh seller intel data ──
   if (state.completedAt && !prev.completedAt) {
     _sellerIntelData = null; // invalidate cache so next visit fetches fresh data
     if (_discoverTab === 'sellers') {
