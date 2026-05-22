@@ -2792,15 +2792,20 @@ app.get('/u/:username', function (req, res) {
 process.on('SIGINT', function () { db.close(); reapChrome(); process.exit(0); });
 process.on('SIGTERM', function () { db.close(); reapChrome(); process.exit(0); });
 
-// Kill any zombie Chrome/Chromium processes left over from a previous crash.
-// Called on startup and on shutdown. Safe to call repeatedly — only kills processes
-// that are children of THIS Node pid (Puppeteer always spawns as children), so we
-// won't accidentally kill system Chrome instances. Falls back to pkill on failure.
+// Kill any zombie/orphaned Chrome/Chromium processes left over from a previous crash.
+// Two-pass strategy:
+//   Pass 1: Direct children of this Node process (via pgrep -P) — catches normal Chrome mains.
+//   Pass 2: ANY Chrome using a puppeteer_dev_profile path that has been running > 4 hours.
+//           These are renderer/zygote orphans whose parent Chrome main was SIGKILLed and
+//           got re-parented to PID 1, so pgrep -P misses them.
+// The 4-hour threshold safely exceeds the rolling scan's hard timeout, so the current active
+// browser (always < 4h old) is never accidentally killed.
 function reapChrome() {
     try {
         var { execSync } = require('child_process');
-        // Kill zombie Chrome child-processes
         var myPid = process.pid;
+
+        // Pass 1: direct Chrome children of Node
         try {
             var out = execSync('pgrep -P ' + myPid + ' -f "chrom" 2>/dev/null || true').toString().trim();
             if (out) {
@@ -2808,9 +2813,26 @@ function reapChrome() {
                 pids.forEach(function(pid) {
                     try { process.kill(parseInt(pid), 'SIGKILL'); } catch(e) {}
                 });
-                if (pids.length > 0) console.log('[reaper] Killed ' + pids.length + ' zombie Chrome process(es)');
+                if (pids.length > 0) console.log('[reaper] Killed ' + pids.length + ' Chrome child process(es)');
             }
         } catch(e) {}
+
+        // Pass 2: orphaned Puppeteer Chrome processes older than 4 hours
+        // `ps -eo pid,etimes,args` — etimes = elapsed time in seconds
+        try {
+            var orphanRaw = execSync(
+                "ps -eo pid,etimes,args --no-headers 2>/dev/null | awk '$2>14400 && /puppeteer_dev_profile/ {print $1}' || true"
+            ).toString().trim();
+            if (orphanRaw) {
+                var orphanPids = orphanRaw.split('\n').filter(Boolean);
+                var killed = 0;
+                orphanPids.forEach(function(pid) {
+                    try { process.kill(parseInt(pid), 'SIGKILL'); killed++; } catch(e) {}
+                });
+                if (killed > 0) console.log('[reaper] Killed ' + killed + ' long-running orphaned Chrome process(es) (>4h)');
+            }
+        } catch(e) {}
+
         // Clean up orphaned Puppeteer tmp profile dirs older than 10 min
         try { scanner.reapOrphanedProfiles(); } catch(e) {}
     } catch(e) {}
@@ -3347,6 +3369,8 @@ app.get('/api/health', function (req, res) {
                 externalMB:  Math.round(mem.external  / 1024 / 1024)
             },
             chromeLock: scanner.chromeLock || false,
+            chromeLockSince: scanner.jobHealth && scanner.jobHealth.chromeLockSince
+                ? new Date(scanner.jobHealth.chromeLockSince).toISOString() : null,
             lockContention: lockContention,
             users: userSummary,
             storeStats: storeStats,
