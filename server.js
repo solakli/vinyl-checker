@@ -578,6 +578,9 @@ app.post('/api/youtube/create-playlist', async function (req, res) {
 
 // Force-reset scan lock
 app.get('/api/reset', function (req, res) {
+    // Guard: require CRON_SECRET so this isn't publicly abusable
+    var secret = req.query.secret || req.headers['x-cron-secret'];
+    if (secret !== process.env.CRON_SECRET) return res.status(403).json({ error: 'Forbidden' });
     scanner.activeScans = {};
     res.json({ ok: true });
 });

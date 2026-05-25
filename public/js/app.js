@@ -7413,6 +7413,13 @@ function goldieSend(message) {
     headers: { 'Content-Type': 'application/json' },
     body: body
   }).then(function(res) {
+    if (!res.ok) {
+      asstBubble.innerHTML =
+        '<span class="goldie-error">✦ GOLDIE is offline (HTTP ' + res.status + '). Check back soon.</span>';
+      _goldieStreaming = false;
+      if (sendBtn) sendBtn.disabled = false;
+      return;
+    }
     var reader = res.body.getReader();
     var decoder = new TextDecoder();
     var buffer = '';
@@ -7478,7 +7485,11 @@ function goldieSend(message) {
     }
     read();
   }).catch(function(e) {
-    asstBubble.innerHTML = '<span class="goldie-error">Could not reach GOLDIE. Is it running?</span>';
+    asstBubble.innerHTML =
+      '<span class="goldie-error">' +
+        '✦ GOLDIE is offline right now. Try again in a moment, or ' +
+        '<a href="mailto:omersolakli@gmail.com" style="color:inherit;text-decoration:underline">report an issue</a>.' +
+      '</span>';
     _goldieStreaming = false;
     if (sendBtn) sendBtn.disabled = false;
   });
