@@ -5021,6 +5021,52 @@ function renderCartView() {
     (_isD ? discogsGroups : storeGroups).push(groups[k]);
   });
 
+  // ── Deal Intelligence ──────────────────────────────────────────────────────
+  // Build sole-source map: wantlistId → count of sellers in our sync who have it.
+  // Derived from seller intel data (already in memory). If not yet loaded, map is
+  // empty and sole-source badges simply won't appear — graceful degradation.
+  var _soleSourceMap = {};
+  if (_sellerIntelData && _sellerIntelData.sellers) {
+    _sellerIntelData.sellers.forEach(function(s) {
+      (s.records || []).forEach(function(rec) {
+        if (rec.wantlistId != null) {
+          _soleSourceMap[rec.wantlistId] = (_soleSourceMap[rec.wantlistId] || 0) + 1;
+        }
+      });
+    });
+  }
+
+  // Stale sync warning (listings older than 24h might no longer be available)
+  var _syncAgeHours = null;
+  if (_sellerIntelData && _sellerIntelData.lastSynced) {
+    _syncAgeHours = (Date.now() - new Date(_sellerIntelData.lastSynced).getTime()) / 3600000;
+  }
+
+  // Compute deal signals and priority score for a group.
+  // Returns an object attached to g._deal so we don't re-compute during render.
+  function computeGroupDeal(g) {
+    var soleCount = 0, gemCount = 0, weaponCount = 0, rareCount = 0;
+    g.items.forEach(function(item) {
+      if (_soleSourceMap[item.wantlist_id] === 1) soleCount++;
+      var gem = _gemScoreMap[item.discogs_id];
+      if (gem) {
+        if (gem.tier === 'hidden_gem')   gemCount++;
+        else if (gem.tier === 'club_weapon') weaponCount++;
+      }
+      if ((item.want_have_ratio || 0) >= 1.5) rareCount++;
+    });
+    // Score: sole-source items are the strongest signal (they may vanish),
+    // followed by hidden gems and club weapons (rare finds), then just rarity ratio.
+    var score = soleCount * 4 + gemCount * 3 + weaponCount * 2 + rareCount * 1;
+    var priority = score >= 6 ? 'critical' : score >= 3 ? 'high' : score >= 1 ? 'medium' : '';
+    return { score: score, priority: priority,
+             soleCount: soleCount, gemCount: gemCount, weaponCount: weaponCount, rareCount: rareCount };
+  }
+
+  // Pre-compute and sort — most urgent groups first
+  discogsGroups.forEach(function(g) { g._deal = computeGroupDeal(g); });
+  discogsGroups.sort(function(a, b) { return b._deal.score - a._deal.score; });
+
   // ── Cost helpers ────────────────────────────────────────────────────────────
   function groupCost(g) {
     var fc = (g.country && VALID_COUNTRIES[g.country]) ? g.country : '';
@@ -5048,6 +5094,34 @@ function renderCartView() {
   function renderGroupHtml(g) {
     var cost = groupCost(g);
     var isDiscogs = g.sourceType === 'discogs' || g.sourceType === 'discogs_seller';
+
+    // ── Deal priority badge + reasons (Discogs only) ─────────────────────────
+    var dealBadgeHtml = '', dealReasonsHtml = '';
+    if (isDiscogs && g._deal && g._deal.priority) {
+      var PRIORITY_LABELS = {
+        critical: { cls: 'cg-priority-critical', text: '🔴 Must Buy' },
+        high:     { cls: 'cg-priority-high',     text: '🟠 High Priority' },
+        medium:   { cls: 'cg-priority-medium',   text: '⭐ Good Pick' }
+      };
+      var pl = PRIORITY_LABELS[g._deal.priority];
+      if (pl) dealBadgeHtml = '<span class="cg-priority ' + pl.cls + '">' + pl.text + '</span>';
+
+      var reasons = [];
+      if (g._deal.soleCount > 0) reasons.push(
+        '<span class="cg-dr-sole">⚠ Only source for ' + g._deal.soleCount + ' record' + (g._deal.soleCount > 1 ? 's' : '') + '</span>'
+      );
+      if (g._deal.gemCount > 0) reasons.push(
+        '<span class="cg-dr-gem">💎 ' + g._deal.gemCount + ' Hidden Gem' + (g._deal.gemCount > 1 ? 's' : '') + '</span>'
+      );
+      if (g._deal.weaponCount > 0) reasons.push(
+        '<span class="cg-dr-weapon">🔥 ' + g._deal.weaponCount + ' Club Weapon' + (g._deal.weaponCount > 1 ? 's' : '') + '</span>'
+      );
+      if (g._deal.rareCount > 0) reasons.push(
+        '<span class="cg-dr-rare">💜 ' + g._deal.rareCount + ' rare find' + (g._deal.rareCount > 1 ? 's' : '') + '</span>'
+      );
+      if (reasons.length) dealReasonsHtml = '<div class="cg-deal-reasons">' + reasons.join('') + '</div>';
+    }
+
     var headerMeta = '';
     if (isDiscogs) {
       if (g.sellerRating != null) {
@@ -5087,9 +5161,28 @@ function renderCartView() {
       var rareHtml = (ratio != null && ratio >= 1.2)
         ? '<span class="cg-item-rare" title="Community want/have: '+ratio+'x">💎 '+ratio+'x</span>'
         : '';
+      // Gem tier badge — from gem score map (loaded async)
+      var gemBadgeHtml = '';
+      if (isDiscogs) {
+        var _gem = _gemScoreMap[item.discogs_id];
+        if (_gem && _gem.tier) {
+          var _gemMeta = {
+            hidden_gem:  { e: '💎', l: 'Hidden Gem',  c: 'cg-gem-hg' },
+            club_weapon: { e: '🔥', l: 'Club Weapon', c: 'cg-gem-cw' },
+            deep_cut:    { e: '🎯', l: 'Deep Cut',    c: 'cg-gem-dc' }
+          }[_gem.tier];
+          if (_gemMeta) {
+            gemBadgeHtml = '<span class="cg-item-gem ' + _gemMeta.c + '" title="' + _gemMeta.l + ((_gem.score != null) ? ' · score ' + Math.round(_gem.score) : '') + '">' + _gemMeta.e + ' ' + _gemMeta.l + '</span>';
+          }
+        }
+      }
+      // Sole-source badge — only seller in our sync with this record
+      var soleHtml = (isDiscogs && _soleSourceMap[item.wantlist_id] === 1)
+        ? '<span class="cg-item-sole" title="Only seller synced for this record">Only source</span>'
+        : '';
       return '<div class="cg-item-row'+(cb||pb?' cg-item-warn':'')+'">'+thumbHtml+
         '<div class="cg-item-info"><span class="cg-item-artist">'+escapeHtml(item.artist||'')+'</span><span class="cg-item-title">'+escapeHtml(item.title||'')+'</span></div>'+
-        '<div class="cg-item-right">'+rareHtml+condHtml+priceHtml+linkHtml+
+        '<div class="cg-item-right">'+soleHtml+gemBadgeHtml+rareHtml+condHtml+priceHtml+linkHtml+
           '<button class="cg-remove-btn" onclick="removeCartItem('+item.wantlist_id+',\''+escapeAttr(item.store)+'\')">×</button>'+
         '</div></div>';
     }).join('');
@@ -5135,12 +5228,14 @@ function renderCartView() {
         '</a>'
       : '';
 
-    return '<div class="cart-group">'+
+    return '<div class="cart-group' + (g._deal && g._deal.priority ? ' cg-deal-' + g._deal.priority : '') + '">'+
       '<div class="cg-header">'+
+        dealBadgeHtml+
         '<span class="cg-name">'+escapeHtml(label)+'</span>'+
         '<span class="cg-count">'+g.items.length+' record'+(g.items.length!==1?'s':'')+'</span>'+
         headerMeta+
       '</div>'+
+      dealReasonsHtml+
       '<div class="cg-items">'+itemsHtml+'</div>'+
       '<div class="cg-footer">'+
         '<span class="cg-records-cost">Records: $'+cost.subtotal.toFixed(2)+'</span>'+
@@ -5329,6 +5424,14 @@ function renderCartView() {
   // ── Discogs sellers section ────────────────────────────────────────────────
   var discogsBody = discogsGroups.length > 0 ? discogsGroups.map(renderGroupHtml).join('') : '';
 
+  // Stale listings warning — shown when sync data is older than 24h
+  var staleWarningHtml = '';
+  if (_syncAgeHours != null && _syncAgeHours > 24) {
+    var _staleH = Math.round(_syncAgeHours);
+    staleWarningHtml = '<div class="cg-stale-warning">⏰ Listing data is ' + _staleH + 'h old — prices may have changed. ' +
+      '<a href="#" onclick="switchView(\'discover\',null);switchDiscoverTab(\'sellers\');return false;">Re-sync →</a></div>';
+  }
+
   var discogsSection =
     '<div class="cart-section cart-section-discogs">'+
       '<div class="cart-section-head">'+
@@ -5337,6 +5440,7 @@ function renderCartView() {
         (dTot.n > 0 ? '<span class="csh-pill">'+dTot.n+' record'+(dTot.n!==1?'s':'')+' · ~$'+dTot.total.toFixed(0)+'</span>' : '')+
         '<a href="#" class="csh-browse" onclick="switchView(\'discover\',null);switchDiscoverTab(\'sellers\');return false;">+ Browse sellers</a>'+
       '</div>'+
+      staleWarningHtml+
       discogsFilters+
       discogsBody+
       (discogsGroups.length === 0 && _cafDiscogsGroups.length === 0 ?

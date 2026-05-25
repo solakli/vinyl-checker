@@ -10070,8 +10070,27 @@ body.light .opt-pinned-hint { background: rgba(200,160,0,0.06); border-color: rg
 .cart-smart-fill:disabled { opacity:0.4; cursor:not-allowed; transform:none; box-shadow:none; }
 
 /* ── Cart groups (inside sections) ──────────────────────────── */
+/* Deal priority border accent */
 .cart-group { background:var(--card-bg); border-top:1px solid rgba(255,255,255,0.05); }
 .cart-group:first-child { border-top:none; }
+.cg-deal-critical { border-left:3px solid rgba(220,60,60,0.7); }
+.cg-deal-high     { border-left:3px solid rgba(220,130,50,0.7); }
+.cg-deal-medium   { border-left:3px solid rgba(200,170,50,0.5); }
+
+/* Priority badge */
+.cg-priority { font-size:10px; font-weight:700; padding:2px 8px; border-radius:20px; letter-spacing:.04em; white-space:nowrap; flex-shrink:0; }
+.cg-priority-critical { background:rgba(220,60,60,0.18); color:#ff7070; border:1px solid rgba(220,60,60,0.35); }
+.cg-priority-high     { background:rgba(220,130,50,0.18); color:#ffaa55; border:1px solid rgba(220,130,50,0.35); }
+.cg-priority-medium   { background:rgba(200,170,50,0.15); color:#e8c84c; border:1px solid rgba(200,170,50,0.3); }
+
+/* Deal reasons line */
+.cg-deal-reasons { display:flex; flex-wrap:wrap; gap:6px; padding:2px 18px 8px; }
+.cg-deal-reasons span { font-size:11px; font-weight:600; padding:2px 8px; border-radius:12px; }
+.cg-dr-sole   { background:rgba(220,60,60,0.12);   color:#ff8a8a; }
+.cg-dr-gem    { background:rgba(168,100,255,0.12); color:#c084ff; }
+.cg-dr-weapon { background:rgba(255,160,50,0.12);  color:#ffaa55; }
+.cg-dr-rare   { background:rgba(180,100,255,0.10); color:#b06fff; }
+
 .cg-header { display:flex; align-items:center; gap:8px; padding:12px 18px 8px; flex-wrap:wrap; }
 .cg-name { font-family:'Oswald',sans-serif; font-size:1rem; font-weight:600; color:var(--text); }
 .cg-count { font-size:11px; color:var(--text-muted); background:rgba(255,255,255,0.07); padding:2px 8px; border-radius:20px; }
@@ -10100,6 +10119,16 @@ body.light .opt-pinned-hint { background: rgba(200,160,0,0.06); border-color: rg
 .cg-item-link:hover { color:var(--gold); }
 /* Rarity badge on cart items */
 .cg-item-rare { font-size:11px; color:#c084ff; background:rgba(168,100,255,0.12); padding:2px 6px; border-radius:4px; white-space:nowrap; }
+/* Gem tier badge */
+.cg-item-gem  { font-size:10px; font-weight:600; padding:2px 7px; border-radius:4px; white-space:nowrap; }
+.cg-gem-hg { background:rgba(168,100,255,0.14); color:#c084ff; }
+.cg-gem-cw { background:rgba(255,140,50,0.14);  color:#ffa055; }
+.cg-gem-dc { background:rgba(80,160,255,0.12);  color:#7db8ff; }
+/* Sole-source badge */
+.cg-item-sole { font-size:10px; font-weight:700; padding:2px 7px; border-radius:4px; background:rgba(220,60,60,0.15); color:#ff7070; white-space:nowrap; text-transform:uppercase; letter-spacing:.04em; }
+/* Stale listing warning */
+.cg-stale-warning { margin:0 18px 10px; padding:8px 12px; border-radius:8px; background:rgba(220,160,50,0.1); border:1px solid rgba(220,160,50,0.25); font-size:12px; color:#e8c84c; }
+.cg-stale-warning a { color:#e8c84c; font-weight:600; }
 .cg-remove-btn { background:none; border:none; color:#444; cursor:pointer; font-size:16px; padding:2px 6px; border-radius:4px; line-height:1; transition:all .1s; }
 .cg-remove-btn:hover { color:#e55; background:rgba(229,85,85,0.1); }
 
