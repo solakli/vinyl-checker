@@ -6,6 +6,9 @@ module.exports = {
         autorestart: true,
         max_restarts: 10,
         restart_delay: 5000,
+        // Prevent Puppeteer ProtocolErrors from crashing the process
+        // (Network.enable/Page.enable timed out — handled inside scanner but can escape)
+        node_args: '--unhandled-rejections=none',
         env: {
             PORT: 5052,
             NODE_ENV: 'production',

@@ -79,13 +79,38 @@ const SYNC_STALE_AFTER_MS = 20 * 60 * 60 * 1000; // re-sync if last run was 20+ 
 // EXCEPTION: EADDRINUSE means the port is already taken — exit so PM2 can restart us
 // rather than letting the process run silently without serving any HTTP traffic.
 process.on('uncaughtException', function (e) {
-    if (e.code === 'EADDRINUSE') {
-        console.error('[FATAL] Port already in use — exiting so PM2 can retry:', e.message);
-        process.exit(1);
+    try {
+        if (e && e.code === 'EADDRINUSE') {
+            console.error('[FATAL] Port already in use — exiting so PM2 can retry:', e.message);
+            process.exit(1);
+        }
+        // Swallow Puppeteer ProtocolErrors — they are handled inside the scanner;
+        // letting them escape kills the whole server which breaks in-progress syncs.
+        var msg = (e && e.message) || String(e) || '';
+        if (msg.indexOf('timed out') !== -1 || msg.indexOf('ProtocolError') !== -1 ||
+            msg.indexOf('Target closed') !== -1 || msg.indexOf('Session closed') !== -1 ||
+            msg.indexOf('Browser closed') !== -1 || msg.indexOf('Connection closed') !== -1) {
+            console.error('[crash-guard] Puppeteer error (swallowed, scanner will recover):', msg);
+            return; // do NOT exit
+        }
+        console.error('[crash-guard] Uncaught:', msg);
+    } catch (handlerErr) {
+        console.error('[crash-guard] Handler error:', String(handlerErr));
     }
-    console.error('Uncaught:', e.message);
 });
-process.on('unhandledRejection', function (e) { console.error('Unhandled:', e && e.message); });
+process.on('unhandledRejection', function (e) {
+    try {
+        var msg = (e && e.message) || String(e) || '';
+        if (msg.indexOf('timed out') !== -1 || msg.indexOf('ProtocolError') !== -1 ||
+            msg.indexOf('Target closed') !== -1 || msg.indexOf('Session closed') !== -1) {
+            console.error('[crash-guard] Puppeteer rejection (swallowed):', msg.substring(0, 120));
+            return;
+        }
+        console.error('[crash-guard] Unhandled rejection:', msg.substring(0, 200));
+    } catch (handlerErr) {
+        console.error('[crash-guard] Rejection handler error:', String(handlerErr));
+    }
+});
 
 const app = express();
 const PORT = process.env.PORT || 3000;
