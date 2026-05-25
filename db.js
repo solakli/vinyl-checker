@@ -344,6 +344,9 @@ function initTables() {
     // Indexes
     try { db.exec('CREATE INDEX IF NOT EXISTS idx_optimizer_jobs_username ON optimizer_jobs(username)'); } catch(e) {}
     try { db.exec('CREATE INDEX IF NOT EXISTS idx_optimizer_jobs_status ON optimizer_jobs(status, created_at)'); } catch(e) {}
+    try { db.exec('CREATE INDEX IF NOT EXISTS idx_discogs_listings_wantlist ON discogs_listings(wantlist_id)'); } catch(e) {}
+    try { db.exec('CREATE INDEX IF NOT EXISTS idx_discogs_listings_seller ON discogs_listings(seller_username)'); } catch(e) {}
+    try { db.exec('CREATE INDEX IF NOT EXISTS idx_discogs_listings_ships ON discogs_listings(ships_from)'); } catch(e) {}
 
     // Migrations — add columns if missing
     try { db.exec('ALTER TABLE users ADD COLUMN last_daily_rescan TEXT'); } catch(e) {}
@@ -970,6 +973,40 @@ function saveDiscogsListings(wantlistId, listings) {
         });
     });
     insertMany(listings);
+}
+
+// Bulk version — saves multiple wantlistIds in one transaction.
+// Much faster than calling saveDiscogsListings() N times (one disk commit vs N).
+function bulkSaveDiscogsListings(byWantlist) {
+    var d = getDb();
+    var now = new Date().toISOString();
+    var del    = d.prepare('DELETE FROM discogs_listings WHERE wantlist_id = ?');
+    var insert = d.prepare(`
+        INSERT INTO discogs_listings
+            (wantlist_id, listing_id, seller_username, seller_rating, seller_num_ratings,
+             price_usd, price_original, currency, condition, ships_from,
+             shipping_to_usd, listing_url, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    var total = 0;
+    var run = d.transaction(function () {
+        Object.keys(byWantlist).forEach(function (wid) {
+            var widInt = parseInt(wid);
+            del.run(widInt);
+            byWantlist[wid].forEach(function (l) {
+                insert.run(
+                    widInt, l.listingId || null, l.sellerUsername || '',
+                    l.sellerRating || null, l.sellerNumRatings || null,
+                    l.priceUsd || null, l.priceOriginal || null, l.currency || 'USD',
+                    l.condition || '', l.shipsFrom || '',
+                    l.shippingToUsd || null, l.listingUrl || '', now
+                );
+                total++;
+            });
+        });
+    });
+    run();
+    return total;
 }
 
 function getDiscogsListings(userId) {
@@ -2397,6 +2434,7 @@ module.exports = {
     failOptimizerJob: failOptimizerJob,
     cleanupOldOptimizerJobs: cleanupOldOptimizerJobs,
     saveDiscogsListings: saveDiscogsListings,
+    bulkSaveDiscogsListings: bulkSaveDiscogsListings,
     getDiscogsListings: getDiscogsListings,
     getMarketplaceSyncStatus: getMarketplaceSyncStatus,
     // Observability

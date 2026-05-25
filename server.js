@@ -2947,10 +2947,11 @@ app.post('/api/discogs-listings/:username', function (req, res) {
             byWantlist[l.wantlistId].push(l);
         });
 
-        var saved = 0;
         var marketplace = require('./lib/discogs-marketplace');
+        // Map raw extension listings → normalised DB rows, grouped by wantlistId
+        var byWantlistNorm = {};
         Object.keys(byWantlist).forEach(function (wid) {
-            var rows = byWantlist[wid].map(function (l) {
+            byWantlistNorm[wid] = byWantlist[wid].map(function (l) {
                 var cur = l.currency || 'USD';
                 var shipCur = l.shippingCurrency || cur;
                 return {
@@ -2963,16 +2964,15 @@ app.post('/api/discogs-listings/:username', function (req, res) {
                     priceUsd:         marketplace.toUSD(l.priceOriginal || 0, cur),
                     condition:        l.condition || '',
                     shipsFrom:        marketplace.countryToISO(l.shipsFrom || ''),
-                    // buyer-specific shipping cost sent by extension (null = unknown)
                     shippingToUsd:    l.shippingPrice != null
                                           ? marketplace.toUSD(l.shippingPrice, shipCur)
                                           : null,
                     listingUrl:       l.listingUrl || ''
                 };
             });
-            db.saveDiscogsListings(parseInt(wid), rows);
-            saved += rows.length;
         });
+        // Single bulk transaction — all wantlistIds in one commit (much faster than N calls)
+        var saved = db.bulkSaveDiscogsListings(byWantlistNorm);
 
         // ── Shipping data health check ────────────────────────────────────────
         // If >80% of listings have ships_from='XX', Discogs likely changed their
