@@ -159,42 +159,75 @@ async function fetchMarketplacePage(discogsId, wantlistId, cookieHeader) {
 function parseHtml(html, wantlistId) {
     var listings = [];
 
-    // Try __NEXT_DATA__ JSON (most reliable)
+    // ── Step 1: Build a listing-id → ships_from map from the raw HTML ─────────
+    // The HTML always contains "Ships From:" text in each row regardless of
+    // which JSON structure Discogs uses.  We build this map first so it can
+    // enrich listings found via __NEXT_DATA__ (which often lacks ships_from).
+    var htmlCountryMap = {};
+    var rowRe = /<tr[^>]*class="[^"]*shortcut_navigable[^"]*"[^>]*>([\s\S]*?)<\/tr>/g;
+    var row;
+    while ((row = rowRe.exec(html)) !== null) {
+        try {
+            var cell   = row[1];
+            var listId = (cell.match(/\/sell\/item\/(\d+)/) || [])[1];
+            if (!listId) continue;
+            var fromM  = cell.match(/Ships\s*From\s*:<\/span>\s*([A-Za-z][A-Za-z ,\-]{1,40}?)(?:\s*<)/i)
+                      || cell.match(/data-country="([^"]+)"/i)
+                      || cell.match(/Ships\s+From[^<]*<[^>]+>\s*([A-Za-z][A-Za-z ]{1,30}?)\s*</i);
+            if (fromM) htmlCountryMap[listId] = fromM[1].trim();
+        } catch (e) {}
+    }
+    console.log('[WaxDigger] HTML country map entries:', Object.keys(htmlCountryMap).length);
+
+    // ── Step 2: Try __NEXT_DATA__ JSON for structured listing data ────────────
     var match = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
     if (match) {
         try {
             var json = JSON.parse(match[1]);
             var page = json && json.props && json.props.pageProps;
+
+            // Debug: log top-level pageProps keys once
+            if (page) {
+                console.log('[WaxDigger] pageProps keys:', JSON.stringify(Object.keys(page)));
+            }
+
             var results = (page && page.listings) ||
                           (page && page.data && page.data.listings) ||
-                          (page && page.initialListings) || [];
+                          (page && page.initialListings) ||
+                          (page && page.release && page.release.forSale) ||
+                          (page && page.releaseMarketplace && page.releaseMarketplace.listings) ||
+                          [];
 
             results.forEach(function (l, idx) {
                 if (!l.seller || !l.seller.username) return;
 
-                // ── Debug: log structure of first listing once per page ───────
+                // ── Debug: log full first listing for field discovery ─────────
                 if (idx === 0) {
-                    console.log('[WaxDigger] listing[0] keys:', JSON.stringify(Object.keys(l)));
-                    if (l.seller) console.log('[WaxDigger] listing[0].seller keys:', JSON.stringify(Object.keys(l.seller)));
-                    var shipFields = ['ships_from','shipsFrom','location','shipping_price',
-                                      'shippingPrice','original_shipping_price','shipping'];
-                    var found = {};
-                    shipFields.forEach(function(k) { if (l[k] !== undefined) found[k] = l[k]; });
-                    console.log('[WaxDigger] shipping-related fields:', JSON.stringify(found));
+                    console.log('[WaxDigger] listing[0] full:', JSON.stringify(l).substring(0, 800));
+                    console.log('[WaxDigger] listing[0].seller:', JSON.stringify(l.seller).substring(0, 400));
                 }
 
-                // ── ships_from: try every field name Discogs has used ─────────
-                // Discogs REST API uses "ships_from" (full country name e.g. "Germany").
-                // Their Next.js builds have varied this over time.
-                var shipsFrom = l.ships_from         // REST API / older Next.js
-                             || l.location            // some Next.js builds
-                             || l.shipsFrom           // camelCase variant
-                             || (l.seller && (l.seller.location || l.seller.ships_from))
+                // ── ships_from: try all known field variants, then fall back to HTML map ──
+                var shipsFrom = l.ships_from                            // REST API / older Next.js
+                             || l.location                              // some Next.js builds
+                             || l.shipsFrom                             // camelCase
+                             || l.country                               // possible top-level
+                             || l.country_code                          // ISO code variant
+                             || l.countryCode                           // camelCase ISO
+                             || (l.seller && (
+                                    l.seller.location
+                                 || l.seller.ships_from
+                                 || l.seller.shipsFrom
+                                 || l.seller.country
+                                 || l.seller.countryCode
+                                 || l.seller.country_code
+                                ))
+                             || (l.shipping && (l.shipping.ships_from || l.shipping.location || l.shipping.country))
+                             // Last resort: look it up in the HTML country map by listing id
+                             || (l.id && htmlCountryMap[String(l.id)])
                              || '';
 
                 // ── shipping price to buyer (personalized — we're authenticated) ─
-                // When logged in, Discogs shows the shipping cost to the buyer's
-                // registered location. This is more accurate than our estimate table.
                 var shipPrice = null;
                 var shipCur   = (l.price && l.price.currency) || 'USD';
 
@@ -218,21 +251,26 @@ function parseHtml(html, wantlistId) {
                     currency:         (l.price && l.price.currency) || 'USD',
                     condition:        l.condition || '',
                     shipsFrom:        shipsFrom,
-                    shippingPrice:    shipPrice,     // actual cost to buyer (null = not on page)
+                    shippingPrice:    shipPrice,
                     shippingCurrency: shipCur,
                     listingUrl:       'https://www.discogs.com/sell/item/' + l.id
                 });
             });
-            if (listings.length) return listings;
+
+            if (listings.length) {
+                var withCountry = listings.filter(function(l) { return !!l.shipsFrom; }).length;
+                console.log('[WaxDigger] __NEXT_DATA__: ' + listings.length + ' listings, ' + withCountry + ' with ships_from');
+                return listings;
+            }
         } catch (e) {
             console.error('[WaxDigger] __NEXT_DATA__ parse error:', e.message);
         }
     }
 
-    // Fallback: regex on HTML rows (legacy Discogs layout)
-    var rowRe = /<tr[^>]*class="[^"]*shortcut_navigable[^"]*"[^>]*>([\s\S]*?)<\/tr>/g;
-    var row;
-    while ((row = rowRe.exec(html)) !== null) {
+    // ── Step 3: Full HTML fallback (legacy Discogs layout) ───────────────────
+    // Only reaches here when __NEXT_DATA__ has no listings at all.
+    var rowRe2 = /<tr[^>]*class="[^"]*shortcut_navigable[^"]*"[^>]*>([\s\S]*?)<\/tr>/g;
+    while ((row = rowRe2.exec(html)) !== null) {
         try {
             var cell   = row[1];
             var seller = (cell.match(/\/seller\/([^"/?]+)/) || [])[1];
@@ -240,11 +278,7 @@ function parseHtml(html, wantlistId) {
             var price  = parseFloat(((cell.match(/[\$£€¥]([\d,]+\.?\d*)/) || ['','0'])[1]).replace(/,/g,''));
             var listId = (cell.match(/\/sell\/item\/(\d+)/) || [])[1];
             var cond   = (cell.match(/title="([^"]+)"[^>]*>[^<]*<\/span>\s*<\/td>\s*<td/) || [])[1] || '';
-            // Try to grab ships_from from the row HTML.
-            // Pattern 1 (current layout): <span class="mplabel">Ships From:</span>Norway</li>
-            // Pattern 2: data-country="DE" attribute
-            // Pattern 3: Ships From: inside a tag (older layout)
-            var fromM  = cell.match(/Ships From:<\/span>\s*([A-Za-z][A-Za-z ,]+?)(?:\s*<)/i)
+            var fromM  = cell.match(/Ships\s*From\s*:<\/span>\s*([A-Za-z][A-Za-z ,\-]{1,40}?)(?:\s*<)/i)
                       || cell.match(/data-country="([^"]+)"/i)
                       || cell.match(/Ships\s+From[^<]*<[^>]+>\s*([A-Za-z][A-Za-z ]{1,30}?)\s*</i);
             listings.push({

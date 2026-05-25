@@ -5198,6 +5198,7 @@ function renderCartView() {
           }).join('')+
         '</div>';
       })()+
+      cafStoreHtml+
     '</div>';
 
   // ── Discogs filter bar ─────────────────────────────────────────────────────
@@ -5227,41 +5228,63 @@ function renderCartView() {
       '<button class="cart-smart-fill" id="cartAutoFillBtn" onclick="autoFillCart()">⚡ Smart fill Discogs</button>'+
     '</div>';
 
-  // ── Auto-fill suggestions ─────────────────────────────────────────────────
+  // ── Auto-fill suggestions — split by source type ─────────────────────────
+  // Smart fill Discogs runs a combined optimizer that may include store results.
+  // Keep discogs groups in the Discogs section; store groups go in the Stores section.
+  function renderCafGroup(g, idx) {
+    var isd = g.sourceType === 'discogs' || g.sourceType === 'discogs_seller';
+    var rHtml = (isd && g.sellerRating != null)
+      ? '<span class="caf-rating">★'+parseFloat(g.sellerRating).toFixed(1)+'%'+(g.sellerNumRatings?' <span class="caf-num-ratings">('+g.sellerNumRatings.toLocaleString()+')</span>':'')+' </span>' : '';
+    var ctHtml = (g.country && VALID_COUNTRIES[g.country]) ? '<span class="caf-country">📦 '+g.country+'</span>' : '';
+    return '<div class="caf-group">'+
+      '<div class="caf-group-header">'+
+        '<span class="caf-type">'+(isd?'💿':'🏪')+'</span>'+
+        '<span class="caf-name">'+escapeHtml(g.sourceName)+'</span>'+
+        '<span class="caf-count">'+g.items.length+' rec'+(g.items.length!==1?'s':'')+'</span>'+
+        rHtml+ctHtml+
+        '<span class="caf-ship">~$'+(g.shippingCostUsd||0).toFixed(0)+' ship</span>'+
+        '<span class="caf-total">$'+(g.totalUsd||0).toFixed(2)+'</span>'+
+        '<button class="caf-add-btn" onclick="addAutoFillGroupByIndex('+idx+')">+ Add</button>'+
+      '</div>'+
+      '<div class="caf-chips">'+
+        g.items.slice(0,5).map(function(item){
+          return '<span class="caf-chip">'+
+            escapeHtml(item.artist)+' — '+escapeHtml(item.title)+
+            (item.condition?' <em>'+escapeHtml(condAbbr(item.condition))+'</em>':'')+
+            (item.priceUsd?' $'+item.priceUsd.toFixed(0):'')+'</span>';
+        }).join('')+
+        (g.items.length > 5 ? '<span class="caf-chip caf-chip-more">+' + (g.items.length - 5) + ' more</span>' : '')+
+      '</div>'+
+    '</div>';
+  }
+  var _cafDiscogsGroups = [], _cafStoreGroups = [];
+  if (_cartAutoFill && _cartAutoFill.groups) {
+    _cartAutoFill.groups.forEach(function(g, idx) {
+      var isd = g.sourceType === 'discogs' || g.sourceType === 'discogs_seller';
+      (isd ? _cafDiscogsGroups : _cafStoreGroups).push({ g: g, idx: idx });
+    });
+  }
   var cafHtml = '';
-  if (_cartAutoFill && _cartAutoFill.groups && _cartAutoFill.groups.length > 0) {
+  if (_cafDiscogsGroups.length > 0) {
     cafHtml =
       '<div class="cart-autofill-results">'+
         '<div class="caf-header">'+
           '<span class="caf-hdr-label">⚡ '+_cartAutoFill.covered+' of '+_cartAutoFill.total+' uncovered items found</span>'+
           '<span class="caf-hdr-note">Add a group, then re-run Smart fill</span>'+
         '</div>'+
-        _cartAutoFill.groups.map(function(g, idx) {
-          var isd = g.sourceType === 'discogs' || g.sourceType === 'discogs_seller';
-          var rHtml = (isd && g.sellerRating != null)
-            ? '<span class="caf-rating">★'+parseFloat(g.sellerRating).toFixed(1)+'%'+(g.sellerNumRatings?' <span class="caf-num-ratings">('+g.sellerNumRatings.toLocaleString()+')</span>':'')+' </span>' : '';
-          var ctHtml = (g.country && VALID_COUNTRIES[g.country]) ? '<span class="caf-country">📦 '+g.country+'</span>' : '';
-          return '<div class="caf-group">'+
-            '<div class="caf-group-header">'+
-              '<span class="caf-type">'+(isd?'💿':'🏪')+'</span>'+
-              '<span class="caf-name">'+escapeHtml(g.sourceName)+'</span>'+
-              '<span class="caf-count">'+g.items.length+' rec'+(g.items.length!==1?'s':'')+'</span>'+
-              rHtml+ctHtml+
-              '<span class="caf-ship">~$'+(g.shippingCostUsd||0).toFixed(0)+' ship</span>'+
-              '<span class="caf-total">$'+(g.totalUsd||0).toFixed(2)+'</span>'+
-              '<button class="caf-add-btn" onclick="addAutoFillGroupByIndex('+idx+')">+ Add</button>'+
-            '</div>'+
-            '<div class="caf-chips">'+
-              g.items.slice(0,5).map(function(item){
-                return '<span class="caf-chip">'+
-                  escapeHtml(item.artist)+' — '+escapeHtml(item.title)+
-                  (item.condition?' <em>'+escapeHtml(condAbbr(item.condition))+'</em>':'')+
-                  (item.priceUsd?' $'+item.priceUsd.toFixed(0):'')+'</span>';
-              }).join('')+
-              (g.items.length > 5 ? '<span class="caf-chip caf-chip-more">+' + (g.items.length - 5) + ' more</span>' : '')+
-            '</div>'+
-          '</div>';
-        }).join('')+
+        _cafDiscogsGroups.map(function(entry) { return renderCafGroup(entry.g, entry.idx); }).join('')+
+      '</div>';
+  }
+  // Store groups from the combined auto-fill get injected into the store section below
+  var cafStoreHtml = '';
+  if (_cafStoreGroups.length > 0) {
+    cafStoreHtml =
+      '<div class="cart-autofill-results">'+
+        '<div class="caf-header">'+
+          '<span class="caf-hdr-label">⚡ Stores found via Smart fill Discogs</span>'+
+          '<span class="caf-hdr-note">Add a group, then re-run Smart fill</span>'+
+        '</div>'+
+        _cafStoreGroups.map(function(entry) { return renderCafGroup(entry.g, entry.idx); }).join('')+
       '</div>';
   }
 
@@ -5278,7 +5301,7 @@ function renderCartView() {
       '</div>'+
       discogsFilters+
       discogsBody+
-      (discogsGroups.length === 0 && !_cartAutoFill ?
+      (discogsGroups.length === 0 && _cafDiscogsGroups.length === 0 ?
         '<div class="cart-section-empty">Set your filters above and hit Smart fill, or <a href="#" onclick="switchView(\'discover\',null);switchDiscoverTab(\'sellers\');return false;">browse sellers →</a></div>' : '')+
       cafHtml+
     '</div>';
