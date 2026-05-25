@@ -125,91 +125,14 @@ async function getDiscogsCookieHeader() {
 }
 
 // ── Fetch + parse Discogs marketplace page ────────────────────────────────────
-// Primary: REST API → stable field names, personalized shipping_price when logged in.
-// Fallback: HTML scraping (parseHtml) in case the API is down or returns 0 listings.
+// Uses HTML scraping of the authenticated Discogs marketplace page.
+// The browser cookies give us the user's logged-in session, so ships_from and
+// personalized shipping prices are visible in the HTML.
+// NOTE: The Discogs REST API was tried previously but it doesn't auth via browser
+// cookies (needs OAuth tokens), so it returned listings without ships_from data.
 async function fetchMarketplacePage(discogsId, wantlistId, cookieHeader) {
 
-    // ── 1. Discogs REST API ───────────────────────────────────────────────────
-    try {
-        var apiUrl = 'https://api.discogs.com/marketplace/search' +
-                     '?release_id=' + discogsId +
-                     '&type=listing&currency=USD&per_page=100&sort=price&sort_order=asc';
-        var apiRes = await fetch(apiUrl, {
-            headers: {
-                'Cookie':          cookieHeader,
-                'User-Agent':      'WaxDigger/1.0 +https://waxdigger.ai',
-                'Accept':          'application/json',
-                'Accept-Language': 'en-US,en;q=0.9'
-            }
-        });
-
-        var remaining = apiRes.headers.get('X-Discogs-Ratelimit-Remaining') || '?';
-        console.log('[WaxDigger] API', discogsId, '→', apiRes.status, '| rate-limit remaining:', remaining);
-
-        if (apiRes.status === 429) {
-            // Rate-limited — log and return [] (sync will resume next time)
-            console.warn('[WaxDigger] Rate limited by Discogs API for', discogsId, '— skipping');
-            return [];
-        }
-
-        if (apiRes.ok) {
-            var apiData    = await apiRes.json();
-            // /marketplace/search returns { results: [...] }, not { listings: [...] }
-            var apiListings = (apiData.results || []).filter(function (l) {
-                return l.seller && l.seller.username;
-            });
-
-            if (apiListings.length > 0) {
-                var results = apiListings.map(function (l) {
-                    // ships_from is a top-level string in the REST API ("Germany", "United States", …)
-                    var shipsFrom = l.ships_from || (l.seller && l.seller.location) || '';
-
-                    // shipping_price is personalised to the logged-in buyer's registered address.
-                    // With currency=USD the value is already converted to USD.
-                    var shipPrice = null;
-                    var shipCur   = (l.price && l.price.currency) || 'USD';
-                    if (l.shipping_price && typeof l.shipping_price === 'object' &&
-                        l.shipping_price.value != null) {
-                        shipPrice = l.shipping_price.value;
-                        shipCur   = l.shipping_price.currency || shipCur;
-                    } else if (typeof l.shipping_price === 'number') {
-                        shipPrice = l.shipping_price;
-                    }
-
-                    return {
-                        wantlistId:       wantlistId,
-                        listingId:        l.id,
-                        sellerUsername:   l.seller.username,
-                        sellerRating:     l.seller.stats && parseFloat(l.seller.stats.rating),
-                        sellerNumRatings: l.seller.stats && l.seller.stats.total,
-                        priceOriginal:    l.price && l.price.value,
-                        currency:         (l.price && l.price.currency) || 'USD',
-                        condition:        l.condition || '',
-                        shipsFrom:        shipsFrom,
-                        shippingPrice:    shipPrice,     // personalised cost to buyer (null = not returned)
-                        shippingCurrency: shipCur,
-                        listingUrl:       'https://www.discogs.com/sell/item/' + l.id
-                    };
-                });
-
-                // Debug: show first listing's shipping data so we can verify it's working
-                if (results[0]) {
-                    console.log('[WaxDigger] API sample —',
-                        'shipsFrom:', results[0].shipsFrom,
-                        'shippingPrice:', results[0].shippingPrice,
-                        'shippingCurrency:', results[0].shippingCurrency);
-                }
-                console.log('[WaxDigger] API got', results.length, 'listings for', discogsId);
-                return results;
-            }
-            // API returned ok but 0 listings — fall through to HTML
-            console.log('[WaxDigger] API returned 0 listings for', discogsId, '— trying HTML fallback');
-        }
-    } catch (apiErr) {
-        console.error('[WaxDigger] API error for', discogsId, ':', apiErr.message);
-    }
-
-    // ── 2. Fallback: HTML scraping ────────────────────────────────────────────
+    // ── HTML scraping (authenticated via browser session cookies) ─────────────
     try {
         var url = 'https://www.discogs.com/sell/release/' + discogsId;
         var res = await fetch(url, {
