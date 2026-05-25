@@ -1009,6 +1009,18 @@ function bulkSaveDiscogsListings(byWantlist) {
     return total;
 }
 
+function getFreshDiscogsWantlistIds(userId, maxAgeHours) {
+    var cutoff = new Date(Date.now() - maxAgeHours * 3600 * 1000).toISOString();
+    return getDb().prepare(`
+        SELECT DISTINCT dl.wantlist_id
+        FROM discogs_listings dl
+        JOIN wantlist w ON w.id = dl.wantlist_id
+        WHERE w.user_id = ?
+          AND w.active = 1
+          AND dl.fetched_at > ?
+    `).all(userId, cutoff).map(function(r) { return r.wantlist_id; });
+}
+
 function getDiscogsListings(userId) {
     return getDb().prepare(`
         SELECT dl.*, w.artist, w.title, w.catno, w.discogs_id, w.thumb, w.genres, w.styles
@@ -2435,6 +2447,7 @@ module.exports = {
     cleanupOldOptimizerJobs: cleanupOldOptimizerJobs,
     saveDiscogsListings: saveDiscogsListings,
     bulkSaveDiscogsListings: bulkSaveDiscogsListings,
+    getFreshDiscogsWantlistIds: getFreshDiscogsWantlistIds,
     getDiscogsListings: getDiscogsListings,
     getMarketplaceSyncStatus: getMarketplaceSyncStatus,
     // Observability

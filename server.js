@@ -2917,6 +2917,20 @@ app.post('/api/changes/dismiss', function (req, res) {
 // HEALTH & ADMIN ENDPOINTS
 // ═══════════════════════════════════════════════════════════════
 
+// Returns wantlist IDs that already have fresh listings (< maxAge hours old)
+// Extension uses this to skip re-fetching items that haven't changed
+app.get('/api/discogs-listings-fresh/:username', function(req, res) {
+    try {
+        var user = db.getOrCreateUser(req.params.username);
+        if (!user) return res.json({ freshIds: [], cutoffHours: 6 });
+        var maxAge = parseInt(req.query.maxAge) || 6;
+        var freshIds = db.getFreshDiscogsWantlistIds(user.id, maxAge);
+        res.json({ freshIds: freshIds, cutoffHours: maxAge, total: freshIds.length });
+    } catch(e) {
+        res.json({ freshIds: [], cutoffHours: 6 });
+    }
+});
+
 // ─── Discogs Listings count (for optimizer panel status) ─────────────────────
 app.get('/api/discogs-listings-count/:username', function (req, res) {
     try {

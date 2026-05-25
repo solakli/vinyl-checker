@@ -41,12 +41,42 @@ async function runSync(server, username) {
         return;
     }
 
+    // Step 1.5: Ask server which items already have fresh listings (< 6h) — skip those
+    var freshIds = new Set();
+    try {
+        var freshRes = await fetch(server + '/api/discogs-listings-fresh/' + encodeURIComponent(username));
+        if (freshRes.ok) {
+            var freshData = await freshRes.json();
+            (freshData.freshIds || []).forEach(function(id) { freshIds.add(id); });
+        }
+    } catch(e) { /* if this fails, sync everything */ }
+
+    var staleItems = items.filter(function(item) { return !freshIds.has(item.wantlistId); });
+    var freshCount = items.length - staleItems.length;
+
+    if (staleItems.length === 0) {
+        fill.style.width = '100%';
+        label.textContent = items.length + ' releases all up to date (< 6h old)';
+        showStatus('✓ All listings are fresh! Open Wax Digger to run the optimizer.', 'ok');
+        closeBtn.style.display = 'block';
+        chrome.storage.local.set({ syncState: {
+            running: false, done: items.length, total: items.length,
+            found: 0, completedAt: Date.now()
+        }});
+        return;
+    }
+
+    if (freshCount > 0) {
+        label.textContent = freshCount + ' releases fresh (skipping) · syncing ' + staleItems.length + ' stale…';
+        await sleep(1200); // let user read it
+    }
+
     // Step 2: fetch release marketplace pages in parallel batches
     var allListings  = [];
     var pendingBatch = [];   // accumulated since last flush
     var FETCH_SIZE   = 4;   // concurrent Discogs requests per round
     var POST_EVERY   = 40;  // flush to server every N releases processed
-    var done         = 0;
+    var done         = freshCount;   // start at freshCount — those are already done
 
     async function flushToServer(isLast) {
         if (!pendingBatch.length) return;
@@ -71,8 +101,8 @@ async function runSync(server, username) {
         }
     }
 
-    for (var i = 0; i < items.length; i += FETCH_SIZE) {
-        var batch = items.slice(i, i + FETCH_SIZE);
+    for (var i = 0; i < staleItems.length; i += FETCH_SIZE) {
+        var batch = staleItems.slice(i, i + FETCH_SIZE);
 
         // Fire all in batch simultaneously
         var batchResults = await Promise.all(batch.map(function (item) {
@@ -96,7 +126,7 @@ async function runSync(server, username) {
 
         // Flush every POST_EVERY releases so the server receives progressive updates
         // and we don't lose everything if the window closes early
-        var isLast = (i + FETCH_SIZE >= items.length);
+        var isLast = (i + FETCH_SIZE >= staleItems.length);
         if (pendingBatch.length >= POST_EVERY || isLast) {
             label.textContent = done + ' / ' + items.length + ' · saving batch...';
             await flushToServer(isLast);
@@ -115,7 +145,7 @@ async function runSync(server, username) {
 
     // Done
     fill.style.width = '100%';
-    label.textContent = items.length + ' releases · ' + allListings.length + ' listings synced';
+    label.textContent = items.length + ' releases · ' + allListings.length + ' listings synced' + (freshCount > 0 ? ' (' + freshCount + ' already fresh)' : '');
     showStatus('✓ Done! You can now close this window and run the optimizer.', 'ok');
     closeBtn.style.display = 'block';
     chrome.storage.local.set({ syncState: {

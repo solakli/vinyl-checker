@@ -693,6 +693,10 @@ async function loadExisting(username) {
   if (!username) return;
   document.getElementById('usernameInput').value = username;
 
+  // Hide onboarding panel if visible
+  var ob = document.getElementById('cartOnboarding');
+  if (ob) ob.style.display = 'none';
+
   // Reset optimizer + discover state so a new user doesn't see the previous user's results
   if (_optimizerPollTimer) { clearInterval(_optimizerPollTimer); _optimizerPollTimer = null; }
   _lastOptimizerResult = null;
@@ -2588,8 +2592,9 @@ checkAuthStatus().then(function() {
       document.getElementById('usernameInput').value = savedUsername;
       return loadExisting(savedUsername);
     }
-    // No saved state — show welcome page
+    // No saved state — show welcome page and onboarding
     document.getElementById('welcome').style.display = '';
+    checkShowOnboarding();
   }
 });
 }
@@ -4185,7 +4190,7 @@ function renderForYouTab() {
   var filtered = forYou.filter(function(item) {
     if (_forYouStoreFilter !== 'all' && item.store !== _forYouStoreFilter) return false;
     if (_discoverGenreFilter) {
-      var g = (item.genres + '|' + item.styles).toLowerCase();
+      var g = ((item.genres || '') + '|' + (item.styles || '')).toLowerCase();
       if (g.indexOf(_discoverGenreFilter.toLowerCase()) === -1) return false;
     }
     if (_forYouFilter === 'artist') return item.reasons && item.reasons.indexOf('artist') !== -1 || item.source === 'wantlist';
@@ -4200,7 +4205,7 @@ function renderForYouTab() {
   // Genre filter pills from forYou items
   var genreCounts = {};
   forYou.forEach(function(item) {
-    (item.genres + '|' + item.styles).split('|').forEach(function(g) {
+    ((item.genres || '') + '|' + (item.styles || '')).split('|').forEach(function(g) {
       g = g.trim();
       if (g && g.length > 2) genreCounts[g] = (genreCounts[g] || 0) + 1;
     });
@@ -4335,12 +4340,12 @@ function renderForYouCard(item, cardIdx) {
   }
 
   var cartBtn = '';
-  if (item.wantlistId) {
+  if (item.wantlistId && item.store) {
     var cartKey = String(item.wantlistId) + ':' + item.store;
     var inCart  = !!_discoverCartSet[cartKey];
     cartBtn = '<button class="disc-card-cart-btn' + (inCart ? ' in-cart' : '') + '" data-key="' + escapeAttr(cartKey) + '" ' +
-      'onclick="toggleCart(' + item.wantlistId + ',\'' + escapeAttr(item.store) + '\',\'' + escapeAttr(item.priceStr) + '\',' +
-      (item.priceUsd !== null ? item.priceUsd : 'null') + ')">' +
+      'onclick="toggleCart(' + item.wantlistId + ',\'' + escapeAttr(item.store || '') + '\',\'' + escapeAttr(item.priceStr || '') + '\',' +
+      (item.priceUsd != null ? item.priceUsd : 'null') + ')">' +
       (inCart ? '✓' : '+') + '</button>';
   }
 
@@ -4936,9 +4941,31 @@ function escapeAttr(s) {
 // CART VIEW
 // ═══════════════════════════════════════════════════════════════
 
+// ── Onboarding ────────────────────────────────────────────────────────────────
+
+function onboardingSubmit() {
+  var val = document.getElementById('onboardingUsername').value.trim();
+  if (!val) return;
+  document.getElementById('onboardingUsername').value = '';
+  var inp = document.getElementById('usernameInput');
+  if (inp) { inp.value = val; inp.dispatchEvent(new Event('change')); }
+  document.getElementById('cartOnboarding').style.display = 'none';
+  loadExisting(val);
+}
+
+function checkShowOnboarding() {
+  var ob = document.getElementById('cartOnboarding');
+  if (!ob) return;
+  var hasUser = !!(getCurrentUsername());
+  ob.style.display = hasUser ? 'none' : 'block';
+}
+
 function loadCartView(force) {
   var username = getCurrentUsername();
-  if (!username) return;
+  if (!username) {
+    checkShowOnboarding();
+    return;
+  }
   var el = document.getElementById('cartBody');
   if (!el) return;
   if (_cartLoaded && !force) { renderCartView(); return; }
@@ -4963,7 +4990,7 @@ function renderCartView() {
   var el = document.getElementById('cartBody');
   if (!el) return;
   var username = getCurrentUsername();
-  if (!username) { el.innerHTML = '<div class="cart-empty">Enter your Discogs username to start.</div>'; return; }
+  if (!username) { checkShowOnboarding(); return; }
 
   // ── Constants ──────────────────────────────────────────────────────────────
   var COND_RANK = { 'M': 7, 'NM': 6, 'VG+': 5, 'VG': 4, 'G+': 3, 'G': 2, 'F': 1, 'P': 0 };
