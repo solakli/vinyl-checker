@@ -5263,6 +5263,14 @@ function renderCartView() {
     var rHtml = (isd && g.sellerRating != null)
       ? '<span class="caf-rating">★'+parseFloat(g.sellerRating).toFixed(1)+'%'+(g.sellerNumRatings?' <span class="caf-num-ratings">('+g.sellerNumRatings.toLocaleString()+')</span>':'')+' </span>' : '';
     var ctHtml = (g.country && VALID_COUNTRIES[g.country]) ? '<span class="caf-country">📦 '+g.country+'</span>' : '';
+    var itemsHtml = g.items.map(function(item, itemIdx) {
+      return '<div class="caf-item-row">'+
+        '<span class="caf-item-label">'+escapeHtml(item.artist)+' — '+escapeHtml(item.title)+'</span>'+
+        (item.condition ? '<span class="caf-item-cond">'+escapeHtml(condAbbr(item.condition))+'</span>' : '')+
+        (item.priceUsd != null ? '<span class="caf-item-price">$'+item.priceUsd.toFixed(2)+'</span>' : '')+
+        '<button class="caf-item-remove" title="Remove from group" onclick="removeCafItem('+idx+','+itemIdx+')">✕</button>'+
+      '</div>';
+    }).join('');
     return '<div class="caf-group">'+
       '<div class="caf-group-header">'+
         '<span class="caf-type">'+(isd?'💿':'🏪')+'</span>'+
@@ -5271,17 +5279,9 @@ function renderCartView() {
         rHtml+ctHtml+
         '<span class="caf-ship">~$'+(g.shippingCostUsd||0).toFixed(0)+' ship</span>'+
         '<span class="caf-total">$'+(g.totalUsd||0).toFixed(2)+'</span>'+
-        '<button class="caf-add-btn" onclick="addAutoFillGroupByIndex('+idx+')">+ Add</button>'+
+        '<button class="caf-add-btn" onclick="addAutoFillGroupByIndex('+idx+')">+ Add '+g.items.length+'</button>'+
       '</div>'+
-      '<div class="caf-chips">'+
-        g.items.slice(0,5).map(function(item){
-          return '<span class="caf-chip">'+
-            escapeHtml(item.artist)+' — '+escapeHtml(item.title)+
-            (item.condition?' <em>'+escapeHtml(condAbbr(item.condition))+'</em>':'')+
-            (item.priceUsd?' $'+item.priceUsd.toFixed(0):'')+'</span>';
-        }).join('')+
-        (g.items.length > 5 ? '<span class="caf-chip caf-chip-more">+' + (g.items.length - 5) + ' more</span>' : '')+
-      '</div>'+
+      '<div class="caf-items">'+itemsHtml+'</div>'+
     '</div>';
   }
   var _cafDiscogsGroups = [], _cafStoreGroups = [];
@@ -5451,6 +5451,21 @@ function autoFillStores() {
   .catch(function() {
     if (btn) { btn.textContent = '🏪 Smart fill stores'; btn.disabled = false; }
   });
+}
+
+// Remove a single item from a smart-fill group before committing it.
+// If the group drops to 0 items it's removed entirely.
+function removeCafItem(groupIdx, itemIdx) {
+  if (!_cartAutoFill || !_cartAutoFill.groups[groupIdx]) return;
+  var g = _cartAutoFill.groups[groupIdx];
+  g.items.splice(itemIdx, 1);
+  if (g.items.length === 0) {
+    _cartAutoFill.groups.splice(groupIdx, 1);
+  } else {
+    // Recalculate group totals after removal
+    g.totalUsd = g.items.reduce(function(sum, it) { return sum + (it.priceUsd || 0); }, 0);
+  }
+  loadCartView(true);
 }
 
 function addAutoFillGroupByIndex(idx) {
@@ -5648,6 +5663,7 @@ function siSortSellers(sellers) {
 
 function setSellerIntelSort(sort) {
   _sellerIntelSort = sort;
+  _siDisplayCount = 50;
   renderSellerIntelBody();
 }
 
@@ -5655,6 +5671,7 @@ function setSellerFilter(key, val) {
   if (key === 'minRecords') _sellerMinRecords = parseInt(val) || 1;
   if (key === 'minRating')  _sellerMinRating  = parseFloat(val) || 0;
   if (key === 'minRare')    _sellerMinRare     = parseInt(val)   || 0;
+  _siDisplayCount = 50;
   renderSellerIntelBody();
 }
 
@@ -5705,6 +5722,47 @@ function openOptimizerWithPinned(pinned) {
 }
 
 var _siPinnedForOptimizer = [];
+var _siDisplayCount = 50;   // how many seller cards are visible; grows with "Show more"
+
+function siLoadMore() {
+  _siDisplayCount += 50;
+  renderSellerIntelBody();
+  // scroll new cards into view
+  var grid = document.querySelector('.si-seller-grid');
+  if (grid) { var last = grid.lastElementChild; if (last) last.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+}
+
+function addRecordToCart(wantlistId, sellerUsername, sellerRating, sellerNumRatings, shipsFrom, priceUsd, condition, listingUrl, btn) {
+  var username = getCurrentUsername();
+  if (!username) return;
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  fetch('api/cart/' + encodeURIComponent(username), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      wantlistId:       wantlistId,
+      store:            sellerUsername,
+      price:            priceUsd ? '$' + priceUsd.toFixed(2) : '',
+      priceUsd:         priceUsd,
+      condition:        condition || '',
+      shipsFrom:        shipsFrom || '',
+      listingUrl:       listingUrl || '',
+      sourceType:       'discogs_seller',
+      sellerUsername:   sellerUsername,
+      sellerRating:     sellerRating,
+      sellerNumRatings: sellerNumRatings
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (btn) { btn.textContent = '✓'; btn.classList.add('added'); btn.disabled = true; }
+    updateCartBadge(data.count || 0);
+    _cartLoaded = false;
+  })
+  .catch(function() {
+    if (btn) { btn.textContent = '+'; btn.disabled = false; }
+  });
+}
 
 function renderSellerIntelBody() {
   var body = document.getElementById('discBody');
@@ -5809,7 +5867,10 @@ function renderSellerIntelBody() {
     return;
   }
 
-  var cardsHtml = sorted.map(function(seller, si) {
+  var visible   = sorted.slice(0, _siDisplayCount);
+  var remaining = sorted.length - visible.length;
+
+  var cardsHtml = visible.map(function(seller, si) {
     var isPinned = !!_pinnedSellers[seller.sellerUsername];
     var ratingColor = seller.sellerRating >= 99 ? '#7ee8a2' : seller.sellerRating >= 98 ? '#ffe07a' : '#b0bfcf';
     var ratingHtml = seller.sellerRating != null
@@ -5826,6 +5887,12 @@ function renderSellerIntelBody() {
       ? '<span class="si-price-total">$' + seller.totalPriceUsd.toFixed(2) + '</span>' : '';
     var pinBtnId = 'siPin_' + seller.sellerUsername.replace(/[^a-z0-9]/gi, '_');
 
+    // Encode seller-level data once for use in per-record cart buttons
+    var sUser    = JSON.stringify(seller.sellerUsername);
+    var sRating  = seller.sellerRating  != null ? seller.sellerRating  : 'null';
+    var sCount   = seller.sellerNumRatings != null ? seller.sellerNumRatings : 'null';
+    var sShips   = JSON.stringify(seller.shipsFrom || '');
+
     var recordsHtml = seller.records.map(function(rec) {
       var condColor = gradeColor[rec.condition] || '#888';
       var rareTag = rec.isRare
@@ -5835,7 +5902,15 @@ function renderSellerIntelBody() {
         ? '<img class="si-rec-thumb" src="' + escapeHtml(rec.thumb) + '" loading="lazy" onerror="this.style.display=\'none\'">'
         : '<div class="si-rec-thumb si-rec-thumb-ph"></div>';
       var link = rec.listingUrl
-        ? '<a class="si-rec-link" href="' + escapeHtml(rec.listingUrl) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">View ↗</a>'
+        ? '<a class="si-rec-link" href="' + escapeHtml(rec.listingUrl) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗</a>'
+        : '';
+      // Per-record "Add to Cart" button
+      var cartBtn = rec.wantlistId
+        ? '<button class="si-rec-cart-btn" title="Add to cart" onclick="event.stopPropagation();addRecordToCart(' +
+            rec.wantlistId + ',' + sUser + ',' + sRating + ',' + sCount + ',' + sShips + ',' +
+            (rec.priceUsd != null ? rec.priceUsd : 'null') + ',' +
+            JSON.stringify(rec.condition || '') + ',' +
+            JSON.stringify(rec.listingUrl || '') + ',this)">+</button>'
         : '';
       return '<div class="si-rec-row">' +
         thumb +
@@ -5848,7 +5923,7 @@ function renderSellerIntelBody() {
             (rec.wantHaveRatio ? '<span class="si-rec-wh" title="Want / Have ratio">' + rec.wantHaveRatio + 'x</span>' : '') +
           '</div>' +
         '</div>' +
-        link +
+        '<div class="si-rec-actions">' + link + cartBtn + '</div>' +
       '</div>';
     }).join('');
 
@@ -5869,10 +5944,10 @@ function renderSellerIntelBody() {
       '</div>' +
       '<div class="si-seller-body">' +
         '<div class="si-seller-body-actions">' +
-          '<a class="si-profile-link" href="https://www.discogs.com/seller/' + encodeURIComponent(seller.sellerUsername) + '/profile" target="_blank" rel="noopener" onclick="event.stopPropagation()">View Discogs Profile ↗</a>' +
+          '<a class="si-profile-link" href="https://www.discogs.com/seller/' + encodeURIComponent(seller.sellerUsername) + '/profile" target="_blank" rel="noopener" onclick="event.stopPropagation()">View on Discogs ↗</a>' +
           '<button class="si-pin-full-btn' + (isPinned ? ' active' : '') + '"' +
             ' onclick="togglePinSeller(' + JSON.stringify(seller.sellerUsername) + ',document.getElementById(\'' + pinBtnId + '\'))">' +
-            (isPinned ? '📌 Pinned to Optimizer' : '📌 Pin to Optimizer') +
+            (isPinned ? '📌 Pinned' : '📌 Pin to Optimizer') +
           '</button>' +
         '</div>' +
         '<div class="si-rec-list">' + recordsHtml + '</div>' +
@@ -5880,7 +5955,12 @@ function renderSellerIntelBody() {
     '</div>';
   }).join('');
 
-  body.innerHTML = headerHtml + '<div class="si-seller-grid">' + cardsHtml + '</div>';
+  var showMoreHtml = remaining > 0
+    ? '<div class="si-show-more"><button class="si-show-more-btn" onclick="siLoadMore()">Show ' + Math.min(remaining, 50) + ' more sellers</button>' +
+      '<span class="si-show-more-count">' + remaining + ' remaining</span></div>'
+    : '';
+
+  body.innerHTML = headerHtml + '<div class="si-seller-grid">' + cardsHtml + showMoreHtml + '</div>';
   _updatePinnedBar();
 }
 
