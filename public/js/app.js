@@ -2261,7 +2261,7 @@ async function checkAuthStatus() {
       }
     }
   // Handle ?view= URL param (and legacy ?profile=) — restore view after auth
-  var _startView = _initialView || (_profileParam ? 'profile' : null);
+  var _startView = _initialView || (_profileParam ? 'profile' : 'cart');
   var _startUser = _initialUser || _profileParam || null;
   _profileParam = null; _initialView = null; _initialUser = null;
   if (_startView) {
