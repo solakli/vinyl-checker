@@ -5026,8 +5026,13 @@ function renderCartView() {
     var fc = (g.country && VALID_COUNTRIES[g.country]) ? g.country : '';
     var sub = g.items.reduce(function(n, i) { return n + (i.price_usd || 0); }, 0);
     var _gIsD = g.sourceType === 'discogs' || g.sourceType === 'discogs_seller';
-    var ship = fc === buyerCountry ? 0 : (SHIP_RATES[fc] || (_gIsD ? 15 : 12));
-    return { subtotal: sub, ship: ship, total: sub + ship, country: fc };
+    // Use actual per-seller shipping if synced, else fall back to country-based heuristic
+    var actualShip = null;
+    for (var _si = 0; _si < g.items.length; _si++) {
+      if (g.items[_si].shipping_to_usd != null) { actualShip = g.items[_si].shipping_to_usd; break; }
+    }
+    var ship = actualShip != null ? actualShip : (fc === buyerCountry ? 0 : (SHIP_RATES[fc] || (_gIsD ? 15 : 12)));
+    return { subtotal: sub, ship: ship, total: sub + ship, country: fc, isActualShip: actualShip != null };
   }
   function secTot(arr) {
     return arr.reduce(function(a, g) {
@@ -5077,9 +5082,14 @@ function renderCartView() {
         : (item.price ? '<span class="cg-item-price">'+escapeHtml(item.price)+'</span>' : '');
       var linkHtml = item.listing_url ? '<a class="cg-item-link" href="'+escapeHtml(item.listing_url)+'" target="_blank" rel="noopener">↗</a>' : '';
       var thumbHtml = item.thumb ? '<img class="cg-item-thumb" src="'+escapeHtml(item.thumb)+'" loading="lazy" alt="" onerror="this.style.display=\'none\'">' : '<div class="cg-item-thumb-ph">♪</div>';
+      // Rarity badge — from release_meta JOIN (always fresh)
+      var ratio = item.want_have_ratio;
+      var rareHtml = (ratio != null && ratio >= 1.2)
+        ? '<span class="cg-item-rare" title="Community want/have: '+ratio+'x">💎 '+ratio+'x</span>'
+        : '';
       return '<div class="cg-item-row'+(cb||pb?' cg-item-warn':'')+'">'+thumbHtml+
         '<div class="cg-item-info"><span class="cg-item-artist">'+escapeHtml(item.artist||'')+'</span><span class="cg-item-title">'+escapeHtml(item.title||'')+'</span></div>'+
-        '<div class="cg-item-right">'+condHtml+priceHtml+linkHtml+
+        '<div class="cg-item-right">'+rareHtml+condHtml+priceHtml+linkHtml+
           '<button class="cg-remove-btn" onclick="removeCartItem('+item.wantlist_id+',\''+escapeAttr(item.store)+'\')">×</button>'+
         '</div></div>';
     }).join('');
@@ -5134,7 +5144,8 @@ function renderCartView() {
       '<div class="cg-items">'+itemsHtml+'</div>'+
       '<div class="cg-footer">'+
         '<span class="cg-records-cost">Records: $'+cost.subtotal.toFixed(2)+'</span>'+
-        '<span class="cg-ship-cost">+ Ship: ~$'+cost.ship.toFixed(0)+'</span>'+
+        '<span class="cg-ship-cost'+(cost.isActualShip?' cg-ship-actual':'')+'">'+
+          (cost.isActualShip ? '📦 $' : '+ Ship: ~$')+cost.ship.toFixed(2)+'</span>'+
         '<span class="cg-group-total">= $'+cost.total.toFixed(2)+'</span>'+
         checkoutBtn+
       '</div>'+
@@ -5732,7 +5743,7 @@ function siLoadMore() {
   if (grid) { var last = grid.lastElementChild; if (last) last.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 }
 
-function addRecordToCart(wantlistId, sellerUsername, sellerRating, sellerNumRatings, shipsFrom, priceUsd, condition, listingUrl, btn) {
+function addRecordToCart(wantlistId, sellerUsername, sellerRating, sellerNumRatings, shipsFrom, priceUsd, condition, listingUrl, shippingToUsd, btn) {
   var username = getCurrentUsername();
   if (!username) return;
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
@@ -5742,7 +5753,7 @@ function addRecordToCart(wantlistId, sellerUsername, sellerRating, sellerNumRati
     body: JSON.stringify({
       wantlistId:       wantlistId,
       store:            sellerUsername,
-      price:            priceUsd ? '$' + priceUsd.toFixed(2) : '',
+      price:            priceUsd != null ? '$' + priceUsd.toFixed(2) : '',
       priceUsd:         priceUsd,
       condition:        condition || '',
       shipsFrom:        shipsFrom || '',
@@ -5750,7 +5761,8 @@ function addRecordToCart(wantlistId, sellerUsername, sellerRating, sellerNumRati
       sourceType:       'discogs_seller',
       sellerUsername:   sellerUsername,
       sellerRating:     sellerRating,
-      sellerNumRatings: sellerNumRatings
+      sellerNumRatings: sellerNumRatings,
+      shippingToUsd:    shippingToUsd != null ? shippingToUsd : null
     })
   })
   .then(function(r) { return r.json(); })
@@ -5908,9 +5920,10 @@ function renderSellerIntelBody() {
       var cartBtn = rec.wantlistId
         ? '<button class="si-rec-cart-btn" title="Add to cart" onclick="event.stopPropagation();addRecordToCart(' +
             rec.wantlistId + ',' + sUser + ',' + sRating + ',' + sCount + ',' + sShips + ',' +
-            (rec.priceUsd != null ? rec.priceUsd : 'null') + ',' +
-            JSON.stringify(rec.condition || '') + ',' +
-            JSON.stringify(rec.listingUrl || '') + ',this)">+</button>'
+            (rec.priceUsd    != null ? rec.priceUsd    : 'null') + ',' +
+            JSON.stringify(rec.condition   || '') + ',' +
+            JSON.stringify(rec.listingUrl  || '') + ',' +
+            (rec.shippingToUsd != null ? rec.shippingToUsd : 'null') + ',this)">+</button>'
         : '';
       return '<div class="si-rec-row">' +
         thumb +

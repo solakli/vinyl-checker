@@ -3774,7 +3774,8 @@ app.post('/api/cart/:username', function(req, res) {
             sourceType:        req.body.sourceType        || 'store',
             sellerUsername:    req.body.sellerUsername    || null,
             sellerRating:      req.body.sellerRating      || null,
-            sellerNumRatings:  req.body.sellerNumRatings  || null
+            sellerNumRatings:  req.body.sellerNumRatings  || null,
+            shippingToUsd:     req.body.shippingToUsd     != null ? Number(req.body.shippingToUsd) : null
         };
         db.addToCart(user.id, wid, store, req.body.price, req.body.priceUsd, opts);
         res.json({ ok: true, count: db.getCartCount(user.id) });

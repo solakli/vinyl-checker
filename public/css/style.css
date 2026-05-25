@@ -10098,12 +10098,15 @@ body.light .opt-pinned-hint { background: rgba(200,160,0,0.06); border-color: rg
 .cg-item-price { font-size:13px; font-weight:600; color:var(--text); }
 .cg-item-link { font-size:11px; color:var(--text-muted); text-decoration:none; }
 .cg-item-link:hover { color:var(--gold); }
+/* Rarity badge on cart items */
+.cg-item-rare { font-size:11px; color:#c084ff; background:rgba(168,100,255,0.12); padding:2px 6px; border-radius:4px; white-space:nowrap; }
 .cg-remove-btn { background:none; border:none; color:#444; cursor:pointer; font-size:16px; padding:2px 6px; border-radius:4px; line-height:1; transition:all .1s; }
 .cg-remove-btn:hover { color:#e55; background:rgba(229,85,85,0.1); }
 
 /* ── Group footer ────────────────────────────────────────────── */
 .cg-footer { display:flex; align-items:center; gap:12px; padding:8px 18px; background:rgba(255,255,255,0.02); font-size:12px; }
 .cg-records-cost, .cg-ship-cost { color:var(--text-muted); }
+.cg-ship-actual { color:#7ee8a2; } /* green when real shipping data is known */
 .cg-group-total { font-weight:600; color:var(--text); margin-left:auto; }
 .cg-checkout-btn {
   display:inline-flex; align-items:center; gap:5px;
