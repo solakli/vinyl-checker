@@ -3943,6 +3943,7 @@ var CART_CHECKOUT_URLS = {
   'Yoyaku':              'https://www.yoyaku.co.jp/cart',
 };
 var _cartPrefs           = { countryCode: 'US', minCondition: 'VG+', minSellerRating: 98, maxPriceUsd: null, minStoreItems: 1, minSellerItems: 2 };
+var _autoFillDebounce    = null; // timer handle for auto-rerun on filter change
 var _cartLoaded          = false;
 var _forYouFilter        = 'all';      // 'all' | 'artist' | 'style'
 var _forYouStoreFilter   = 'all';      // 'all' | storeName
@@ -5421,14 +5422,31 @@ function renderCartView() {
     '</div>';
   }
   var cafHtml = '';
-  if (_cafDiscogsGroups.length > 0) {
+  if (_cafDiscogsGroups.length > 0 || (_cartAutoFill && _cartAutoFill.total > 0)) {
+    // Build uncovered items collapsible section
+    var uncoveredCount = _cartAutoFill ? (_cartAutoFill.total - _cartAutoFill.covered) : 0;
+    var uncoveredHtml = '';
+    if (uncoveredCount > 0 && _cartAutoFill.uncoveredItems && _cartAutoFill.uncoveredItems.length > 0) {
+      uncoveredHtml =
+        '<details class="caf-uncovered">'+
+          '<summary class="caf-uncovered-toggle">'+
+            '⚠️ '+uncoveredCount+' item'+(uncoveredCount!==1?'s':'')+' not found on Discogs (no listings matching your filters)'+
+          '</summary>'+
+          '<ul class="caf-uncovered-list">'+
+            _cartAutoFill.uncoveredItems.map(function(it) {
+              return '<li>'+escapeHtml(it.artist)+' — '+escapeHtml(it.title)+'</li>';
+            }).join('')+
+          '</ul>'+
+        '</details>';
+    }
     cafHtml =
       '<div class="cart-autofill-results">'+
         '<div class="caf-header">'+
-          '<span class="caf-hdr-label">⚡ '+_cartAutoFill.covered+' of '+_cartAutoFill.total+' uncovered items found</span>'+
+          '<span class="caf-hdr-label">⚡ '+_cartAutoFill.covered+' of '+_cartAutoFill.total+' items covered</span>'+
           '<span class="caf-hdr-note">Add a group, then re-run Smart fill</span>'+
         '</div>'+
         _cafDiscogsGroups.map(function(entry) { return renderCafGroup(entry.g, entry.idx); }).join('')+
+        uncoveredHtml+
       '</div>';
   }
 
@@ -5481,6 +5499,12 @@ function renderCartView() {
 function setCartPref(key, val) {
   _cartPrefs[key] = val;
   renderCartView();
+  // If smart-fill results are showing, auto-rerun after a short pause so the
+  // user sees updated results without having to press the button again.
+  if (_cartAutoFill) {
+    clearTimeout(_autoFillDebounce);
+    _autoFillDebounce = setTimeout(autoFillCart, 600);
+  }
 }
 
 function updateCartPrice(el) {
