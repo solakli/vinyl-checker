@@ -3231,6 +3231,13 @@ app.get('/api/marketplace-sync/:username/status', function (req, res) {
     res.json(state);
 });
 
+// Lightweight ping used by the watchdog health check — always responds instantly.
+// The heavy /api/health endpoint can take seconds under DB load, causing the watchdog
+// to think the server is down and restart it mid-scan. This endpoint avoids that.
+app.get('/api/ping', function (req, res) {
+    res.json({ status: 'ok', uptime: Math.round(process.uptime()), ts: Date.now() });
+});
+
 app.get('/api/health', function (req, res) {
     try {
         var d = db.getDb();
