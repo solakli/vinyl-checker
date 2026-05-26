@@ -4040,7 +4040,7 @@ app.listen(PORT, function () {
     // a previous crash. Reset them to 'pending' so they get re-processed.
     try {
         var stuckJobs = db.getDb().prepare(
-            "UPDATE pipeline_jobs SET status='pending', started_at=NULL WHERE status='running'"
+            "UPDATE pipeline_jobs SET status='pending', claimed_at=NULL WHERE status='running'"
         ).run();
         if (stuckJobs.changes > 0) {
             console.log('[startup] Reset ' + stuckJobs.changes + ' stuck pipeline job(s) to pending');
