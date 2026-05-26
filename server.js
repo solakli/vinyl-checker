@@ -4202,10 +4202,11 @@ app.listen(PORT, function () {
             .catch(function (e) { console.error('[validate] Fatal:', e.message); scanner.trackJobRun('validate', false, e.message); });
     }, VALIDATE_INTERVAL);
 
-    // Run first validation 5 min after startup
+    // Run first validation 45 min after startup (staggered from rolling scan at 5 min
+    // so they don't race for Chrome at the same moment)
     setTimeout(function () {
         scanner.validateInStockResults()
             .then(function() { scanner.trackJobRun('validate', true); })
             .catch(function (e) { console.error('[validate] Startup validation fatal:', e.message); scanner.trackJobRun('validate', false, e.message); });
-    }, 300000);
+    }, 45 * 60 * 1000);
 });
