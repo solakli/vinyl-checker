@@ -1389,6 +1389,8 @@ app.post('/api/deploy', function (req, res) {
     setTimeout(function () {
         try {
             var appDir = __dirname;
+            // Discard any local modifications so git pull never blocks
+            execSync('cd ' + appDir + ' && git checkout -- ecosystem.config.js package-lock.json 2>&1 || true');
             var pullOut = execSync('cd ' + appDir + ' && git pull origin master 2>&1').toString().trim();
             console.log('[deploy] git pull: ' + pullOut);
             if (pullOut.indexOf('Already up to date') !== -1) {
