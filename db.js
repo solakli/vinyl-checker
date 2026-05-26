@@ -1025,7 +1025,14 @@ function getFreshDiscogsWantlistIds(userId, maxAgeHours) {
 
 function getDiscogsListings(userId) {
     return getDb().prepare(`
-        SELECT dl.*, w.artist, w.title, w.catno, w.discogs_id, w.thumb, w.genres, w.styles
+        SELECT dl.*,
+               w.artist, w.title, w.catno, w.discogs_id, w.thumb, w.genres, w.styles,
+               -- Reconstruct proper discogs.com URL from listing_id (extension stored chrome-extension:// URLs)
+               CASE
+                 WHEN dl.listing_id IS NOT NULL
+                 THEN 'https://www.discogs.com/sell/item/' || dl.listing_id
+                 ELSE dl.listing_url
+               END AS listing_url
         FROM discogs_listings dl
         JOIN wantlist w ON w.id = dl.wantlist_id
         WHERE w.user_id = ? AND w.active = 1
