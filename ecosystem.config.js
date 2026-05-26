@@ -4,7 +4,7 @@ module.exports = {
         script: 'server.js',
         watch: false,
         autorestart: true,
-        max_restarts: 10,
+        max_restarts: 50,
         restart_delay: 5000,
         // Prevent Puppeteer ProtocolErrors from crashing the process
         // (Network.enable/Page.enable timed out — handled inside scanner but can escape)
@@ -17,9 +17,9 @@ module.exports = {
             DISCOGS_CONSUMER_SECRET: 'XIexsqsiEyJUZjKhyFNBcUGHTVSoPsAV',
             BASE_URL: 'https://waxdigger.ai',
             // Cron-triggered runs use a secret token so /api/trigger is not public
-            CRON_SECRET: 'vc-cron-2026',
-            // GitHub webhook secret — must match what you set in GitHub repo settings
-            GITHUB_WEBHOOK_SECRET: 'vc-deploy-2026'
+            CRON_SECRET: 'vc-cron-2026'
+            // GITHUB_WEBHOOK_SECRET is loaded from .env — do NOT hardcode here
+            // (PM2 env overrides dotenv, so hardcoding it here breaks the webhook)
         },
         error_file: '/root/vinyl-checker-err.log',
         out_file: '/root/vinyl-checker-out.log',
