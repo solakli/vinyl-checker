@@ -5282,6 +5282,28 @@ function renderCartView() {
       (grandTotal > 0 ? '<span class="cgp-grand">~$'+grandTotal.toFixed(0)+' total</span>' : '')+
     '</div>';
 
+  // ── Pre-compute auto-fill groups BEFORE building section HTML ────────────────
+  // (must be before storeSection which injects cafStoreHtml — var hoisting
+  //  made cafStoreHtml === undefined when it was computed further below)
+  var _cafDiscogsGroups = [], _cafStoreGroups = [];
+  if (_cartAutoFill && _cartAutoFill.groups) {
+    _cartAutoFill.groups.forEach(function(g, idx) {
+      var isd = g.sourceType === 'discogs' || g.sourceType === 'discogs_seller';
+      (isd ? _cafDiscogsGroups : _cafStoreGroups).push({ g: g, idx: idx });
+    });
+  }
+  var cafStoreHtml = '';
+  if (_cafStoreGroups.length > 0) {
+    cafStoreHtml =
+      '<div class="cart-autofill-results">'+
+        '<div class="caf-header">'+
+          '<span class="caf-hdr-label">⚡ Stores found via Smart fill Discogs</span>'+
+          '<span class="caf-hdr-note">Add a group, then re-run Smart fill</span>'+
+        '</div>'+
+        _cafStoreGroups.map(function(entry) { return renderCafGroup(entry.g, entry.idx); }).join('')+
+      '</div>';
+  }
+
   // ── 3rd Party Stores section ───────────────────────────────────────────────
   var storeBody = storeGroups.length > 0
     ? storeGroups.map(renderGroupHtml).join('')
@@ -5398,13 +5420,6 @@ function renderCartView() {
       '<div class="caf-items">'+itemsHtml+'</div>'+
     '</div>';
   }
-  var _cafDiscogsGroups = [], _cafStoreGroups = [];
-  if (_cartAutoFill && _cartAutoFill.groups) {
-    _cartAutoFill.groups.forEach(function(g, idx) {
-      var isd = g.sourceType === 'discogs' || g.sourceType === 'discogs_seller';
-      (isd ? _cafDiscogsGroups : _cafStoreGroups).push({ g: g, idx: idx });
-    });
-  }
   var cafHtml = '';
   if (_cafDiscogsGroups.length > 0) {
     cafHtml =
@@ -5414,18 +5429,6 @@ function renderCartView() {
           '<span class="caf-hdr-note">Add a group, then re-run Smart fill</span>'+
         '</div>'+
         _cafDiscogsGroups.map(function(entry) { return renderCafGroup(entry.g, entry.idx); }).join('')+
-      '</div>';
-  }
-  // Store groups from the combined auto-fill get injected into the store section below
-  var cafStoreHtml = '';
-  if (_cafStoreGroups.length > 0) {
-    cafStoreHtml =
-      '<div class="cart-autofill-results">'+
-        '<div class="caf-header">'+
-          '<span class="caf-hdr-label">⚡ Stores found via Smart fill Discogs</span>'+
-          '<span class="caf-hdr-note">Add a group, then re-run Smart fill</span>'+
-        '</div>'+
-        _cafStoreGroups.map(function(entry) { return renderCafGroup(entry.g, entry.idx); }).join('')+
       '</div>';
   }
 
