@@ -3350,8 +3350,20 @@ app.get('/api/health', function (req, res) {
             lastSkip:     jobHealthData.lastLockSkip  || null
         };
 
+        // Health monitor state
+        var healthState = null;
+        try { healthState = require('./lib/health-monitor').getState(); } catch(e) {}
+
+        // Overall system status: ok / warn / fail based on monitor checks
+        var systemStatus = 'ok';
+        if (healthState) {
+            var checks = Object.values(healthState.checks);
+            if (checks.some(function(c) { return c.status === 'fail'; })) systemStatus = 'fail';
+            else if (checks.some(function(c) { return c.status === 'warn'; })) systemStatus = 'warn';
+        }
+
         res.json({
-            status: 'ok',
+            status: systemStatus,
             timestamp: new Date().toISOString(),
             uptime: Math.round(process.uptime()) + 's',
             memory: Math.round(mem.heapUsed / 1024 / 1024) + 'MB',
@@ -3365,6 +3377,7 @@ app.get('/api/health', function (req, res) {
             chromeLockSince: scanner.jobHealth && scanner.jobHealth.chromeLockSince
                 ? new Date(scanner.jobHealth.chromeLockSince).toISOString() : null,
             lockContention: lockContention,
+            monitor: healthState,
             users: userSummary,
             storeStats: storeStats,
             mostSought: mostSought,
@@ -4044,6 +4057,10 @@ app.listen(PORT, function () {
     setTimeout(function() {
         pipelineWorker.seedAllUsers(9);
     }, 3 * 60 * 1000);
+
+    // Health monitor — checks pipeline stalls, chrome lock, stale wantlists, memory, YT quota
+    var healthMonitor = require('./lib/health-monitor');
+    healthMonitor.start({ scanner: scanner, pipelineWorker: pipelineWorker, port: PORT });
 
     // Background sync (incremental — new items only)
     console.log('[sync] Background sync every ' + (SYNC_INTERVAL / 60000).toFixed(0) + ' minutes');
