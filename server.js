@@ -463,57 +463,6 @@ app.get('/api/discovery/:username', async function(req, res) {
     }
 });
 
-// ─── MIX TO CART ──────────────────────────────────────────────────────────────
-
-// Resolve a SoundCloud / YouTube / Mixcloud URL → tracklist waterfall
-app.post('/api/mix-to-cart/resolve', async function(req, res) {
-    if (!req.sessionUser) return res.status(401).json({ error: 'Not logged in' });
-    var url = (req.body.url || '').trim();
-    if (!url) return res.status(400).json({ error: 'url required' });
-    try {
-        // SoundCloud no longer needs OAuth — resolved via RAPIDAPI_KEY (SC_RAPIDAPI_HOST scraper)
-        var gToken  = db.getOAuthToken(req.sessionUser.id, 'google');
-        var tokens  = {
-            googleToken:   gToken  ? gToken.access_token  : null,
-            youtubeApiKey: process.env.YOUTUBE_API_KEY || null,
-        };
-        var mixResolver = require('./lib/mix-resolver');
-        var result = await mixResolver.resolveMixUrl(url, tokens);
-        res.json(result);
-    } catch(e) {
-        console.error('[mix-to-cart] resolve error:', e.message);
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// Cross-reference parsed artists against store inventory
-app.post('/api/mix-to-cart/search', function(req, res) {
-    var artists = req.body.artists || [];
-    if (!artists.length) return res.status(400).json({ error: 'artists array required' });
-    try {
-        var mixResolver = require('./lib/mix-resolver');
-        var rawDb = db.getDb();
-        var results = mixResolver.searchInventoryForTracklist(artists, rawDb);
-        res.json({ results: results });
-    } catch(e) {
-        console.error('[mix-to-cart] search error:', e.message);
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// Parse a pasted tracklist description (no URL needed)
-app.post('/api/mix-to-cart/parse-text', function(req, res) {
-    var text = (req.body.text || '').trim();
-    if (!text) return res.status(400).json({ error: 'text required' });
-    try {
-        var { parseTracklistFromDescription } = require('./lib/mix-resolver');
-        var artists = parseTracklistFromDescription(text);
-        res.json({ artists: artists });
-    } catch(e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
 // --- YOUTUBE PLAYLIST CREATION ---
 
 app.post('/api/youtube/create-playlist', async function (req, res) {

@@ -2693,7 +2693,7 @@ window.addEventListener('waxdigger:syncstate', function (e) {
       // Auto-hide banner and reload discover data after a short delay
       setTimeout(function() {
         if (banner.parentNode) banner.parentNode.removeChild(banner);
-        loadDiscover();
+        loadDiscover(true); // force — sync brought fresh listings
       }, 2000);
     } else if (state.error) {
       banner.innerHTML = '⚠ Sync error: ' + escapeHtml(state.error);
@@ -2705,7 +2705,7 @@ window.addEventListener('waxdigger:syncstate', function (e) {
   if (state.completedAt && !prev.completedAt && _discoverData && _discoverTab !== null) {
     // Reload in background even if not on discogs tab, so data is fresh when user switches
     if (_inStockVendor !== 'discogs') {
-      setTimeout(function() { loadDiscover(); }, 2500);
+      setTimeout(function() { loadDiscover(true); }, 2500);
     }
   }
 
@@ -3254,7 +3254,6 @@ function switchView(view, linkEl, opts) {
   document.getElementById('view-collection').style.display = view === 'collection' ? 'block' : 'none';
   document.getElementById('view-discover').style.display   = view === 'discover'   ? 'block' : 'none';
   document.getElementById('view-profile').style.display    = view === 'profile'    ? 'block' : 'none';
-  document.getElementById('view-mix').style.display        = view === 'mix'        ? 'block' : 'none';
   document.getElementById('view-cart').style.display       = view === 'cart'       ? 'block' : 'none';
   document.getElementById('headerControls').style.display  = isWantlist ? '' : 'none';
   document.querySelector('.app-layout').style.display      = isWantlist ? '' : 'none';
@@ -3909,6 +3908,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // ═══════════════════════════════════════════════════════════════
 
 var _discoverData        = null;
+var _discoverLoadedAt    = 0;          // timestamp of last successful discover fetch (ms)
 var _discoverTab         = 'forYou';   // 'forYou' | 'inStock' | 'diggers' | 'sellers'
 var _sellerIntelData     = null;       // cached seller intelligence response
 var _sellerIntelLoading  = false;
@@ -4068,11 +4068,17 @@ function _renderDiscoverDiggerCards(diggers, currentUser, container) {
   }).join('');
 }
 
-function loadDiscover() {
+function loadDiscover(force) {
   var username = getCurrentUsername();
   if (!username) {
     document.getElementById('discBody').innerHTML =
       '<div class="disc-empty"><div class="disc-empty-title">Discover</div><div class="disc-empty-sub">Connect your Discogs and we\'ll recommend wax based on your taste.</div></div>';
+    return;
+  }
+  // Use cached data if it's less than 5 minutes old — tab switching is instant
+  var CACHE_TTL = 5 * 60 * 1000;
+  if (!force && _discoverData && (Date.now() - _discoverLoadedAt) < CACHE_TTL) {
+    renderDiscover();
     return;
   }
   document.getElementById('discBody').innerHTML =
@@ -4081,8 +4087,9 @@ function loadDiscover() {
   fetch('api/discover/' + encodeURIComponent(username))
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      _discoverData    = data;
-      _discoverCartSet = data.cartSet || {};
+      _discoverData      = data;
+      _discoverLoadedAt  = Date.now();
+      _discoverCartSet   = data.cartSet || {};
       // Only reset filters if no pending profile→discover navigation
       if (!_pendingDiscoverNav) {
         _forYouStoreFilter   = 'all';
@@ -4132,6 +4139,7 @@ function renderDiscover() {
       '<div class="disc-title-row">' +
         '<span class="disc-title">Discover</span>' +
         '<span class="disc-subtitle">' + escapeHtml(inventoryLine) + '</span>' +
+        '<button class="disc-refresh-btn" onclick="loadDiscover(true)" title="Refresh discover data">↻</button>' +
       '</div>' +
       '<div class="disc-cart-row" id="discCartRow" style="display:none">' +
         '<span class="disc-cart-count" id="discCartCount"></span>' +
@@ -7608,204 +7616,3 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 });
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// MIX ▷ CART
-// ═══════════════════════════════════════════════════════════════════════════════
-
-var _mixLastArtists = [];  // stash artists for re-search
-
-async function mixResolveUrl() {
-  var url = (document.getElementById('mixUrlInput').value || '').trim();
-  if (!url) return;
-  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-
-  var btn = document.getElementById('mixDigBtn');
-  btn.disabled = true;
-  btn.textContent = 'Digging…';
-
-  mixShowStatus('loading', null, null);
-
-  try {
-    var res = await fetch('api/mix-to-cart/resolve', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: url }),
-      signal: AbortSignal.timeout(7 * 60 * 1000)  // 7 min — fingerprinting can be slow
-    });
-    var data = await res.json();
-
-    if (data.error) {
-      mixShowStatus('error', data.error, null);
-      return;
-    }
-
-    // Show waterfall steps + meta
-    mixShowStatus('done', null, data);
-
-    // If we got artists, search inventory
-    var artists = data.tracklist || [];
-    _mixLastArtists = artists;
-    if (artists.length > 0) {
-      await mixSearchInventory(artists, data);
-    } else {
-      document.getElementById('mixResults').style.display = 'none';
-    }
-  } catch(e) {
-    mixShowStatus('error', e.name === 'TimeoutError' ? 'Request timed out (fingerprinting takes a few minutes — try again)' : e.message, null);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Dig ▷';
-  }
-}
-
-async function mixParseText() {
-  var text = (document.getElementById('mixTextInput').value || '').trim();
-  if (!text) return;
-
-  mixShowStatus('loading', null, null);
-  try {
-    var res = await fetch('api/mix-to-cart/parse-text', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: text })
-    });
-    var data = await res.json();
-    var artists = data.artists || [];
-    _mixLastArtists = artists;
-
-    var fakeResult = { tracklistSource: 'Pasted tracklist', tracklist: artists };
-    mixShowStatus('done', null, fakeResult);
-
-    if (artists.length > 0) {
-      await mixSearchInventory(artists, fakeResult);
-    }
-  } catch(e) {
-    mixShowStatus('error', e.message, null);
-  }
-}
-
-async function mixSearchInventory(artists, resolveResult) {
-  var resultsEl = document.getElementById('mixResults');
-  resultsEl.style.display = 'block';
-  resultsEl.innerHTML = '<div class="mix-searching">Searching ' + artists.length + ' artists across all stores…</div>';
-
-  try {
-    var res = await fetch('api/mix-to-cart/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ artists: artists })
-    });
-    var data = await res.json();
-    renderMixInventoryResults(data.results || [], resolveResult);
-  } catch(e) {
-    resultsEl.innerHTML = '<div class="mix-error">Inventory search failed: ' + escapeHtml(e.message) + '</div>';
-  }
-}
-
-function mixShowStatus(state, errorMsg, result) {
-  var el = document.getElementById('mixStatus');
-  el.style.display = 'block';
-
-  if (state === 'loading') {
-    el.innerHTML =
-      '<div class="mix-loading">' +
-        '<span class="mix-spinner"></span>' +
-        '<span>Digging tracklist<span class="thinking-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span></span>' +
-        '<span class="mix-loading-hint">Description → Comments → Audio fingerprint (slow)</span>' +
-      '</div>';
-    document.getElementById('mixResults').style.display = 'none';
-    return;
-  }
-
-  if (state === 'error') {
-    el.innerHTML = '<div class="mix-error">⚠ ' + escapeHtml(errorMsg) + '</div>';
-    return;
-  }
-
-  // state === 'done'
-  var r = result || {};
-  var artists = r.tracklist || [];
-  var steps   = r.steps    || [];
-  var isLikes = r.kind === 'user_likes';
-
-  var html = '<div class="mix-result-meta">';
-
-  // Artwork + title
-  if (r.artworkUrl || r.title) {
-    html += '<div class="mix-meta-row">';
-    if (r.artworkUrl) html += '<img class="mix-artwork" src="' + escapeAttr(r.artworkUrl) + '" alt="">';
-    html += '<div class="mix-meta-info">';
-    if (r.title)  html += '<div class="mix-meta-title">' + escapeHtml(r.title) + '</div>';
-    if (r.artist) html += '<div class="mix-meta-artist">' + escapeHtml(r.artist) + '</div>';
-    if (isLikes)  html += '<div class="mix-meta-tag">👤 ' + (r.likeCount || artists.length) + ' liked tracks · ' + artists.length + ' unique artists</div>';
-    else if (r.tracklistSource) html += '<div class="mix-meta-tag">Found via: ' + escapeHtml(r.tracklistSource) + '</div>';
-    html += '</div></div>';
-  }
-
-  // Waterfall steps
-  if (steps.length) {
-    html += '<div class="mix-steps">';
-    steps.forEach(function(s) {
-      var icon = s.status === 'ok' ? '✓' : s.status === 'fail' ? '✗' : s.status === 'none' ? '—' : '·';
-      var cls  = 'mix-step mix-step-' + (s.status || 'skip');
-      html += '<div class="' + cls + '"><span class="mix-step-icon">' + icon + '</span>' +
-        '<span class="mix-step-name">' + escapeHtml(s.name) + '</span>' +
-        (s.detail ? '<span class="mix-step-detail">' + escapeHtml(s.detail) + '</span>' : '') +
-        '</div>';
-    });
-    html += '</div>';
-  }
-
-  // Artist list
-  if (artists.length) {
-    html += '<div class="mix-artists-found">' +
-      '<span class="mix-artists-label">' + (isLikes ? '👤 Liked artists' : '🎵 Tracklist') + '</span>' +
-      artists.map(function(a) { return '<span class="mix-artist-pill">' + escapeHtml(a) + '</span>'; }).join('') +
-      '</div>';
-  } else {
-    html += '<div class="mix-no-artists">No tracklist found — try a URL with a description or comments</div>';
-  }
-
-  html += '</div>';
-  el.innerHTML = html;
-}
-
-function renderMixInventoryResults(results, resolveResult) {
-  var el = document.getElementById('mixResults');
-  var isLikes = resolveResult && resolveResult.kind === 'user_likes';
-
-  if (!results || results.length === 0) {
-    el.innerHTML = '<div class="mix-no-stock">None of these artists have records in stock right now.</div>';
-    return;
-  }
-
-  var totalRecords = results.reduce(function(n, r) { return n + r.records.length; }, 0);
-  var html = '<div class="mix-inv-header">' +
-    (isLikes ? '🛒 ' : '🛒 ') +
-    '<strong>' + results.length + ' artists</strong> · ' + totalRecords + ' records in stock' +
-    '</div>';
-
-  results.forEach(function(r) {
-    html += '<div class="mix-inv-artist">' +
-      '<div class="mix-inv-artist-name">' + escapeHtml(r.tracklistArtist) + '</div>';
-
-    r.records.forEach(function(rec) {
-      var price = rec.priceUsd ? '$' + rec.priceUsd.toFixed(2) : '';
-      html += '<div class="mix-inv-record" onclick="window.open(\'' + escapeAttr(rec.url) + '\',\'_blank\')">' +
-        (rec.imageUrl ? '<img class="mix-rec-img" src="' + escapeAttr(rec.imageUrl) + '" alt="">' : '<div class="mix-rec-img mix-rec-img-empty"></div>') +
-        '<div class="mix-rec-info">' +
-          '<div class="mix-rec-title">' + escapeHtml(rec.title || '') + '</div>' +
-          '<div class="mix-rec-meta">' +
-            '<span class="mix-rec-store">' + escapeHtml(rec.store) + '</span>' +
-            (rec.label ? '<span class="mix-rec-label">' + escapeHtml(rec.label) + '</span>' : '') +
-            (price ? '<span class="mix-rec-price">' + price + '</span>' : '') +
-          '</div>' +
-        '</div>' +
-      '</div>';
-    });
-
-    html += '</div>';
-  });
-
-  el.innerHTML = html;
-}

@@ -5288,6 +5288,18 @@ body.light .mobile-goldie-fab { box-shadow: 0 4px 16px rgba(168, 184, 200,0.4); 
   align-items: baseline;
   gap: 12px;
 }
+.disc-refresh-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+  opacity: 0.5;
+  padding: 2px 4px;
+  line-height: 1;
+  transition: opacity 0.15s, transform 0.3s;
+}
+.disc-refresh-btn:hover { opacity: 1; transform: rotate(45deg); }
 
 .disc-title {
   font-family: 'Oswald', sans-serif;
