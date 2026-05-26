@@ -1813,7 +1813,7 @@ app.post('/api/wantlist/add', async function(req, res) {
         await actions.addToWantlist(token.provider_username || username, releaseId, token.access_token, token.access_secret);
 
         // Persist locally so next page load reflects it immediately
-        db.syncWantlist(user.id, [{
+        db.syncWantlistItems(user.id, [{
             id:          releaseId,
             artist:      req.body.artist  || '',
             title:       req.body.title   || '',
@@ -3165,7 +3165,7 @@ app.post('/api/sync-now/:username', async function (req, res) {
             var discogsLib = require('./lib/discogs');
             var wantlist = await discogsLib.fetchWantlist(username, headersFn ? function(method, url) { return headersFn(method, url)['Authorization']; } : null);
             if (wantlist && wantlist.length > 0) {
-                db.syncWantlist(user.id, wantlist);
+                db.syncWantlistItems(user.id, wantlist);
                 console.log('[sync-now] Synced', wantlist.length, 'wantlist items for', username);
             }
         } catch(e) {
