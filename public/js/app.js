@@ -752,6 +752,53 @@ async function loadResultsForUser(username) {
         fetchGemScores(username); // decorate cards with gem badges
         // Check for changes after loading results
         fetchChanges(username);
+        // Pre-populate cart + smart fill in background so the cart tab
+        // shows results instantly when the user navigates to it.
+        setTimeout(function() {
+          var u = getCurrentUsername();
+          if (!u || _cartLoaded || _smartFillRunning) return;
+          fetch('api/cart/' + encodeURIComponent(u))
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+              if (_cartLoaded) return; // cart tab was opened first — don't clobber
+              _cartItems = d.cart || [];
+              _cartLoaded = true;
+              _discoverCartSet = {};
+              _cartItems.forEach(function(c) { _discoverCartSet[String(c.wantlist_id)+':'+c.store] = true; });
+              updateCartBadge(_cartItems.length);
+              updateCartNavBadge(_cartItems.length);
+              if (!_cartAutoFill && !_smartFillRunning) {
+                // Silent background fill — no progress animation, no re-render until done
+                _smartFillRunning = true;
+                var covIds = _cartItems.map(function(i) { return i.wantlist_id; });
+                var storeCovIds = _cartItems.filter(function(i) { return i.source_type === 'store'; })
+                                            .map(function(i) { return i.wantlist_id; });
+                var bgDone = 0;
+                function bgFinish() {
+                  bgDone++;
+                  if (bgDone >= 2) {
+                    _smartFillRunning = false;
+                    // If the cart section is currently visible, refresh it
+                    var cartEl = document.getElementById('cartBody');
+                    if (cartEl && cartEl.querySelector('.cart-wrap2')) renderCartView();
+                  }
+                }
+                fetch('api/auto-fill/' + encodeURIComponent(u), {
+                  method: 'POST', headers: {'Content-Type':'application/json'},
+                  body: JSON.stringify({
+                    coveredIds: covIds,
+                    countryCode: _cartPrefs.countryCode, minCondition: _cartPrefs.minCondition,
+                    minSellerRating: _cartPrefs.minSellerRating, maxPriceUsd: _cartPrefs.maxPriceUsd || null,
+                    minStoreItems: _cartPrefs.minStoreItems || 1, minSellerItems: _cartPrefs.minSellerItems || 1
+                  })
+                }).then(function(r){return r.json();}).then(function(d){_cartAutoFill=d;bgFinish();}).catch(bgFinish);
+                fetch('api/auto-fill-stores/' + encodeURIComponent(u), {
+                  method: 'POST', headers: {'Content-Type':'application/json'},
+                  body: JSON.stringify({coveredIds:storeCovIds,countryCode:_cartPrefs.countryCode,minStoreItems:_cartPrefs.minStoreItems||1})
+                }).then(function(r){return r.json();}).then(function(d){_cartStoreAutoFill=d;bgFinish();}).catch(bgFinish);
+              }
+            }).catch(function(){});
+        }, 3000); // 3s delay — let main UI settle first
       } else if (isOAuthed) {
         // ── OAuth user with no results yet ─────────────────────────────
         // Show the rescan button in the user bar so they can kick off their first scan.
@@ -3944,6 +3991,10 @@ var CART_CHECKOUT_URLS = {
 };
 var _cartPrefs           = { countryCode: 'US', minCondition: 'VG+', minSellerRating: 98, maxPriceUsd: null, minStoreItems: 1, minSellerItems: 2 };
 var _autoFillDebounce    = null; // timer handle for auto-rerun on filter change
+var _smartFillRunning    = false;   // true while auto-fill calls are in flight
+var _smartFillProgressStep = 0;     // 0-2 cycling progress stage
+var _smartFillProgressTimer = null; // setInterval handle for progress cycling
+var _smartFillSyncing    = false;   // true while Discogs wantlist-sync is queued
 var _cartLoaded          = false;
 var _forYouFilter        = 'all';      // 'all' | 'artist' | 'style'
 var _forYouStoreFilter   = 'all';      // 'all' | storeName
@@ -4990,6 +5041,10 @@ function loadCartView(force) {
       updateCartBadge(_cartItems.length);
       updateCartNavBadge(_cartItems.length);
       renderCartView();
+      // Auto-run smart fill when cart opens for the first time
+      if (!_cartAutoFill && !_cartStoreAutoFill && !_smartFillRunning) {
+        autoFillAll();
+      }
     }).catch(function() {
       if (el) el.innerHTML = '<div class="cart-empty">Could not load cart.</div>';
     });
@@ -5319,7 +5374,9 @@ function renderCartView() {
         toggles('Min records/store', 'minStoreItems',
           [['1','Any'],['2','2+'],['3','3+'],['5','5+']], true)+
       '</div>'+
-      '<button class="cart-smart-fill cart-smart-fill-stores" onclick="autoFillStores()">🏪 Smart fill stores</button>'+
+      '<button class="cart-smart-fill cart-smart-fill-stores" onclick="autoFillAll()" '+(_smartFillRunning?'disabled':'')+'>'+
+        (_smartFillRunning ? '🏪 Finding…' : '🏪 Smart fill stores')+
+      '</button>'+
     '</div>';
 
   var storeSection =
@@ -5389,7 +5446,14 @@ function renderCartView() {
           '</div>';
         })()+
       '</div>'+
-      '<button class="cart-smart-fill" id="cartAutoFillBtn" onclick="autoFillCart()">⚡ Smart fill Discogs</button>'+
+      '<div class="caf-btn-row">'+
+        '<button class="cart-smart-fill" id="cartAutoFillBtn" onclick="autoFillAll()" '+(_smartFillRunning?'disabled':'')+'>'+
+          (_smartFillRunning ? '⚡ Finding…' : (_cartAutoFill ? '↻ Refresh' : '⚡ Smart fill'))+
+        '</button>'+
+        '<button class="caf-sync-btn" id="cafSyncBtn" onclick="syncAndRefillCart()" title="Pull fresh wantlist from Discogs then re-run" '+(_smartFillSyncing?'disabled':'')+'>'+
+          (_smartFillSyncing ? '↻ Syncing…' : '↻ Sync Discogs')+
+        '</button>'+
+      '</div>'+
     '</div>';
 
   // ── Auto-fill suggestions — split by source type ─────────────────────────
@@ -5421,6 +5485,12 @@ function renderCartView() {
       '<div class="caf-items">'+itemsHtml+'</div>'+
     '</div>';
   }
+  // Progress animation shown while smart fill is running
+  var _sfSteps = ['🔍 Checking your wantlist…','💿 Finding best Discogs sellers…','🏪 Searching catalog stores…'];
+  var sfLoadingHtml = _smartFillRunning
+    ? '<div class="sf-loading"><div class="sf-spinner"></div><span class="sf-loading-text" id="sfLoadingText">'+_sfSteps[_smartFillProgressStep % _sfSteps.length]+'</span></div>'
+    : '';
+
   var cafHtml = '';
   if (_cafDiscogsGroups.length > 0 || (_cartAutoFill && _cartAutoFill.total > 0)) {
     // Build uncovered items collapsible section
@@ -5472,8 +5542,10 @@ function renderCartView() {
       staleWarningHtml+
       discogsFilters+
       discogsBody+
-      (discogsGroups.length === 0 && _cafDiscogsGroups.length === 0 ?
-        '<div class="cart-section-empty">Set your filters above and hit Smart fill, or <a href="#" onclick="switchView(\'discover\',null);switchDiscoverTab(\'sellers\');return false;">browse sellers →</a></div>' : '')+
+      sfLoadingHtml+
+      (_smartFillRunning ? '' :
+        (discogsGroups.length === 0 && _cafDiscogsGroups.length === 0 ?
+          '<div class="cart-section-empty">Set your filters above and hit Smart fill, or <a href="#" onclick="switchView(\'discover\',null);switchDiscoverTab(\'sellers\');return false;">browse sellers →</a></div>' : ''))+
       cafHtml+
     '</div>';
 
@@ -5503,7 +5575,7 @@ function setCartPref(key, val) {
   // user sees updated results without having to press the button again.
   if (_cartAutoFill) {
     clearTimeout(_autoFillDebounce);
-    _autoFillDebounce = setTimeout(autoFillCart, 600);
+    _autoFillDebounce = setTimeout(autoFillAll, 600);
   }
 }
 
@@ -5544,6 +5616,102 @@ function clearFullCart() {
       renderCartView();
       renderDiscover();
     });
+}
+
+// Run both Discogs and store smart-fills together with an animated progress indicator.
+// Called automatically on cart load, on filter change, and when the user clicks Smart fill.
+function autoFillAll() {
+  if (_smartFillRunning) return;
+  var username = getCurrentUsername();
+  if (!username) return;
+
+  // Stop any pending debounce
+  clearTimeout(_autoFillDebounce);
+  _autoFillDebounce = null;
+
+  _smartFillRunning = true;
+  _smartFillProgressStep = 0;
+  renderCartView();
+
+  // Advance progress text every 1.4s while fills are in flight
+  _smartFillProgressTimer = setInterval(function() {
+    _smartFillProgressStep = (_smartFillProgressStep + 1) % 3;
+    var txt = document.getElementById('sfLoadingText');
+    var steps = ['🔍 Checking your wantlist…','💿 Finding best Discogs sellers…','🏪 Searching catalog stores…'];
+    if (txt) txt.textContent = steps[_smartFillProgressStep];
+  }, 1400);
+
+  var done = 0;
+  function onFillDone() {
+    done++;
+    if (done >= 2) {
+      clearInterval(_smartFillProgressTimer);
+      _smartFillProgressTimer = null;
+      _smartFillRunning = false;
+      renderCartView();
+    }
+  }
+
+  // Discogs auto-fill
+  var coveredIds = _cartItems.map(function(i) { return i.wantlist_id; });
+  fetch('api/auto-fill/' + encodeURIComponent(username), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      coveredIds:      coveredIds,
+      countryCode:     _cartPrefs.countryCode,
+      minCondition:    _cartPrefs.minCondition,
+      minSellerRating: _cartPrefs.minSellerRating,
+      maxPriceUsd:     _cartPrefs.maxPriceUsd  || null,
+      minStoreItems:   _cartPrefs.minStoreItems  || 1,
+      minSellerItems:  _cartPrefs.minSellerItems || 1
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) { _cartAutoFill = data; onFillDone(); })
+  .catch(function() { onFillDone(); });
+
+  // Store auto-fill
+  var storeCoveredIds = _cartItems.filter(function(i) { return i.source_type === 'store'; })
+                                   .map(function(i) { return i.wantlist_id; });
+  fetch('api/auto-fill-stores/' + encodeURIComponent(username), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      coveredIds:    storeCoveredIds,
+      countryCode:   _cartPrefs.countryCode,
+      minStoreItems: _cartPrefs.minStoreItems || 1
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) { _cartStoreAutoFill = data; onFillDone(); })
+  .catch(function() { onFillDone(); });
+}
+
+// Trigger a fresh Discogs wantlist sync in the pipeline (priority 1 = high),
+// then immediately re-run auto-fill with current data. Results update in place
+// once the sync completes (typically 10-30s) and the user re-clicks Smart fill.
+function syncAndRefillCart() {
+  var username = getCurrentUsername();
+  if (!username || _smartFillSyncing) return;
+  _smartFillSyncing = true;
+  renderCartView(); // update button to "Syncing…"
+
+  fetch('api/pipeline/trigger', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ stage: 'wantlist_sync', username: username, priority: 1 })
+  })
+  .then(function() {
+    // Sync is queued — show fresh results from current DB, sync will update DB in ~30s
+    _smartFillSyncing = false;
+    autoFillAll();
+  })
+  .catch(function() {
+    _smartFillSyncing = false;
+    renderCartView();
+    autoFillAll();
+  });
 }
 
 function autoFillCart() {

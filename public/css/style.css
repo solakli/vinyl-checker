@@ -10240,6 +10240,16 @@ details.caf-uncovered[open] .caf-uncovered-toggle::before { content:'▼ '; }
 .caf-uncovered-list { margin:0; padding:6px 12px 10px 24px; display:flex; flex-direction:column; gap:3px; }
 .caf-uncovered-list li { font-size:11px; color:var(--text-muted); }
 
+/* ── Smart Fill progress indicator ──────────────────────────── */
+.caf-btn-row { display:flex; align-items:center; gap:8px; margin-top:10px; }
+.caf-sync-btn { font-size:11px; color:var(--text-muted,#888); background:none; border:1px solid rgba(150,150,150,0.2); border-radius:6px; cursor:pointer; padding:5px 10px; transition:opacity 0.15s; }
+.caf-sync-btn:hover { opacity:0.8; border-color:rgba(150,150,150,0.4); }
+.caf-sync-btn:disabled { opacity:0.4; cursor:not-allowed; }
+
+.sf-loading { display:flex; align-items:center; gap:10px; padding:16px 0 8px; }
+.sf-spinner { width:15px; height:15px; border:2px solid rgba(160,130,220,0.25); border-top-color:var(--accent,#a084e0); border-radius:50%; animation:spin 0.75s linear infinite; flex-shrink:0; }
+.sf-loading-text { font-size:13px; color:var(--text-muted,#888); }
+
 /* ── Nav badge ───────────────────────────────────────────────── */
 .cart-nav-badge, .disc-tab-badge { display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; background:var(--gold); color:#000; border-radius:9px; font-size:10px; font-weight:700; padding:0 4px; margin-left:4px; }
 
