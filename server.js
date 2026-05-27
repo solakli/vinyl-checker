@@ -2780,48 +2780,43 @@ process.on('SIGTERM', function () { db.close(); reapChrome(); process.exit(0); }
 // The 4-hour threshold safely exceeds the rolling scan's hard timeout, so the current active
 // browser (always < 4h old) is never accidentally killed.
 function reapChrome() {
-    try {
-        var { execSync } = require('child_process');
-        var myPid = process.pid;
+    // Uses async exec() — never blocks the event loop.
+    // execSync() here used to freeze Node for 1-2s every 10 min, which made the
+    // watchdog health check time out and restart a perfectly healthy server.
+    var exec = require('child_process').exec;
+    var myPid = process.pid;
 
-        // Pass 1: direct Chrome children of Node — SKIP if scanner is actively using Chrome.
-        // The reaper used to kill ALL Chrome children unconditionally, which killed live rolling
-        // scan sessions every 10 min → crash cascade. Only reap when no scan is in flight.
-        var scannerBusy = scanner && scanner.chromeLock;
-        if (!scannerBusy) {
-            try {
-                var out = execSync('pgrep -P ' + myPid + ' -f "chrom" 2>/dev/null || true').toString().trim();
-                if (out) {
-                    var pids = out.split('\n').filter(Boolean);
-                    pids.forEach(function(pid) {
-                        try { process.kill(parseInt(pid), 'SIGKILL'); } catch(e) {}
-                    });
-                    if (pids.length > 0) console.log('[reaper] Killed ' + pids.length + ' Chrome child process(es)');
-                }
-            } catch(e) {}
-        } else {
-            console.log('[reaper] Skipping Pass 1 — scanner chromeLock held (scan in progress)');
-        }
+    // Pass 1: direct Chrome children of Node — SKIP if scanner is actively using Chrome.
+    // The reaper used to kill ALL Chrome children unconditionally, which killed live rolling
+    // scan sessions every 10 min → crash cascade. Only reap when no scan is in flight.
+    var scannerBusy = scanner && scanner.chromeLock;
+    if (!scannerBusy) {
+        exec('pgrep -P ' + myPid + ' -f "chrom" 2>/dev/null || true', function(err, out) {
+            if (err || !out || !out.trim()) return;
+            var pids = out.trim().split('\n').filter(Boolean);
+            pids.forEach(function(pid) {
+                try { process.kill(parseInt(pid), 'SIGKILL'); } catch(e) {}
+            });
+            if (pids.length > 0) console.log('[reaper] Killed ' + pids.length + ' Chrome child process(es)');
+        });
+    } else {
+        console.log('[reaper] Skipping Pass 1 — scanner chromeLock held (scan in progress)');
+    }
 
-        // Pass 2: orphaned Puppeteer Chrome processes older than 4 hours
-        // `ps -eo pid,etimes,args` — etimes = elapsed time in seconds
-        try {
-            var orphanRaw = execSync(
-                "ps -eo pid,etimes,args --no-headers 2>/dev/null | awk '$2>14400 && /puppeteer_dev_profile/ {print $1}' || true"
-            ).toString().trim();
-            if (orphanRaw) {
-                var orphanPids = orphanRaw.split('\n').filter(Boolean);
-                var killed = 0;
-                orphanPids.forEach(function(pid) {
-                    try { process.kill(parseInt(pid), 'SIGKILL'); killed++; } catch(e) {}
-                });
-                if (killed > 0) console.log('[reaper] Killed ' + killed + ' long-running orphaned Chrome process(es) (>4h)');
-            }
-        } catch(e) {}
+    // Pass 2: orphaned Puppeteer Chrome processes older than 4 hours
+    // `ps -eo pid,etimes,args` — etimes = elapsed time in seconds
+    exec("ps -eo pid,etimes,args --no-headers 2>/dev/null | awk '$2>14400 && /puppeteer_dev_profile/ {print $1}' || true", function(err, out) {
+        if (err || !out || !out.trim()) return;
+        var orphanPids = out.trim().split('\n').filter(Boolean);
+        var killed = 0;
+        orphanPids.forEach(function(pid) {
+            try { process.kill(parseInt(pid), 'SIGKILL'); killed++; } catch(e) {}
+        });
+        if (killed > 0) console.log('[reaper] Killed ' + killed + ' long-running orphaned Chrome process(es) (>4h)');
+    });
 
-        // Clean up orphaned Puppeteer tmp profile dirs older than 10 min
-        try { scanner.reapOrphanedProfiles(); } catch(e) {}
-    } catch(e) {}
+    // Clean up orphaned Puppeteer tmp profile dirs older than 10 min
+    try { scanner.reapOrphanedProfiles(); } catch(e) {}
 }
 
 // ═══════════════════════════════════════════════════════════════
