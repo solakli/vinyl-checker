@@ -1292,6 +1292,27 @@ app.post('/api/admin/sync-store', function (req, res) {
     });
 });
 
+// Track when the catalog match last ran so we don't re-run it on every server restart.
+// /tmp persists across process restarts (but not reboots), which is exactly what we need:
+// a reboot is a good reason to re-run; a watchdog restart 2 minutes later is not.
+var CATALOG_MATCH_LOCK_FILE = '/tmp/vinyl-catalog-match.lock';
+var CATALOG_MATCH_COOLDOWN_MS = 6 * 60 * 60 * 1000; // min 6 hours between runs
+
+function catalogMatchRanRecently() {
+    var fsSync = require('fs');
+    try {
+        var stat = fsSync.statSync(CATALOG_MATCH_LOCK_FILE);
+        return (Date.now() - stat.mtimeMs) < CATALOG_MATCH_COOLDOWN_MS;
+    } catch (e) {
+        return false; // file missing → hasn't run yet
+    }
+}
+
+function touchCatalogMatchLock() {
+    var fsSync = require('fs');
+    try { fsSync.writeFileSync(CATALOG_MATCH_LOCK_FILE, Date.now().toString()); } catch (e) {}
+}
+
 // Run any catalog syncs that are stale. Called from the daily-rescan interval.
 // Runs catalog store syncs one at a time (sequential, not parallel) to avoid
 // triggering Shopify's IP-level rate limiter when multiple stores are fetched
@@ -1326,11 +1347,19 @@ async function syncStaleStores() {
         }
     }
 
-    // After catalog syncs complete, cross-reference against all wantlists.
-    // This is a pure DB operation (no Puppeteer) so it runs even if Chrome is busy.
-    // Run unconditionally — even if no store was re-synced today, wantlists may have
-    // changed (new additions/removals) so the catalog match must always run.
+    // Cross-reference all wantlists against catalog inventory.
+    // Run if: (a) a store was just re-synced (new data to match against), OR
+    //         (b) it's been 6+ hours since the last match (wantlists may have changed).
+    // Skip if the match ran recently AND no stores changed — this prevents the circular
+    // crash loop where watchdog restarts trigger a startup sync that blocks the event loop.
+    if (!syncedAny && catalogMatchRanRecently()) {
+        var lockAge = Math.round((Date.now() - require('fs').statSync(CATALOG_MATCH_LOCK_FILE).mtimeMs) / 60000);
+        console.log('[sync-store] Skipping catalog match — ran ' + lockAge + ' min ago, no store changes');
+        return;
+    }
+
     console.log('[sync-store] Running catalog→wantlist match' + (syncedAny ? ' after sync' : ' (wantlist-only, stores current)') + '…');
+    touchCatalogMatchLock();
     scanner.runCatalogMatch()
         .then(function (r) {
             if (r) scanner.trackJobRun && scanner.trackJobRun('catalog-match', true);
