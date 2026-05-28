@@ -1353,7 +1353,8 @@ async function syncStaleStores() {
     // Skip if the match ran recently AND no stores changed — this prevents the circular
     // crash loop where watchdog restarts trigger a startup sync that blocks the event loop.
     if (!syncedAny && catalogMatchRanRecently()) {
-        var lockAge = Math.round((Date.now() - require('fs').statSync(CATALOG_MATCH_LOCK_FILE).mtimeMs) / 60000);
+        var lockAge = 0;
+        try { lockAge = Math.round((Date.now() - require('fs').statSync(CATALOG_MATCH_LOCK_FILE).mtimeMs) / 60000); } catch(e) {}
         console.log('[sync-store] Skipping catalog match — ran ' + lockAge + ' min ago, no store changes');
         return;
     }
@@ -1376,7 +1377,6 @@ async function syncStaleStores() {
 // Content type: application/json, Secret: same as GITHUB_WEBHOOK_SECRET
 app.post('/api/deploy', function (req, res) {
     var crypto = require('crypto');
-    var { execSync } = require('child_process');
     var webhookSecret = process.env.GITHUB_WEBHOOK_SECRET || '';
     var cronSecret    = process.env.CRON_SECRET || '';
 
@@ -1414,32 +1414,59 @@ app.post('/api/deploy', function (req, res) {
 
     res.json({ ok: true, deploying: true, pusher: pusher, commits: commits });
 
-    // Run git pull + pm2 reload in background (after response sent)
+    // Run git pull + pm2 reload in background (after response sent).
+    // All shell commands use async exec() so the event loop stays free during git pull
+    // (can take 5-10s) and npm install (can take 30-120s). execSync would freeze the
+    // server, causing the watchdog to kill it mid-deploy.
     setTimeout(function () {
-        try {
-            var appDir = __dirname;
-            // Discard any local modifications so git pull never blocks
-            execSync('cd ' + appDir + ' && git checkout -- ecosystem.config.js package-lock.json 2>&1 || true');
-            var pullOut = execSync('cd ' + appDir + ' && git pull origin master 2>&1').toString().trim();
-            console.log('[deploy] git pull: ' + pullOut);
-            if (pullOut.indexOf('Already up to date') !== -1) {
-                console.log('[deploy] Nothing new to deploy');
-                return;
-            }
-            // Reinstall deps if package.json changed
-            if (pullOut.indexOf('package.json') !== -1) {
-                console.log('[deploy] package.json changed — running npm install');
-                execSync('cd ' + appDir + ' && npm install --production 2>&1');
-            }
-            // Restart via PM2 which is the process owner — avoids duplicate processes
-            console.log('[deploy] Restarting via pm2...');
+        var execAsync = require('child_process').exec;
+        var appDir = __dirname;
+
+        function deployLog(msg) { console.log('[deploy] ' + msg); }
+        function deployErr(msg) { console.error('[deploy] ERROR: ' + msg); }
+
+        function doRestart() {
+            deployLog('Restarting via pm2...');
             var child = require('child_process').spawn('bash', ['-c',
                 'sleep 1 && pm2 restart vinyl-checker'
             ], { detached: true, stdio: 'ignore' });
             child.unref();
-        } catch (e) {
-            console.error('[deploy] ERROR: ' + e.message);
         }
+
+        // Step 1: discard local modifications so git pull never blocks on merge conflicts
+        execAsync('cd ' + appDir + ' && git checkout -- ecosystem.config.js package-lock.json 2>&1 || true',
+            function(err1) {
+                if (err1) deployLog('git checkout warning: ' + err1.message);
+
+                // Step 2: pull latest master
+                execAsync('cd ' + appDir + ' && git pull origin master 2>&1',
+                    function(err2, pullOut) {
+                        if (err2) { deployErr('git pull failed: ' + err2.message); return; }
+                        pullOut = (pullOut || '').trim();
+                        deployLog('git pull: ' + pullOut);
+
+                        if (pullOut.indexOf('Already up to date') !== -1) {
+                            deployLog('Nothing new to deploy');
+                            return;
+                        }
+
+                        // Step 3 (optional): reinstall deps if package.json changed
+                        if (pullOut.indexOf('package.json') !== -1) {
+                            deployLog('package.json changed — running npm install');
+                            execAsync('cd ' + appDir + ' && npm install --production 2>&1',
+                                { timeout: 180000 }, // 3 min max
+                                function(err3) {
+                                    if (err3) deployErr('npm install failed: ' + err3.message);
+                                    doRestart();
+                                }
+                            );
+                        } else {
+                            doRestart();
+                        }
+                    }
+                );
+            }
+        );
     }, 100);
 });
 
@@ -2845,7 +2872,7 @@ function reapChrome() {
     });
 
     // Clean up orphaned Puppeteer tmp profile dirs older than 10 min
-    try { scanner.reapOrphanedProfiles(); } catch(e) {}
+    scanner.reapOrphanedProfiles().catch(function(e) { console.error('[cleanup] reapOrphanedProfiles error:', e.message); });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -4135,7 +4162,8 @@ app.listen(PORT, function () {
     // Catalog sync + catalog→wantlist match — once per day.
     // No Puppeteer needed. Runs after catalog mirrors are refreshed.
     setInterval(function () {
-        syncStaleStores(); // refreshes Further, Gramaphone, Octopus, UVS, Hardwax catalogs
+        syncStaleStores() // refreshes Further, Gramaphone, Octopus, UVS, Hardwax catalogs
+            .catch(function(e) { console.error('[catalog-sync] Fatal error:', e.message); });
         // runCatalogMatch fires inside syncStaleStores after any sync completes
     }, DAILY_CHECK_INTERVAL);
 
@@ -4144,7 +4172,8 @@ app.listen(PORT, function () {
         scanner.dailyRollingPuppeteer()
             .then(function() { scanner.trackJobRun('rolling', true); })
             .catch(function (e) { console.error('[rolling] Startup check fatal:', e.message); scanner.trackJobRun('rolling', false, e.message); });
-        syncStaleStores();
+        syncStaleStores()
+            .catch(function(e) { console.error('[catalog-sync] Startup fatal:', e.message); });
     }, 300000);
 
     // YouTube enrichment — fetch view/like counts + comment genre signals for all items with a video ID.
