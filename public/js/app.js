@@ -5354,7 +5354,6 @@ function renderCartView() {
       '<div class="cart-autofill-results">'+
         '<div class="caf-header">'+
           '<span class="caf-hdr-label">⚡ Stores found via Smart fill Discogs</span>'+
-          '<span class="caf-hdr-note">Add a group, then re-run Smart fill</span>'+
         '</div>'+
         _cafStoreGroups.map(function(entry) { return renderCafGroup(entry.g, entry.idx); }).join('')+
       '</div>';
@@ -5394,7 +5393,6 @@ function renderCartView() {
         return '<div class="cart-autofill-results">'+
           '<div class="caf-header">'+
             '<span class="caf-hdr-label">🏪 '+_cartStoreAutoFill.covered+' of '+_cartStoreAutoFill.total+' items found across stores</span>'+
-            '<span class="caf-hdr-note">Add an order, then re-run Smart fill</span>'+
           '</div>'+
           _cartStoreAutoFill.groups.map(function(g, idx) {
             var ctHtml = (g.country && VALID_COUNTRIES[g.country]) ? '<span class="caf-country">📦 '+g.country+'</span>' : '';
@@ -5513,7 +5511,6 @@ function renderCartView() {
       '<div class="cart-autofill-results">'+
         '<div class="caf-header">'+
           '<span class="caf-hdr-label">⚡ '+_cartAutoFill.covered+' of '+_cartAutoFill.total+' items covered</span>'+
-          '<span class="caf-hdr-note">Add a group, then re-run Smart fill</span>'+
         '</div>'+
         _cafDiscogsGroups.map(function(entry) { return renderCafGroup(entry.g, entry.idx); }).join('')+
         uncoveredHtml+
@@ -5813,7 +5810,9 @@ function addAutoFillGroupByIndex(idx) {
   });
 
   Promise.all(promises).then(function() {
-    _cartAutoFill.groups = _cartAutoFill.groups.filter(function(grp, i) { return i !== idx; });
+    // Clear both fills so loadCartView auto-reruns Smart Fill for remaining items
+    _cartAutoFill = null;
+    _cartStoreAutoFill = null;
     _cartLoaded = false;
     loadCartView(true);
   });
@@ -5843,7 +5842,9 @@ function addStoreAutoFillGroup(idx) {
   });
 
   Promise.all(promises).then(function() {
-    _cartStoreAutoFill.groups = _cartStoreAutoFill.groups.filter(function(grp, i) { return i !== idx; });
+    // Clear both fills so loadCartView auto-reruns Smart Fill for remaining items
+    _cartAutoFill = null;
+    _cartStoreAutoFill = null;
     _cartLoaded = false;
     loadCartView(true);
   });
