@@ -1627,6 +1627,8 @@ function upsertInventoryBatch(items) {
         });
     });
     run(items);
+    // Bust the cache so the next catalog match reads fresh data
+    if (items.length > 0 && items[0].store) clearInventoryCache(items[0].store);
     return stats;
 }
 
@@ -1642,10 +1644,27 @@ function markStaleInventoryUnavailable(store, syncedSince) {
     return info.changes;
 }
 
+// 5-minute in-memory cache per store — getInStockInventory() is called once
+// per wantlist item per catalog store during runCatalogMatch (37,000+ calls),
+// which was saturating SQLite and blocking the event loop for minutes at a time.
+// Inventories only change when store crawls run (every 3h), so 5min TTL is safe.
+var _inventoryCache = {};
+var INVENTORY_CACHE_TTL = 5 * 60 * 1000;
+
 function getInStockInventory(store) {
-    return getDb().prepare(
+    var now = Date.now();
+    var cached = _inventoryCache[store];
+    if (cached && (now - cached.ts) < INVENTORY_CACHE_TTL) return cached.data;
+    var data = getDb().prepare(
         'SELECT * FROM store_inventory WHERE store = ? AND available = 1'
     ).all(store);
+    _inventoryCache[store] = { data: data, ts: now };
+    return data;
+}
+
+function clearInventoryCache(store) {
+    if (store) delete _inventoryCache[store];
+    else _inventoryCache = {};
 }
 
 /** All in-stock inventory across every synced store — for recommendations. */
@@ -2444,6 +2463,7 @@ module.exports = {
     upsertInventoryBatch: upsertInventoryBatch,
     markStaleInventoryUnavailable: markStaleInventoryUnavailable,
     getInStockInventory: getInStockInventory,
+    clearInventoryCache: clearInventoryCache,
     getAllInStockInventory: getAllInStockInventory,
     getInventoryStats: getInventoryStats,
     upsertMarketListings: upsertMarketListings,
