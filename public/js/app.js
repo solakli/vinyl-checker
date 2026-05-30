@@ -752,6 +752,8 @@ async function loadResultsForUser(username) {
         fetchGemScores(username); // decorate cards with gem badges
         // Check for changes after loading results
         fetchChanges(username);
+        // Load saved filter prefs so cart toggles and smart fill use real settings
+        loadAndApplyUserPrefs(username);
         // Pre-populate cart + smart fill in background so the cart tab
         // shows results instantly when the user navigates to it.
         setTimeout(function() {
@@ -3990,6 +3992,47 @@ var CART_CHECKOUT_URLS = {
   'Yoyaku':              'https://www.yoyaku.co.jp/cart',
 };
 var _cartPrefs           = { countryCode: 'US', minCondition: 'VG+', minSellerRating: 98, maxPriceUsd: null, minStoreItems: 1, minSellerItems: 2 };
+var _cartPrefsLoaded     = false; // true once we've fetched real prefs from the server
+
+// Load saved filter prefs from server into _cartPrefs.
+// Called once on login — ensures the toggles and smart fill always use the user's real settings.
+function loadAndApplyUserPrefs(username) {
+  if (!username) return;
+  fetch('api/preferences/' + encodeURIComponent(username))
+    .then(function(r) { return r.json(); })
+    .then(function(p) {
+      // Normalize condition: DB may store 'NM' (legacy) or 'NM or M-' (current)
+      var condMap = { 'NM': 'NM or M-', 'NM or M-': 'NM or M-', 'VG+': 'VG+', 'VG': 'VG' };
+      if (p.min_condition) _cartPrefs.minCondition    = condMap[p.min_condition] || p.min_condition;
+      if (p.min_seller_rating != null) _cartPrefs.minSellerRating = parseFloat(p.min_seller_rating);
+      if (p.country_code)  _cartPrefs.countryCode     = p.country_code;
+      if (p.max_price_usd) _cartPrefs.maxPriceUsd     = parseFloat(p.max_price_usd);
+      _cartPrefsLoaded = true;
+      // Re-render cart if it's already open so toggles show the right active state
+      var cartEl = document.getElementById('cartBody');
+      if (cartEl && cartEl.querySelector('.cart-wrap2')) renderCartView();
+    })
+    .catch(function() { _cartPrefsLoaded = true; });
+}
+
+// Persist _cartPrefs to the server so they survive page refresh.
+var _savePrefTimer = null;
+function saveCartPrefsToServer(username) {
+  if (!username) return;
+  clearTimeout(_savePrefTimer);
+  _savePrefTimer = setTimeout(function() {
+    fetch('api/preferences/' + encodeURIComponent(username), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        countryCode:     _cartPrefs.countryCode,
+        minCondition:    _cartPrefs.minCondition,
+        minSellerRating: _cartPrefs.minSellerRating,
+        maxPriceUsd:     _cartPrefs.maxPriceUsd || null
+      })
+    }).catch(function() {});
+  }, 800);
+}
 var _autoFillDebounce    = null; // timer handle for auto-rerun on filter change
 var _smartFillRunning    = false;   // true while auto-fill calls are in flight
 var _smartFillProgressStep = 0;     // 0-2 cycling progress stage
@@ -5495,10 +5538,26 @@ function renderCartView() {
     var uncoveredCount = _cartAutoFill ? (_cartAutoFill.total - _cartAutoFill.covered) : 0;
     var uncoveredHtml = '';
     if (uncoveredCount > 0 && _cartAutoFill.uncoveredItems && _cartAutoFill.uncoveredItems.length > 0) {
+      // Show which filters are active so the user knows exactly what's blocking results
+      var activeCondLabel = { 'NM or M-': 'NM', 'VG+': 'VG+', 'VG': 'VG' }[minCondition] || minCondition;
+      var filterChips =
+        '<span class="caf-filter-chip">'+activeCondLabel+'</span>'+
+        '<span class="caf-filter-chip">'+minRating+'%+ rating</span>'+
+        (maxPriceUsd ? '<span class="caf-filter-chip">≤$'+maxPriceUsd+'</span>' : '');
+
+      // Quick relax buttons — only show the most relevant one based on current filter
+      var relaxHtml = '';
+      if (minCondition === 'NM or M-') {
+        relaxHtml = '<button class="caf-relax-btn" onclick="setCartPref(\'minCondition\',\'VG+\')" title="More items are available in VG+">Try VG+ →</button>';
+      } else if (minCondition === 'VG+' && minRating >= 99) {
+        relaxHtml = '<button class="caf-relax-btn" onclick="setCartPref(\'minSellerRating\',98)" title="Widen to 98%+ rated sellers">Try 98%+ →</button>';
+      }
+
       uncoveredHtml =
         '<details class="caf-uncovered">'+
           '<summary class="caf-uncovered-toggle">'+
-            '⚠️ '+uncoveredCount+' item'+(uncoveredCount!==1?'s':'')+' not found on Discogs (no listings matching your filters)'+
+            '<span class="caf-uncov-count">⚠️ '+uncoveredCount+' item'+(uncoveredCount!==1?'s':'')+' not found</span>'+
+            '<span class="caf-uncov-filters">'+filterChips+relaxHtml+'</span>'+
           '</summary>'+
           '<ul class="caf-uncovered-list">'+
             _cartAutoFill.uncoveredItems.map(function(it) {
@@ -5568,6 +5627,8 @@ function renderCartView() {
 function setCartPref(key, val) {
   _cartPrefs[key] = val;
   renderCartView();
+  // Persist the change so it survives page refresh
+  saveCartPrefsToServer(getCurrentUsername());
   // If smart-fill results are showing, auto-rerun after a short pause so the
   // user sees updated results without having to press the button again.
   if (_cartAutoFill) {

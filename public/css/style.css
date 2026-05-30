@@ -10233,10 +10233,15 @@ body.light .opt-pinned-hint { background: rgba(200,160,0,0.06); border-color: rg
 
 /* Uncovered items — collapsible "not found" list */
 .caf-uncovered { margin-top:10px; border-radius:8px; border:1px solid rgba(200,120,50,0.2); background:rgba(200,100,30,0.05); }
-.caf-uncovered-toggle { cursor:pointer; font-size:11px; color:#c9844c; padding:8px 12px; list-style:none; user-select:none; }
+.caf-uncovered-toggle { cursor:pointer; font-size:11px; color:#c9844c; padding:8px 12px; list-style:none; user-select:none; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .caf-uncovered-toggle::-webkit-details-marker { display:none; }
-.caf-uncovered-toggle::before { content:'▶ '; font-size:9px; }
+.caf-uncovered-toggle::before { content:'▶ '; font-size:9px; flex-shrink:0; }
 details.caf-uncovered[open] .caf-uncovered-toggle::before { content:'▼ '; }
+.caf-uncov-count { flex-shrink:0; }
+.caf-uncov-filters { display:flex; align-items:center; gap:4px; flex-wrap:wrap; margin-left:auto; }
+.caf-filter-chip { font-size:10px; font-weight:600; color:var(--text-muted); background:rgba(150,150,150,0.12); border-radius:4px; padding:2px 6px; letter-spacing:0.02em; }
+.caf-relax-btn { font-size:10px; font-weight:600; color:var(--accent,#a084e0); background:rgba(160,132,224,0.12); border:1px solid rgba(160,132,224,0.25); border-radius:4px; padding:2px 8px; cursor:pointer; transition:background 0.15s; white-space:nowrap; }
+.caf-relax-btn:hover { background:rgba(160,132,224,0.22); }
 .caf-uncovered-list { margin:0; padding:6px 12px 10px 24px; display:flex; flex-direction:column; gap:3px; }
 .caf-uncovered-list li { font-size:11px; color:var(--text-muted); }
 
