@@ -705,6 +705,8 @@ async function loadExisting(username) {
   _cartItems = [];
   _cartAutoFill = null;
   _cartStoreAutoFill = null;
+  _priceStats    = {};
+  _wlToDiscogsId = {};
   _storeExtrasCache = {};
   _sellerExtrasCache = {};
   updateNavCartBadge(null);
@@ -2402,6 +2404,8 @@ async function disconnectDiscogs() {
   _cartItems = [];
   _cartAutoFill = null;
   _cartStoreAutoFill = null;
+  _priceStats    = {};
+  _wlToDiscogsId = {};
   _storeExtrasCache = {};
   _sellerExtrasCache = {};
   updateCartNavBadge(0);
@@ -4044,6 +4048,8 @@ var _forYouStoreFilter   = 'all';      // 'all' | storeName
 var _inStockVendor       = 'all';      // 'all' | storeName | 'discogs'
 var _discogsSyncState    = null;       // live state from extension: {running, done, total, found, completedAt, error}
 var _dgPriceMap          = {};         // wantlistId → cheapestUsd from discogsListings
+var _priceStats          = {};         // discogsId → {nm, vgp, vg, trend} from /api/price-stats
+var _wlToDiscogsId       = {};         // wantlistId → discogsId lookup
 var _discogsView         = 'cards';   // 'cards' | 'sellers'
 
 var _diggersDiscoverCache = null;
@@ -5506,10 +5512,24 @@ function renderCartView() {
       ? '<span class="caf-rating">★'+parseFloat(g.sellerRating).toFixed(1)+'%'+(g.sellerNumRatings?' <span class="caf-num-ratings">('+g.sellerNumRatings.toLocaleString()+')</span>':'')+' </span>' : '';
     var ctHtml = (g.country && VALID_COUNTRIES[g.country]) ? '<span class="caf-country">📦 '+g.country+'</span>' : '';
     var itemsHtml = g.items.map(function(item, itemIdx) {
+      // Deal badge — compare item price to cross-user median for this release + condition tier
+      var dealBadge = '';
+      if (item.discogsId && item.priceUsd != null && _priceStats[item.discogsId]) {
+        var ps   = _priceStats[item.discogsId];
+        var cond = (item.condition || '').toLowerCase();
+        var tier = (cond.indexOf('nm') !== -1 || cond.indexOf('m-') !== -1 || cond.indexOf('mint') !== -1) ? 'nm'
+                 : (cond.indexOf('vg+') !== -1) ? 'vgp' : 'vg';
+        var med  = ps[tier] && ps[tier].median;
+        if (med && med > 0 && item.priceUsd < med * 0.8) {
+          var pct = Math.round((1 - item.priceUsd / med) * 100);
+          dealBadge = '<span class="caf-deal-badge" title="'+pct+'% below the median '+tier.toUpperCase()+' price across all listings">↓'+pct+'%</span>';
+        }
+      }
       return '<div class="caf-item-row">'+
         '<span class="caf-item-label">'+escapeHtml(item.artist)+' — '+escapeHtml(item.title)+'</span>'+
         (item.condition ? '<span class="caf-item-cond">'+escapeHtml(condAbbr(item.condition))+'</span>' : '')+
         (item.priceUsd != null ? '<span class="caf-item-price">$'+item.priceUsd.toFixed(2)+'</span>' : '')+
+        dealBadge+
         '<button class="caf-item-remove" title="Remove from group" onclick="removeCafItem('+idx+','+itemIdx+')">✕</button>'+
       '</div>';
     }).join('');
@@ -5702,7 +5722,7 @@ function autoFillAll() {
   var done = 0;
   function onFillDone() {
     done++;
-    if (done >= 2) {
+    if (done >= 3) {
       clearInterval(_smartFillProgressTimer);
       _smartFillProgressTimer = null;
       _smartFillRunning = false;
@@ -5743,6 +5763,16 @@ function autoFillAll() {
   })
   .then(function(r) { return r.json(); })
   .then(function(data) { _cartStoreAutoFill = data; onFillDone(); })
+  .catch(function() { onFillDone(); });
+
+  // Price stats — fetch in parallel so deal badges are ready when groups render
+  fetch('api/price-stats/' + encodeURIComponent(username))
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    _priceStats    = data.stats || {};
+    _wlToDiscogsId = data.wantlistIdToDiscogsId || {};
+    onFillDone();
+  })
   .catch(function() { onFillDone(); });
 }
 
