@@ -10225,6 +10225,22 @@ body.light .opt-pinned-hint { background: rgba(200,160,0,0.06); border-color: rg
 .caf-item-cond { color:#c9a84c; flex-shrink:0; }
 .caf-item-price { color:var(--text-secondary,#b0bfcf); flex-shrink:0; }
 .caf-deal-badge { font-size:10px; font-weight:700; color:#4ade80; background:rgba(74,222,128,0.12); border:1px solid rgba(74,222,128,0.25); border-radius:4px; padding:1px 5px; flex-shrink:0; letter-spacing:0.01em; }
+
+/* Alternative sellers */
+.caf-item-wrap { display:flex; flex-direction:column; }
+.caf-alt-toggle { font-size:10px; font-weight:700; color:var(--text-muted); background:rgba(150,150,150,0.1); border:1px solid rgba(150,150,150,0.15); border-radius:4px; padding:1px 5px; cursor:pointer; flex-shrink:0; transition:color 0.15s, background 0.15s; }
+.caf-alt-toggle:hover, .caf-alt-toggle.active { color:var(--accent,#a084e0); background:rgba(160,132,224,0.12); border-color:rgba(160,132,224,0.3); }
+.caf-alts-list { display:none; flex-direction:column; gap:2px; margin:2px 0 4px 8px; padding:4px 6px; background:rgba(255,255,255,0.03); border-left:2px solid rgba(150,150,150,0.15); border-radius:0 4px 4px 0; }
+.caf-alts-list.caf-alts-open { display:flex; }
+.caf-alt-row { display:flex; align-items:center; gap:6px; font-size:10px; color:var(--text-muted); padding:2px 0; }
+.caf-alt-seller { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-sec); }
+.caf-alt-cond { color:#c9a84c; flex-shrink:0; }
+.caf-alt-price { color:var(--text-secondary,#b0bfcf); flex-shrink:0; }
+.caf-alt-flag { flex-shrink:0; opacity:0.7; }
+.caf-alt-taste { font-size:9px; color:var(--accent,#a084e0); flex-shrink:0; opacity:0.8; }
+.caf-swap-btn { font-size:10px; font-weight:600; color:var(--accent,#a084e0); background:rgba(160,132,224,0.1); border:1px solid rgba(160,132,224,0.2); border-radius:4px; padding:1px 7px; cursor:pointer; flex-shrink:0; transition:background 0.15s; }
+.caf-swap-btn:hover { background:rgba(160,132,224,0.22); }
+
 .caf-item-remove {
   background:none; border:none; color:rgba(200,100,100,0.5); cursor:pointer;
   font-size:0.85rem; padding:0 2px; line-height:1; flex-shrink:0;

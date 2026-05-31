@@ -5525,12 +5525,39 @@ function renderCartView() {
           dealBadge = '<span class="caf-deal-badge" title="'+pct+'% below the median '+tier.toUpperCase()+' price across all listings">↓'+pct+'%</span>';
         }
       }
-      return '<div class="caf-item-row">'+
-        '<span class="caf-item-label">'+escapeHtml(item.artist)+' — '+escapeHtml(item.title)+'</span>'+
-        (item.condition ? '<span class="caf-item-cond">'+escapeHtml(condAbbr(item.condition))+'</span>' : '')+
-        (item.priceUsd != null ? '<span class="caf-item-price">$'+item.priceUsd.toFixed(2)+'</span>' : '')+
-        dealBadge+
-        '<button class="caf-item-remove" title="Remove from group" onclick="removeCafItem('+idx+','+itemIdx+')">✕</button>'+
+
+      // Alternative sellers — other sellers who have the same item at qualifying price/condition
+      var alts = item.alternatives || [];
+      var altToggle = alts.length
+        ? '<button class="caf-alt-toggle" onclick="toggleCafAlts(\'cafalt-'+idx+'-'+itemIdx+'\')" title="'+alts.length+' other seller'+(alts.length>1?'s':'')+' have this">+'+alts.length+'</button>'
+        : '';
+      var altListHtml = '';
+      if (alts.length) {
+        var altRows = alts.map(function(alt, ai) {
+          var tasteHtml = alt.tasteScore > 0
+            ? ' <span class="caf-alt-taste" title="Taste match: '+alt.tasteScore+'">♪'+alt.tasteScore+'</span>'
+            : '';
+          return '<div class="caf-alt-row">'+
+            '<span class="caf-alt-seller">'+escapeHtml(alt.seller)+'</span>'+
+            '<span class="caf-alt-cond">'+escapeHtml(condAbbr(alt.condition))+'</span>'+
+            '<span class="caf-alt-price">$'+alt.priceUsd.toFixed(2)+'</span>'+
+            (alt.country ? '<span class="caf-alt-flag">'+alt.country+'</span>' : '')+
+            tasteHtml+
+            '<button class="caf-swap-btn" onclick="swapCafItem('+idx+','+itemIdx+','+ai+')">Use this</button>'+
+          '</div>';
+        }).join('');
+        altListHtml = '<div class="caf-alts-list" id="cafalt-'+idx+'-'+itemIdx+'">'+altRows+'</div>';
+      }
+
+      return '<div class="caf-item-wrap">'+
+        '<div class="caf-item-row">'+
+          '<span class="caf-item-label">'+escapeHtml(item.artist)+' — '+escapeHtml(item.title)+'</span>'+
+          (item.condition ? '<span class="caf-item-cond">'+escapeHtml(condAbbr(item.condition))+'</span>' : '')+
+          (item.priceUsd != null ? '<span class="caf-item-price">$'+item.priceUsd.toFixed(2)+'</span>' : '')+
+          dealBadge+altToggle+
+          '<button class="caf-item-remove" title="Remove from group" onclick="removeCafItem('+idx+','+itemIdx+')">✕</button>'+
+        '</div>'+
+        altListHtml+
       '</div>';
     }).join('');
     return '<div class="caf-group">'+
@@ -5872,6 +5899,69 @@ function removeCafItem(groupIdx, itemIdx) {
     g.totalUsd = g.items.reduce(function(sum, it) { return sum + (it.priceUsd || 0); }, 0);
   }
   loadCartView(true);
+}
+
+// Toggle the collapsed alternative-sellers list for a Smart Fill item
+function toggleCafAlts(id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  var open = el.classList.toggle('caf-alts-open');
+  // Update the toggle button label
+  var btn = el.previousElementSibling && el.previousElementSibling.querySelector('.caf-alt-toggle');
+  if (btn) btn.classList.toggle('active', open);
+}
+
+// Swap a Smart Fill item to a different seller (client-side, no round-trip)
+function swapCafItem(groupIdx, itemIdx, altIdx) {
+  if (!_cartAutoFill || !_cartAutoFill.groups[groupIdx]) return;
+  var srcGroup = _cartAutoFill.groups[groupIdx];
+  var item     = srcGroup.items[itemIdx];
+  if (!item || !item.alternatives || !item.alternatives[altIdx]) return;
+  var alt = item.alternatives[altIdx];
+
+  // Remove item from current group
+  srcGroup.items.splice(itemIdx, 1);
+  srcGroup.subtotalUsd = srcGroup.items.reduce(function(s, i) { return s + (i.priceUsd || 0); }, 0);
+  srcGroup.totalUsd    = srcGroup.subtotalUsd + (srcGroup.shippingCostUsd || 0);
+
+  // Find or create a group for the alt seller
+  var tgt = null;
+  for (var i = 0; i < _cartAutoFill.groups.length; i++) {
+    if (_cartAutoFill.groups[i].sellerUsername === alt.seller) { tgt = _cartAutoFill.groups[i]; break; }
+  }
+  if (!tgt) {
+    tgt = {
+      sourceId:         'discogs:' + alt.seller,
+      sourceName:       alt.seller,
+      sourceType:       'discogs_seller',
+      sellerUsername:   alt.seller,
+      country:          alt.country || '',
+      sellerRating:     alt.rating  || null,
+      sellerNumRatings: null,
+      shippingCostUsd:  alt.shippingCostUsd || 0,
+      subtotalUsd:      0,
+      totalUsd:         alt.shippingCostUsd || 0,
+      items:            []
+    };
+    _cartAutoFill.groups.push(tgt);
+  }
+
+  // Add the item to the target group with the alt's price/condition/url
+  var swappedItem = Object.assign({}, item, {
+    priceUsd:     alt.priceUsd,
+    condition:    alt.condition,
+    url:          alt.listingUrl || item.url,
+    shipsFrom:    alt.country || '',
+    alternatives: undefined  // don't carry old alternatives over
+  });
+  tgt.items.push(swappedItem);
+  tgt.subtotalUsd = tgt.items.reduce(function(s, i) { return s + (i.priceUsd || 0); }, 0);
+  tgt.totalUsd    = tgt.subtotalUsd + (tgt.shippingCostUsd || 0);
+
+  // Drop any groups emptied by this swap
+  _cartAutoFill.groups = _cartAutoFill.groups.filter(function(g) { return g.items.length > 0; });
+
+  renderCartView();
 }
 
 function addAutoFillGroupByIndex(idx) {

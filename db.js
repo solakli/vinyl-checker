@@ -1052,6 +1052,95 @@ function getMarketplaceSyncStatus(userId) {
     return row;
 }
 
+// Compute price stats (median per condition tier, trend from history) for a set of releases.
+// Used by the price anomaly feature to badge "deal" listings in Smart Fill and Discover.
+// Keyed by discogs_id so a single lookup covers all users' listings for that release.
+function getPriceStatsByRelease(discogsIds) {
+    if (!discogsIds || !discogsIds.length) return {};
+    var d = getDb();
+
+    // Pull all listings for these releases across ALL users — cross-user sample for better medians.
+    // Cap at $2000 to exclude obvious speculation/placeholder listings.
+    var placeholders = discogsIds.map(function() { return '?'; }).join(',');
+    var rows = d.prepare(
+        'SELECT w.discogs_id, dl.condition, dl.price_usd ' +
+        'FROM discogs_listings dl ' +
+        'JOIN wantlist w ON w.id = dl.wantlist_id ' +
+        'WHERE w.discogs_id IN (' + placeholders + ') ' +
+        '  AND dl.price_usd > 0 AND dl.price_usd < 2000'
+    ).all(discogsIds);
+
+    // Pull price_history for trend: current lowest vs historical median.
+    var histRows = d.prepare(
+        'SELECT w.discogs_id, ph.lowest_price ' +
+        'FROM price_history ph ' +
+        'JOIN wantlist w ON w.id = ph.wantlist_id ' +
+        'WHERE w.discogs_id IN (' + placeholders + ') ' +
+        '  AND ph.lowest_price > 0 AND ph.lowest_price < 2000 ' +
+        'ORDER BY ph.recorded_at DESC'
+    ).all(discogsIds);
+
+    function medianOf(arr) {
+        if (!arr.length) return null;
+        var s = arr.slice().sort(function(a, b) { return a - b; });
+        var m = Math.floor(s.length / 2);
+        return s.length % 2 === 0 ? (s[m - 1] + s[m]) / 2 : s[m];
+    }
+
+    function condTier(cond) {
+        if (!cond) return 'other';
+        if (/Mint|NM or M-/i.test(cond)) return 'nm';
+        if (/Very Good Plus|VG\+/i.test(cond)) return 'vgp';
+        return 'vg';
+    }
+
+    // Group current listings by release + condition tier
+    var byRelease = {};
+    rows.forEach(function(r) {
+        var id = r.discogs_id;
+        if (!byRelease[id]) byRelease[id] = { nm: [], vgp: [], vg: [] };
+        var tier = condTier(r.condition);
+        if (tier !== 'other') byRelease[id][tier].push(r.price_usd);
+    });
+
+    // Group history by release (most recent 30 snapshots for trend)
+    var histByRelease = {};
+    histRows.forEach(function(r) {
+        var id = r.discogs_id;
+        if (!histByRelease[id]) histByRelease[id] = [];
+        if (histByRelease[id].length < 30) histByRelease[id].push(r.lowest_price);
+    });
+
+    // Build stats map
+    var stats = {};
+    discogsIds.forEach(function(id) {
+        var b = byRelease[id] || { nm: [], vgp: [], vg: [] };
+        var histPrices = histByRelease[id] || [];
+
+        var nmMedian  = medianOf(b.nm);
+        var vgpMedian = medianOf(b.vgp);
+        var histMedian = medianOf(histPrices);
+        var lowestNm  = b.nm.length  ? Math.min.apply(null, b.nm)  : null;
+        var lowestVgp = b.vgp.length ? Math.min.apply(null, b.vgp) : null;
+
+        // Trend: compare current lowest NM to historical median lowest price
+        var trendPct = null;
+        if (histMedian && lowestNm) {
+            trendPct = Math.round(((lowestNm - histMedian) / histMedian) * 100);
+        }
+
+        stats[id] = {
+            nm:  { median: nmMedian,  count: b.nm.length,  lowest: lowestNm  },
+            vgp: { median: vgpMedian, count: b.vgp.length, lowest: lowestVgp },
+            vg:  { count: b.vg.length },
+            trend: histPrices.length >= 3 ? { pct: trendPct, histMedian: histMedian, samples: histPrices.length } : null,
+            totalListings: b.nm.length + b.vgp.length + b.vg.length
+        };
+    });
+
+    return stats;
+}
+
 function getPriceHistory(wantlistId, limit) {
     return getDb().prepare(
         'SELECT lowest_price, num_for_sale, currency, recorded_at FROM price_history WHERE wantlist_id = ? ORDER BY recorded_at ASC LIMIT ?'
@@ -2410,6 +2499,63 @@ function getCartCount(userId) {
     return (getDb().prepare('SELECT COUNT(*) AS c FROM cart WHERE user_id = ?').get(userId) || { c: 0 }).c;
 }
 
+/**
+ * Score Discogs sellers by how well their known inventory matches the user's taste.
+ *
+ * Builds a genre/style frequency map from the user's wantlist, then for each seller
+ * looks at all their listings across ALL users in the DB (cross-user view gives a
+ * broader sample of what each seller carries). Returns {sellerUsername: score} where
+ * a higher score means the seller's inventory aligns better with this user's taste.
+ *
+ * Used for taste-based tie-breaking in the cart optimizer — when two sellers have the
+ * same price for an item, we prefer the one whose catalogue matches your taste, since
+ * you're more likely to find other things you want from them.
+ */
+function getSellerTasteScores(userId, sellerUsernames) {
+    if (!sellerUsernames || !sellerUsernames.length) return {};
+    var d = getDb();
+
+    // Build taste profile: how often each genre/style appears in the user's wantlist
+    var wl = d.prepare(
+        "SELECT genres, styles FROM wantlist WHERE user_id = ? AND active = 1 AND (genres != '' OR styles != '')"
+    ).all(userId);
+
+    var styleFreq = {};
+    wl.forEach(function(w) {
+        var tags = [];
+        if (w.genres) tags = tags.concat(w.genres.split(',').map(function(s) { return s.trim().toLowerCase(); }));
+        if (w.styles) tags = tags.concat(w.styles.split(',').map(function(s) { return s.trim().toLowerCase(); }));
+        tags.forEach(function(t) { if (t) styleFreq[t] = (styleFreq[t] || 0) + 1; });
+    });
+
+    if (!Object.keys(styleFreq).length) return {};
+
+    // Pull all distinct (seller, release) pairs across ALL users so we get a broad
+    // picture of what each seller stocks, not just what the current user wants from them.
+    var placeholders = sellerUsernames.map(function() { return '?'; }).join(',');
+    var rows = d.prepare(
+        'SELECT DISTINCT dl.seller_username, w.genres, w.styles ' +
+        'FROM discogs_listings dl ' +
+        'JOIN wantlist w ON w.id = dl.wantlist_id ' +
+        "WHERE dl.seller_username IN (" + placeholders + ") " +
+        "  AND (w.genres != '' OR w.styles != '')"
+    ).all(sellerUsernames);
+
+    // Score each seller: sum of style-frequency scores for each release they stock
+    var scores = {};
+    sellerUsernames.forEach(function(s) { scores[s] = 0; });
+
+    rows.forEach(function(row) {
+        var tags = [];
+        if (row.genres) tags = tags.concat(row.genres.split(',').map(function(s) { return s.trim().toLowerCase(); }));
+        if (row.styles) tags = tags.concat(row.styles.split(',').map(function(s) { return s.trim().toLowerCase(); }));
+        var match = tags.reduce(function(sum, t) { return sum + (styleFreq[t] || 0); }, 0);
+        scores[row.seller_username] = (scores[row.seller_username] || 0) + match;
+    });
+
+    return scores;
+}
+
 module.exports = {
     getDb: getDb,
     getOrCreateUser: getOrCreateUser,
@@ -2427,6 +2573,7 @@ module.exports = {
     getItemsNeedingCheck: getItemsNeedingCheck,
     saveDiscogsPrice: saveDiscogsPrice,
     getDiscogsPrice: getDiscogsPrice,
+    getPriceStatsByRelease: getPriceStatsByRelease,
     getPriceHistory: getPriceHistory,
     getPriceHistoryByDiscogsId: getPriceHistoryByDiscogsId,
     getPricesNeedingCheck: getPricesNeedingCheck,
@@ -2487,6 +2634,7 @@ module.exports = {
     getFreshDiscogsWantlistIds: getFreshDiscogsWantlistIds,
     getDiscogsListings: getDiscogsListings,
     getMarketplaceSyncStatus: getMarketplaceSyncStatus,
+    getSellerTasteScores: getSellerTasteScores,
     // Observability
     startScanRun: startScanRun,
     finishScanRun: finishScanRun,

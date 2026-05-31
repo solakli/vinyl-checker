@@ -3863,12 +3863,27 @@ app.post('/api/auto-fill/:username', function(req, res) {
             further:    db.getInStockInventory('further'),
             octopus:    db.getInStockInventory('octopus')
         };
-        var scanResults  = db.getLatestInStockResults(user.id);
+        var scanResults    = db.getLatestInStockResults(user.id);
         var storeOptimizer = require('./lib/store-optimizer');
-        var optimizer    = require('./lib/optimizer');
-        var scanSources  = storeOptimizer.buildStoreSources(wantlist, scanResults, sourceOpts);
-        var extListings  = db.getDiscogsListings(user.id);
-        var extSources   = storeOptimizer.buildDiscogsSources(wantlist, extListings, sourceOpts);
+        var optimizer      = require('./lib/optimizer');
+        var discogsMkt     = require('./lib/discogs-market');
+        var scanSources    = storeOptimizer.buildStoreSources(wantlist, scanResults, sourceOpts);
+        var extListings    = db.getDiscogsListings(user.id);
+        var extSources     = storeOptimizer.buildDiscogsSources(wantlist, extListings, sourceOpts);
+
+        // ── Taste-based tie-breaking ─────────────────────────────────────────
+        // Score each seller by how well their catalogue matches this user's taste.
+        // Passed into the optimizer as a tiny fractional bonus so taste only
+        // matters when two sellers are otherwise equally priced.
+        var allSellers = [];
+        var seenSellers = {};
+        extListings.forEach(function(l) {
+            if (l.seller_username && !seenSellers[l.seller_username]) {
+                seenSellers[l.seller_username] = true;
+                allSellers.push(l.seller_username);
+            }
+        });
+        var tasteScores = db.getSellerTasteScores(user.id, allSellers);
 
         var raw = optimizer.runOptimizer(wantlist, storeInventory, {}, {
             buyerCountry:    buyerCountry,
@@ -3876,31 +3891,73 @@ app.post('/api/auto-fill/:username', function(req, res) {
             minSellerRating: minSellerRating,
             maxPriceUsd:     maxPriceUsd,
             minStoreItems:   minStoreItems,
-            minSellerItems:  minSellerItems
+            minSellerItems:  minSellerItems,
+            tasteScores:     tasteScores
         }, scanSources.concat(extSources));
 
+        // ── Build alternatives index ─────────────────────────────────────────
+        // For each wantlist item, collect ALL qualifying listings that weren't
+        // selected by the optimizer, so the user can see and swap to them.
+        var listingsByWid = {};
+        extListings.forEach(function(l) {
+            if (l.price_usd == null || l.price_usd > maxPriceUsd) return;
+            if (!discogsMkt.meetsMinCondition(l.condition, minCondition)) return;
+            if (l.seller_rating && l.seller_rating < minSellerRating) return;
+            if ((l.ships_from || 'XX') === 'XX' && l.shipping_to_usd == null) return;
+            var wid = l.wantlist_id;
+            if (!listingsByWid[wid]) listingsByWid[wid] = [];
+            listingsByWid[wid].push(l);
+        });
+
         var groups = raw.cart.map(function(c) {
+            var sellerUsername = c.source.sellerUsername || null;
             return {
                 sourceId:         c.source.sourceId,
                 sourceName:       c.source.sourceName,
                 sourceType:       c.source.sourceType,
                 country:          c.source.country,
-                sellerUsername:   c.source.sellerUsername   || null,
+                sellerUsername:   sellerUsername,
                 sellerRating:     c.source.sellerRating     || null,
                 sellerNumRatings: c.source.sellerNumRatings || null,
                 shippingCostUsd: c.shippingCostUsd,
                 subtotalUsd:    c.subtotalUsd,
                 totalUsd:       c.totalUsd,
                 items: c.assignedListings.map(function(l) {
+                    // Other sellers who also have this item and pass all filters
+                    var alts = (listingsByWid[l.itemId] || [])
+                        .filter(function(al) { return al.seller_username !== sellerUsername; })
+                        .sort(function(a, b) {
+                            if (a.price_usd !== b.price_usd) return a.price_usd - b.price_usd;
+                            // Tie on price → prefer better taste match
+                            return (tasteScores[b.seller_username] || 0) - (tasteScores[a.seller_username] || 0);
+                        })
+                        .slice(0, 5)
+                        .map(function(al) {
+                            var shipUsd = al.shipping_to_usd != null
+                                ? al.shipping_to_usd
+                                : shippingLib.estimateShipping(al.ships_from, buyerCountry);
+                            return {
+                                seller:          al.seller_username,
+                                priceUsd:        al.price_usd,
+                                condition:       al.condition,
+                                rating:          al.seller_rating,
+                                country:         al.ships_from,
+                                tasteScore:      tasteScores[al.seller_username] || 0,
+                                shippingCostUsd: shipUsd,
+                                listingUrl:      al.listing_url || null
+                            };
+                        });
                     return {
-                        wantlistId: l.itemId,
-                        artist:     l.artist     || '',
-                        title:      l.title      || '',
-                        catno:      l.catno      || '',
-                        priceUsd:   l.priceUsd,
-                        condition:  l.condition  || '',
-                        url:        l.url        || '',
-                        shipsFrom:  c.source.country
+                        wantlistId:   l.itemId,
+                        discogsId:    l.discogsId    || null,
+                        artist:       l.artist       || '',
+                        title:        l.title        || '',
+                        catno:        l.catno        || '',
+                        priceUsd:     l.priceUsd,
+                        condition:    l.condition    || '',
+                        url:          l.url          || '',
+                        shipsFrom:    c.source.country,
+                        alternatives: alts.length ? alts : undefined
                     };
                 })
             };
@@ -3916,6 +3973,26 @@ app.post('/api/auto-fill/:username', function(req, res) {
         });
     } catch(e) {
         console.error('[auto-fill]', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ── Price anomaly stats — median/trend per release for deal badge in Smart Fill + Discover ──
+// Returns median asking price per condition tier and historical trend for each wantlist release.
+// Cross-user: uses ALL users' discogs_listings for better sample sizes.
+app.get('/api/price-stats/:username', function(req, res) {
+    try {
+        var user = db.getOrCreateUser(req.params.username);
+        var wantlist = db.getActiveWantlist(user.id);
+        var discogsIds = wantlist.map(function(w) { return w.discogs_id; }).filter(Boolean);
+        if (!discogsIds.length) return res.json({ stats: {} });
+        var stats = db.getPriceStatsByRelease(discogsIds);
+        // Also return wantlistId → discogsId map so frontend can join on wantlistId
+        var idMap = {};
+        wantlist.forEach(function(w) { if (w.discogs_id) idMap[w.id] = w.discogs_id; });
+        res.json({ stats: stats, wantlistIdToDiscogsId: idMap });
+    } catch(e) {
+        console.error('[price-stats]', e.message);
         res.status(500).json({ error: e.message });
     }
 });
