@@ -10220,7 +10220,7 @@ body.light .opt-pinned-hint { background: rgba(200,160,0,0.06); border-color: rg
 /* CAF group — expandable item list with per-item remove */
 .caf-items { display:flex; flex-direction:column; gap:2px; margin-top:4px; }
 .caf-item-row { display:flex; align-items:center; gap:8px; padding:4px 0; border-top:1px solid rgba(255,255,255,0.04); font-size:11px; color:var(--text-muted); }
-.caf-item-row:first-child { border-top:none; }
+.caf-item-wrap:first-child .caf-item-row { border-top:none; }
 .caf-item-label { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .caf-item-cond { color:#c9a84c; flex-shrink:0; }
 .caf-item-price { color:var(--text-secondary,#b0bfcf); flex-shrink:0; }
