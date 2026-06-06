@@ -2311,8 +2311,11 @@ async function checkAuthStatus() {
         playlistBtn.style.display = 'none';
       }
     }
-  // Handle ?view= URL param (and legacy ?profile=) — restore view after auth
-  var _startView = _initialView || (_profileParam ? 'profile' : 'cart');
+  // Handle ?view= URL param (and legacy ?profile=) — restore view after auth.
+  // Only default to 'cart' for authenticated users; unauthenticated visitors
+  // should stay on the welcome page, not get bounced into an empty cart view.
+  var _startView = _initialView || (_profileParam ? 'profile' :
+                   (data.discogs && data.discogs.connected ? 'cart' : null));
   var _startUser = _initialUser || _profileParam || null;
   _profileParam = null; _initialView = null; _initialUser = null;
   if (_startView) {
@@ -5049,11 +5052,15 @@ function escapeAttr(s) {
 function loadCartView(force) {
   var username = getCurrentUsername();
   if (!username) {
-    // No user yet — bounce back to the welcome screen instead of showing a broken panel
-    switchView('wantlist', null, { noPush: true });
-    document.getElementById('welcome').style.display = '';
-    document.querySelector('.app-layout').style.display = 'none';
+    // No user yet — show the welcome screen.
+    // #welcome lives inside .app-layout so we must keep app-layout visible;
+    // just hide the cart panel and the header controls directly.
+    document.getElementById('view-cart').style.display = 'none';
+    document.querySelector('.app-layout').style.display = '';
     document.getElementById('headerControls').style.display = 'none';
+    document.getElementById('welcome').style.display = '';
+    // Clear active nav so no tab looks selected
+    document.querySelectorAll('.nav-link, .mobile-tab').forEach(function(el) { el.classList.remove('active'); });
     return;
   }
   var el = document.getElementById('cartBody');
