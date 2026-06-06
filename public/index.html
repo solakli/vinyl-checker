@@ -223,40 +223,6 @@
 
 <!-- ═══ CART VIEW ═══ -->
 <div id="view-cart" class="alt-view" style="display:none">
-  <!-- First-time onboarding (shown when no username entered) -->
-  <div id="cartOnboarding" style="display:none">
-    <div class="onboarding-wrap">
-      <div class="onboarding-title">Wax Digger</div>
-      <div class="onboarding-sub">Find your Discogs wantlist in stock across 12 record stores + Discogs marketplace</div>
-      <div class="onboarding-steps">
-        <div class="onboarding-step">
-          <span class="onboarding-step-num">1</span>
-          <div class="onboarding-step-body">
-            <strong>Enter your Discogs username</strong>
-            <span>Your wantlist will sync automatically</span>
-          </div>
-        </div>
-        <div class="onboarding-step">
-          <span class="onboarding-step-num">2</span>
-          <div class="onboarding-step-body">
-            <strong>Install the Chrome extension</strong>
-            <span>Syncs Discogs marketplace prices into your cart optimizer</span>
-          </div>
-        </div>
-        <div class="onboarding-step">
-          <span class="onboarding-step-num">3</span>
-          <div class="onboarding-step-body">
-            <strong>Run Smart Fill</strong>
-            <span>Groups sellers to minimize shipping — buy more, pay less</span>
-          </div>
-        </div>
-      </div>
-      <div class="onboarding-username-row">
-        <input id="onboardingUsername" type="text" placeholder="Your Discogs username" class="onboarding-input" onkeydown="if(event.key==='Enter') onboardingSubmit()" />
-        <button onclick="onboardingSubmit()" class="onboarding-btn">Get Started →</button>
-      </div>
-    </div>
-  </div>
   <div class="cart-wrap" id="cartWrap">
     <div id="cartBody"></div>
   </div>

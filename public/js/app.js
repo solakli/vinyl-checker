@@ -693,10 +693,6 @@ async function loadExisting(username) {
   if (!username) return;
   document.getElementById('usernameInput').value = username;
 
-  // Hide onboarding panel if visible
-  var ob = document.getElementById('cartOnboarding');
-  if (ob) ob.style.display = 'none';
-
   // Reset optimizer + discover state so a new user doesn't see the previous user's results
   if (_optimizerPollTimer) { clearInterval(_optimizerPollTimer); _optimizerPollTimer = null; }
   _lastOptimizerResult = null;
@@ -2645,9 +2641,8 @@ checkAuthStatus().then(function() {
       document.getElementById('usernameInput').value = savedUsername;
       return loadExisting(savedUsername);
     }
-    // No saved state — show welcome page and onboarding
+    // No saved state — show welcome page (OAuth entry point)
     document.getElementById('welcome').style.display = '';
-    checkShowOnboarding();
   }
 });
 }
@@ -5050,29 +5045,15 @@ function escapeAttr(s) {
 // CART VIEW
 // ═══════════════════════════════════════════════════════════════
 
-// ── Onboarding ────────────────────────────────────────────────────────────────
-
-function onboardingSubmit() {
-  var val = document.getElementById('onboardingUsername').value.trim();
-  if (!val) return;
-  document.getElementById('onboardingUsername').value = '';
-  var inp = document.getElementById('usernameInput');
-  if (inp) { inp.value = val; inp.dispatchEvent(new Event('change')); }
-  document.getElementById('cartOnboarding').style.display = 'none';
-  loadExisting(val);
-}
-
-function checkShowOnboarding() {
-  var ob = document.getElementById('cartOnboarding');
-  if (!ob) return;
-  var hasUser = !!(getCurrentUsername());
-  ob.style.display = hasUser ? 'none' : 'block';
-}
 
 function loadCartView(force) {
   var username = getCurrentUsername();
   if (!username) {
-    checkShowOnboarding();
+    // No user yet — bounce back to the welcome screen instead of showing a broken panel
+    switchView('wantlist', null, { noPush: true });
+    document.getElementById('welcome').style.display = '';
+    document.querySelector('.app-layout').style.display = 'none';
+    document.getElementById('headerControls').style.display = 'none';
     return;
   }
   var el = document.getElementById('cartBody');
@@ -5103,7 +5084,7 @@ function renderCartView() {
   var el = document.getElementById('cartBody');
   if (!el) return;
   var username = getCurrentUsername();
-  if (!username) { checkShowOnboarding(); return; }
+  if (!username) { return; }
 
   // ── Constants ──────────────────────────────────────────────────────────────
   var COND_RANK = { 'M': 7, 'NM': 6, 'VG+': 5, 'VG': 4, 'G+': 3, 'G': 2, 'F': 1, 'P': 0 };
