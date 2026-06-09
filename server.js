@@ -1426,9 +1426,12 @@ app.post('/api/deploy', function (req, res) {
         function deployErr(msg) { console.error('[deploy] ERROR: ' + msg); }
 
         function doRestart() {
-            deployLog('Restarting via pm2...');
+            deployLog('Killing port holder then restarting via pm2...');
+            // Kill whatever is holding port 5052 (may be this process itself or a stale
+            // setsid-started server from a manual deploy). The detached child survives
+            // even if this process gets killed, then pm2 starts a fresh instance.
             var child = require('child_process').spawn('bash', ['-c',
-                'sleep 1 && pm2 restart vinyl-checker'
+                'sleep 1 && PORT_PID=$(fuser 5052/tcp 2>/dev/null | tr -d " ") && [ -n "$PORT_PID" ] && kill -9 $PORT_PID 2>/dev/null || true; sleep 2 && pm2 restart vinyl-checker'
             ], { detached: true, stdio: 'ignore' });
             child.unref();
         }
