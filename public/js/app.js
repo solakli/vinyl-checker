@@ -995,6 +995,32 @@ function getStoreCount(item) {
   return item.stores.filter(function(s) { return s.inStock; }).length;
 }
 
+// ── Store search URL fallback ────────────────────────────────────────────────
+// The server omits searchUrl on out-of-stock entries (keeps /api/results ~70%
+// smaller). These mirror the exact patterns the scrapers use, built from the
+// item's searchQuery.
+var STORE_URL_BUILDERS = {
+  'Deejay.de':          function(q){ return 'https://www.deejay.de/' + encodeURIComponent(q); },
+  'HHV':                function(q){ return 'https://www.hhv.de/katalog/filter/suche-S11?af=true&term=' + encodeURIComponent(q); },
+  'Hardwax':            function(q){ return 'https://hardwax.com/?search=' + encodeURIComponent(q); },
+  'Juno':               function(q){ return 'https://www.juno.co.uk/search/?q%5Ball%5D%5B%5D=' + encodeURIComponent(q); },
+  'Turntable Lab':      function(q){ return 'https://www.turntablelab.com/search?type=product&q=' + encodeURIComponent(q); },
+  'Underground Vinyl':  function(q){ return 'https://undergroundvinylsource.com/search?q=' + encodeURIComponent(q) + '&type=product'; },
+  'Decks.de':           function(q){ return 'https://www.decks.de/decks/workfloor/search_db.php?such=' + encodeURIComponent(q) + '&wosuch=vi&wassuch=atl'; },
+  'Phonica':            function(q){ return 'https://www.phonicarecords.com/search/' + encodeURIComponent(q); },
+  'Yoyaku':             function(q){ return 'https://yoyaku.io/?s=' + encodeURIComponent(q) + '&post_type=product'; },
+  'Gramaphone':         function(q){ return 'https://gramaphonerecords.com/search?q=' + encodeURIComponent(q) + '&type=product'; },
+  'Further Records':    function(q){ return 'https://furtherrecords.com/search?q=' + encodeURIComponent(q) + '&type=product'; },
+  'Octopus Records NYC':function(q){ return 'https://www.octopusrecords.nyc/?s=' + encodeURIComponent(q) + '&post_type=product'; }
+};
+
+function storeSearchUrl(s, item) {
+  if (s && s.searchUrl) return s.searchUrl;
+  var builder = STORE_URL_BUILDERS[s && s.store];
+  var q = item ? (item.searchQuery || ((item.artist || '') + ' ' + (item.title || '')).trim()) : '';
+  return (builder && q) ? builder(q) : '#';
+}
+
 // Normalise Discogs genre/style strings to title case so
 // "ELECTRONIC" renders as "Electronic", matching My Collection
 function toTitleCase(str) {
@@ -1029,16 +1055,33 @@ function updateStats() {
     hero.style.display = 'flex';
   }
 
-  // Update store counts on filter badges
+  // Update store counts on filter badges.
+  // Also track per-store error rates so we can mark stores we couldn't reach —
+  // users need to distinguish "not in stock" from "the check failed".
   var storeCounts = {};
+  var storeErrors = {};
+  var storeChecked = {};
   resultsData.forEach(function(i) {
     i.stores.forEach(function(s) {
+      storeChecked[s.store] = (storeChecked[s.store] || 0) + 1;
       if (s.inStock && !s.linkOnly) storeCounts[s.store] = (storeCounts[s.store] || 0) + 1;
+      if (s.error) storeErrors[s.store] = (storeErrors[s.store] || 0) + 1;
     });
   });
   document.querySelectorAll('.store-badge').forEach(function(badge) {
-    var count = storeCounts[badge.dataset.store] || 0;
+    var store = badge.dataset.store;
+    var count = storeCounts[store] || 0;
     badge.querySelector('.count').textContent = '(' + count + ')';
+    // Flag stores where >30% of checks errored: dim the pill + warning tooltip
+    var errRate = (storeErrors[store] || 0) / Math.max(storeChecked[store] || 0, 1);
+    if (errRate > 0.3) {
+      badge.classList.add('store-unreliable');
+      badge.title = storeDisplayName[store] || store;
+      badge.title += ': ' + Math.round(errRate * 100) + '% of checks failed on the last scan — results may be incomplete';
+    } else {
+      badge.classList.remove('store-unreliable');
+      badge.removeAttribute('title');
+    }
   });
 
   // In Stock By Store summary bars
@@ -1258,7 +1301,7 @@ function render() {
   // Store filtered IDs for modal navigation (swipe prev/next)
   currentFilteredIds = filtered.map(function(item) { return item.item.id; });
 
-  grid.innerHTML = filtered.map(function(item, _ci) {
+  var buildCard = function(item, _ci) {
     var visibleStores = item.stores.filter(function(s) { return activeStores.indexOf(s.store) !== -1; });
     var inStockCount = visibleStores.filter(function(s) { return s.inStock && !s.linkOnly; }).length;
 
@@ -1489,7 +1532,55 @@ function render() {
         '</div>' +
       '</div>' +
     '</div>';
-  }).join('');
+  };
+
+  renderGridChunked(grid, filtered, buildCard);
+}
+
+// ── Chunked grid rendering ────────────────────────────────────────────────────
+// Rendering 3,000+ cards via one innerHTML freezes the main thread for seconds
+// on big wantlists. Render the first chunk immediately (covers the viewport),
+// then append the rest as the user scrolls toward the bottom.
+var GRID_CHUNK = 60;
+var _gridObserver = null;
+
+function renderGridChunked(grid, filtered, buildCard) {
+  if (_gridObserver) { _gridObserver.disconnect(); _gridObserver = null; }
+
+  var firstHtml = '';
+  var firstN = Math.min(filtered.length, GRID_CHUNK);
+  for (var i = 0; i < firstN; i++) firstHtml += buildCard(filtered[i], i);
+  grid.innerHTML = firstHtml;
+
+  if (filtered.length <= GRID_CHUNK) return;
+
+  var rendered = GRID_CHUNK;
+  var sentinel = document.createElement('div');
+  sentinel.className = 'grid-sentinel';
+  sentinel.style.cssText = 'grid-column:1/-1;height:1px';
+  grid.appendChild(sentinel);
+
+  function appendChunk() {
+    var next = Math.min(filtered.length, rendered + GRID_CHUNK);
+    var html = '';
+    for (var j = rendered; j < next; j++) html += buildCard(filtered[j], j);
+    sentinel.insertAdjacentHTML('beforebegin', html);
+    rendered = next;
+    if (rendered >= filtered.length) {
+      if (_gridObserver) { _gridObserver.disconnect(); _gridObserver = null; }
+      sentinel.remove();
+    }
+  }
+
+  if ('IntersectionObserver' in window) {
+    _gridObserver = new IntersectionObserver(function(entries) {
+      if (entries[0].isIntersecting) appendChunk();
+    }, { rootMargin: '1200px' });
+    _gridObserver.observe(sentinel);
+  } else {
+    // Ancient browser: render everything (old behaviour)
+    while (rendered < filtered.length) appendChunk();
+  }
 }
 
 function escapeHtml(str) {
@@ -1807,10 +1898,11 @@ function renderReleaseDetail(data, resultItem) {
       if (activeStores.indexOf(s.store) === -1) return;
       var cls = storeClassMap[s.store] || '';
       var name = storeDisplayName[s.store] || s.store;
+      var sUrl = storeSearchUrl(s, resultItem.item);
       var shippingHtml = s.usShipping ? '<span class="shipping">+' + s.usShipping + ' US ship</span>' : '';
 
       if (s.linkOnly) {
-        html += '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' link-only-row">' +
+        html += '<a href="' + sUrl + '" target="_blank" class="store-row ' + cls + ' link-only-row">' +
           '<span class="store-status link-only-dot"></span>' +
           '<span class="store-name">' + name + '</span>' +
           '<span class="match-info"><span class="link-only">Go to Store</span></span>' +
@@ -1820,17 +1912,17 @@ function renderReleaseDetail(data, resultItem) {
         var cheapest = s.matches.reduce(function(min, m) { return parsePrice(m.price) < parsePrice(min.price) ? m : min; }, s.matches[0]);
         var verifyId = 'verify-' + s.store.replace(/[^a-zA-Z]/g, '') + '-' + (data.id || '');
         html += '<div class="store-row-wrap">' +
-          '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' in-stock-row">' +
+          '<a href="' + sUrl + '" target="_blank" class="store-row ' + cls + ' in-stock-row">' +
           '<span class="store-status in-stock"></span>' +
           '<span class="store-name">' + name + '</span>' +
           '<span class="match-info">' + escapeHtml(cheapest.title || '') + '</span>' +
           '<span class="price">' + escapeHtml(cheapest.price || '') + '</span>' +
           shippingHtml +
           '<span class="arrow">&rarr;</span></a>' +
-          '<button class="verify-btn" id="' + verifyId + '" onclick="verifyStore(\'' + escapeHtml(s.store) + '\', \'' + escapeHtml(s.searchUrl) + '\', \'' + escapeHtml(resultItem.item.artist) + '\', \'' + escapeHtml(resultItem.item.title) + '\', ' + (data.id || 0) + ', this); event.stopPropagation();">Verify</button>' +
+          '<button class="verify-btn" id="' + verifyId + '" onclick="verifyStore(\'' + escapeHtml(s.store) + '\', \'' + escapeHtml(sUrl) + '\', \'' + escapeHtml(resultItem.item.artist) + '\', \'' + escapeHtml(resultItem.item.title) + '\', ' + (data.id || 0) + ', this); event.stopPropagation();">Verify</button>' +
           '</div>';
       } else {
-        html += '<a href="' + s.searchUrl + '" target="_blank" class="store-row ' + cls + ' out-of-stock">' +
+        html += '<a href="' + sUrl + '" target="_blank" class="store-row ' + cls + ' out-of-stock">' +
           '<span class="store-status not-found"></span>' +
           '<span class="store-name">' + name + '</span>' +
           '<span class="match-info"><span class="not-found">Not found</span></span>' +
@@ -2229,7 +2321,13 @@ document.getElementById('filterToggle').addEventListener('click', function() {
 });
 
 // Event listeners
-document.getElementById('search').addEventListener('input', render);
+// Debounced: rebuilding the grid on every keystroke locks the main thread on
+// large wantlists; 180ms after the last keypress feels instant and renders once.
+var _searchDebounce = null;
+document.getElementById('search').addEventListener('input', function() {
+  clearTimeout(_searchDebounce);
+  _searchDebounce = setTimeout(render, 180);
+});
 document.getElementById('sort').addEventListener('change', render);
 // Genre/style tag click handlers are attached dynamically in updateFilters()
 
@@ -7374,6 +7472,18 @@ function renderProfile(p) {
           '<div class="prof-section-title">Stores with your records</div>' +
           storeHtml +
         '</div>' +
+        (isOwn
+          ? '<div class="prof-section" id="alertsSection">' +
+              '<div class="prof-section-title">Stock Alerts <span class="prof-section-sub">email digest</span></div>' +
+              '<div class="alerts-desc">Get one email when records on your wantlist come back in stock or drop in price. No spam — only when something changes.</div>' +
+              '<div class="alerts-form">' +
+                '<input type="email" class="alerts-email-input" id="alertsEmail" placeholder="you@email.com" autocomplete="email">' +
+                '<label class="alerts-toggle"><input type="checkbox" id="alertsEnabled"><span>Alerts on</span></label>' +
+              '</div>' +
+              '<button class="alerts-save-btn" id="alertsSaveBtn" onclick="saveAlertPrefs()">Save</button>' +
+              '<span class="alerts-status" id="alertsStatus"></span>' +
+            '</div>'
+          : '') +
       '</div>' +
 
       // Right column
@@ -7410,6 +7520,72 @@ function renderProfile(p) {
   // Load collection + diggers async
   _loadProfileCollection(p.username, isOwn);
   _loadDiggers(p.username);
+  if (isOwn) loadAlertPrefs();
+}
+
+// ── Stock alert preferences (Profile → Stock Alerts) ────────────────────────
+function loadAlertPrefs() {
+  var username = getCurrentUsername();
+  if (!username) return;
+  fetch('api/preferences/' + encodeURIComponent(username))
+    .then(function(r) { return r.json(); })
+    .then(function(prefs) {
+      var emailEl = document.getElementById('alertsEmail');
+      var toggleEl = document.getElementById('alertsEnabled');
+      if (emailEl && prefs.email) emailEl.value = prefs.email;
+      if (toggleEl) toggleEl.checked = !!prefs.email_alerts;
+    })
+    .catch(function() {});
+}
+
+function saveAlertPrefs() {
+  var username = getCurrentUsername();
+  if (!username) return;
+  var emailEl  = document.getElementById('alertsEmail');
+  var toggleEl = document.getElementById('alertsEnabled');
+  var statusEl = document.getElementById('alertsStatus');
+  var email = (emailEl && emailEl.value || '').trim();
+  var enabled = !!(toggleEl && toggleEl.checked);
+
+  if (enabled && !email) {
+    if (statusEl) { statusEl.textContent = 'Enter an email to turn alerts on'; statusEl.className = 'alerts-status err'; }
+    return;
+  }
+
+  // Fetch current prefs first so we don't clobber shipping/condition settings
+  fetch('api/preferences/' + encodeURIComponent(username))
+    .then(function(r) { return r.json(); })
+    .then(function(prefs) {
+      return fetch('api/preferences/' + encodeURIComponent(username), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          countryCode: prefs.country_code || null,
+          postcode: prefs.postcode || null,
+          minCondition: prefs.min_condition || 'VG+',
+          minSellerRating: prefs.min_seller_rating != null ? prefs.min_seller_rating : 98.0,
+          maxPriceUsd: prefs.max_price_usd || null,
+          currency: prefs.currency || 'USD',
+          email: email,
+          emailAlerts: enabled
+        })
+      });
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(saved) {
+      if (statusEl) {
+        if (saved && saved.error) {
+          statusEl.textContent = saved.error;
+          statusEl.className = 'alerts-status err';
+        } else {
+          statusEl.textContent = enabled ? 'Alerts on — you’ll get a digest when stock changes' : 'Saved';
+          statusEl.className = 'alerts-status ok';
+        }
+      }
+    })
+    .catch(function() {
+      if (statusEl) { statusEl.textContent = 'Could not save — try again'; statusEl.className = 'alerts-status err'; }
+    });
 }
 
 function _loadProfileCollection(username, isOwn) {

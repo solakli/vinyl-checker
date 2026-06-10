@@ -708,6 +708,23 @@ body {
 }
 
 .store-badge .store-name { font-weight: 500; }
+/* Store had a high error rate on the last scan — results incomplete */
+.store-badge.store-unreliable::after {
+  content: '!';
+  font-family: 'Oswald', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  color: #c8a44a;
+  border: 1px solid rgba(200, 164, 74, 0.55);
+  border-radius: 50%;
+  width: 13px;
+  height: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 2px;
+}
 .store-badge .count {
   font-family: 'Oswald', sans-serif;
   font-size: 13px;
@@ -1046,17 +1063,67 @@ body.light .store-row.link-only-row:hover { border-color: rgba(0,0,0,0.15); }
 /* WELCOME */
 .welcome {
   text-align: center;
-  padding: 80px 20px 60px;
-  max-width: 520px;
+  padding: 56px 20px 60px;
+  max-width: 560px;
   margin: 0 auto;
+}
+
+/* ── Spinning vinyl hero art (pure CSS, no asset download) ── */
+.welcome-vinyl {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 28px;
+}
+.welcome-vinyl-disc {
+  position: relative;
+  width: 148px;
+  height: 148px;
+  border-radius: 50%;
+  background:
+    repeating-radial-gradient(circle at center,
+      #0a0a0a 0px, #181818 1.5px, #0a0a0a 3px);
+  box-shadow:
+    0 0 0 1px rgba(168, 184, 200, 0.18),
+    0 18px 60px rgba(0, 0, 0, 0.65),
+    0 0 80px rgba(168, 184, 200, 0.08);
+  animation: vinyl-spin 9s linear infinite;
+}
+.welcome-vinyl-sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 160deg,
+    transparent 0deg, rgba(255,255,255,0.07) 24deg, transparent 60deg,
+    transparent 180deg, rgba(255,255,255,0.05) 210deg, transparent 245deg);
+}
+.welcome-vinyl-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.welcome-vinyl-label img {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 14px #101010, 0 0 0 15px rgba(168,184,200,0.25);
+}
+@keyframes vinyl-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .welcome-vinyl-disc { animation: none; }
 }
 
 .welcome-hero h2 {
   font-family: 'Oswald', sans-serif;
-  font-size: 42px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 4px;
+  font-size: 52px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 6px;
   color: var(--text);
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+  text-shadow: 0 0 50px rgba(168, 184, 200, 0.25);
 }
 
 .welcome-hero h2 span { color: var(--silver); }
@@ -1065,8 +1132,41 @@ body.light .store-row.link-only-row:hover { border-color: rgba(0,0,0,0.15); }
   font-family: 'Inter', sans-serif;
   font-size: 15px; font-weight: 400;
   color: var(--text-muted); letter-spacing: 0;
-  margin-bottom: 40px;
+  margin-bottom: 24px;
   line-height: 1.6;
+}
+
+/* ── Proof strip: stores / records / cadence ── */
+.welcome-proof {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  margin-bottom: 36px;
+}
+.welcome-proof-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.welcome-proof-item strong {
+  font-family: 'Oswald', sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--silver);
+  letter-spacing: 1px;
+}
+.welcome-proof-item span {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-muted);
+}
+.welcome-proof-sep {
+  width: 1px;
+  height: 28px;
+  background: var(--border);
 }
 
 .welcome-actions { margin-bottom: 40px; }
@@ -5154,6 +5254,14 @@ body.light .wl-style-pill.active { background: rgba(168, 184, 200,0.12); color: 
 .mobile-tab-icon {
   font-size: 14px;
   line-height: 1;
+  display: inline-flex;
+}
+.mobile-tab-icon svg {
+  width: 18px;
+  height: 18px;
+}
+.mobile-tab.active .mobile-tab-icon svg {
+  filter: drop-shadow(0 0 6px rgba(168, 184, 200, 0.45));
 }
 
 .mobile-tab-label {
@@ -6599,6 +6707,64 @@ body.light .disc-fy-statline { color: #aaa; }
   border-radius: 8px;
   padding: 18px 20px;
 }
+
+/* ── Stock Alerts (email digest) ── */
+.alerts-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.55;
+  margin-bottom: 14px;
+}
+.alerts-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.alerts-email-input {
+  flex: 1;
+  min-width: 180px;
+  padding: 9px 12px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  background: #0c0c0c;
+  border: 1px solid #262626;
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.alerts-email-input:focus { border-color: rgba(168, 184, 200, 0.5); }
+.alerts-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.alerts-toggle input { accent-color: #a8b8c8; width: 15px; height: 15px; cursor: pointer; }
+.alerts-save-btn {
+  padding: 8px 22px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: #0c0c0c;
+  background: var(--silver);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.alerts-save-btn:hover { background: #c0cdd9; }
+.alerts-status { font-size: 11px; margin-left: 10px; }
+.alerts-status.ok  { color: #3fb96d; }
+.alerts-status.err { color: #d66; }
 .prof-section-title {
   font-family: 'Oswald', sans-serif;
   font-size: 11px;

@@ -363,6 +363,10 @@ function initTables() {
     try { db.exec('ALTER TABLE users ADD COLUMN last_seen_at TEXT'); } catch(e) {}
     // shipping_to_usd: buyer's personalized shipping cost extracted from Discogs marketplace page
     try { db.exec('ALTER TABLE discogs_listings ADD COLUMN shipping_to_usd REAL'); } catch(e) {}
+    // Email stock alerts: address + opt-in on prefs, dedupe stamp on changes
+    try { db.exec('ALTER TABLE user_preferences ADD COLUMN email TEXT'); } catch(e) {}
+    try { db.exec('ALTER TABLE user_preferences ADD COLUMN email_alerts INTEGER DEFAULT 0'); } catch(e) {}
+    try { db.exec('ALTER TABLE scan_changes ADD COLUMN alerted_at TEXT'); } catch(e) {}
     // Cart enrichment columns
     try { db.exec('ALTER TABLE cart ADD COLUMN condition TEXT'); } catch(e) {}
     try { db.exec('ALTER TABLE cart ADD COLUMN ships_from TEXT'); } catch(e) {}
@@ -1843,8 +1847,8 @@ function saveUserPreferences(userId, prefs) {
     var now = new Date().toISOString();
     d.prepare(`
         INSERT INTO user_preferences
-            (user_id, country_code, postcode, min_condition, min_seller_rating, max_price_usd, currency, updated_at)
-        VALUES (?,?,?,?,?,?,?,?)
+            (user_id, country_code, postcode, min_condition, min_seller_rating, max_price_usd, currency, email, email_alerts, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(user_id) DO UPDATE SET
             country_code = excluded.country_code,
             postcode = excluded.postcode,
@@ -1852,6 +1856,8 @@ function saveUserPreferences(userId, prefs) {
             min_seller_rating = excluded.min_seller_rating,
             max_price_usd = excluded.max_price_usd,
             currency = excluded.currency,
+            email = excluded.email,
+            email_alerts = excluded.email_alerts,
             updated_at = excluded.updated_at
     `).run(
         userId,
@@ -1861,9 +1867,52 @@ function saveUserPreferences(userId, prefs) {
         prefs.minSellerRating != null ? prefs.minSellerRating : 98.0,
         prefs.maxPriceUsd || null,
         prefs.currency || 'USD',
+        prefs.email !== undefined ? (prefs.email || null) : null,
+        prefs.emailAlerts ? 1 : 0,
         now
     );
     return getUserPreferences(userId);
+}
+
+// ─── Email stock alerts ──────────────────────────────────────────────────────
+
+// Users who opted into email alerts and have an address on file
+function getAlertSubscribers() {
+    return getDb().prepare(`
+        SELECT u.id as user_id, u.username, p.email
+        FROM user_preferences p
+        JOIN users u ON u.id = p.user_id
+        WHERE p.email_alerts = 1 AND p.email IS NOT NULL AND p.email != ''
+    `).all();
+}
+
+// Un-alerted positive changes (new stock / price drops) for a user,
+// joined with the release so the email can show artist/title/price.
+function getUnalertedChanges(userId, limit) {
+    return getDb().prepare(`
+        SELECT sc.id, sc.change_type, sc.store, sc.new_value, sc.detected_at,
+               w.artist, w.title, w.thumb, w.discogs_id
+        FROM scan_changes sc
+        JOIN wantlist w ON w.id = sc.wantlist_id
+        WHERE sc.user_id = ?
+          AND sc.alerted_at IS NULL
+          AND sc.dismissed = 0
+          AND sc.change_type IN ('now_in_stock', 'price_drop')
+          AND w.active = 1
+        ORDER BY sc.detected_at DESC
+        LIMIT ?
+    `).all(userId, limit || 30);
+}
+
+function markChangesAlerted(changeIds) {
+    if (!changeIds || !changeIds.length) return;
+    var d = getDb();
+    var now = new Date().toISOString();
+    var stmt = d.prepare('UPDATE scan_changes SET alerted_at = ? WHERE id = ?');
+    var tx = d.transaction(function (ids) {
+        ids.forEach(function (id) { stmt.run(now, id); });
+    });
+    tx(changeIds);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2619,6 +2668,9 @@ module.exports = {
     getListingCacheAge: getListingCacheAge,
     getUserPreferences: getUserPreferences,
     saveUserPreferences: saveUserPreferences,
+    getAlertSubscribers: getAlertSubscribers,
+    getUnalertedChanges: getUnalertedChanges,
+    markChangesAlerted: markChangesAlerted,
     createOptimizerJob: createOptimizerJob,
     getOptimizerJob: getOptimizerJob,
     getLatestCompletedOptimization: getLatestCompletedOptimization,

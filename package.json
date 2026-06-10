@@ -20,6 +20,7 @@
     "@anthropic-ai/sdk": "^0.90.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.8.0",
+    "compression": "^1.8.1",
     "discogs-marketplace-api-nodejs": "^1.16.7",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",

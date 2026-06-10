@@ -115,8 +115,22 @@ process.on('unhandledRejection', function (e) {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Gzip everything — app.js (366KB) and /api/results (1MB+) shrink ~80% on the wire.
+// Threshold 1KB so tiny JSON responses skip the overhead.
+app.use(require('compression')({ threshold: 1024 }));
+
 // Serve static files from public/
-app.use(express.static(path.join(__dirname, 'public')));
+// Images are immutable in practice (logos, brand art) — cache 7 days.
+// js/css use etag revalidation (304s) since filenames aren't content-hashed.
+app.use(express.static(path.join(__dirname, 'public'), {
+    setHeaders: function (res, filePath) {
+        if (/\.(png|jpg|jpeg|webp|svg|ico)$/i.test(filePath)) {
+            res.setHeader('Cache-Control', 'public, max-age=604800');
+        } else if (/\.(js|css)$/i.test(filePath)) {
+            res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+        }
+    }
+}));
 
 // Clean URL: /extension → extension.html
 app.get('/extension', function (req, res) {
@@ -866,6 +880,16 @@ app.get('/api/results/:username', function (req, res) {
     try {
         var user = db.getOrCreateUser(req.params.username.trim());
         var results = db.getFullResults(user.id);
+        // Slim store entries: ~70% of the payload was out-of-stock entries carrying
+        // searchUrl/usShipping/checkedAt nobody renders. The client rebuilds search
+        // URLs from item.searchQuery (storeSearchUrl in app.js). Entries with stock,
+        // linkOnly mode, or errors keep their full shape.
+        results.forEach(function (r) {
+            r.stores = r.stores.map(function (s) {
+                if (s.inStock || s.linkOnly || s.error) return s;
+                return { store: s.store, inStock: false, checkedAt: s.checkedAt };
+            });
+        });
         res.json({
             username: req.params.username,
             total: results.length,
@@ -1059,13 +1083,19 @@ app.get('/api/preferences/:username', function (req, res) {
 // POST /api/preferences/:username — save preferences
 app.post('/api/preferences/:username', function (req, res) {
     var user = db.getOrCreateUser(req.params.username);
+    var email = typeof req.body.email === 'string' ? req.body.email.trim().substring(0, 254) : '';
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ error: 'Invalid email address' });
+    }
     var saved = db.saveUserPreferences(user.id, {
         countryCode: req.body.countryCode,
         postcode: req.body.postcode,
         minCondition: req.body.minCondition || 'VG+',
         minSellerRating: req.body.minSellerRating != null ? parseFloat(req.body.minSellerRating) : 98.0,
         maxPriceUsd: req.body.maxPriceUsd ? parseFloat(req.body.maxPriceUsd) : null,
-        currency: req.body.currency || 'USD'
+        currency: req.body.currency || 'USD',
+        email: email || null,
+        emailAlerts: !!req.body.emailAlerts && !!email
     });
     res.json(saved);
 });
@@ -1253,8 +1283,13 @@ app.post('/api/trigger', function (req, res) {
                 .catch(function (e) { scanner.trackJobRun('validate', false, e.message); });
         }, 5 * 60 * 1000); // validate 5 min after daily starts
         res.json({ triggered: 'daily+validate', at: new Date().toISOString() });
+    } else if (job === 'email-alerts') {
+        require('./lib/email-alerts').sendStockAlerts()
+            .then(function (r) { console.log('[email-alerts] Manual trigger result:', JSON.stringify(r)); })
+            .catch(function (e) { console.error('[email-alerts] Manual trigger failed:', e.message); });
+        res.json({ triggered: 'email-alerts', at: new Date().toISOString() });
     } else {
-        res.status(400).json({ error: 'unknown job, use: daily, validate, catalog-match, all' });
+        res.status(400).json({ error: 'unknown job, use: daily, validate, catalog-match, email-alerts, all' });
     }
 });
 
@@ -3332,6 +3367,37 @@ app.get('/api/health', function (req, res) {
         // Store results breakdown
         var storeStats = d.prepare("SELECT store, COUNT(*) as total, SUM(CASE WHEN in_stock=1 THEN 1 ELSE 0 END) as in_stock, SUM(CASE WHEN error IS NOT NULL AND error != '' THEN 1 ELSE 0 END) as errors FROM store_results GROUP BY store").all();
 
+        // Dead-scraper canary: a store that is still being checked but hasn't
+        // produced a single in-stock result in 5+ days almost certainly has a
+        // broken selector silently returning 0 products (e.g. Juno, May 2026).
+        // Link-only stores are exempt — they never report stock by design.
+        var storeCanary = [];
+        try {
+            var canaryRows = d.prepare(
+                "SELECT store," +
+                "  MAX(CASE WHEN in_stock=1 THEN checked_at END) as last_in_stock_at," +
+                "  MAX(checked_at) as last_checked_at," +
+                "  SUM(CASE WHEN link_only=1 THEN 1 ELSE 0 END) as link_only_rows," +
+                "  COUNT(*) as total_rows" +
+                " FROM store_results GROUP BY store"
+            ).all();
+            var nowMs = Date.now();
+            canaryRows.forEach(function (c) {
+                if (c.link_only_rows > c.total_rows / 2) return; // link-only store
+                var checkedRecently = c.last_checked_at && (nowMs - new Date(c.last_checked_at).getTime()) < 48 * 3600000;
+                var stockAgeDays = c.last_in_stock_at ? (nowMs - new Date(c.last_in_stock_at).getTime()) / 86400000 : null;
+                if (checkedRecently && (stockAgeDays === null || stockAgeDays > 5)) {
+                    storeCanary.push({
+                        store: c.store,
+                        lastInStockAt: c.last_in_stock_at,
+                        lastCheckedAt: c.last_checked_at,
+                        daysSinceStock: stockAgeDays === null ? null : Math.round(stockAgeDays),
+                        warning: 'Checked recently but no in-stock results in ' + (stockAgeDays === null ? 'ever' : Math.round(stockAgeDays) + ' days') + ' — selector may be broken'
+                    });
+                }
+            });
+        } catch (canaryErr) { /* non-fatal */ }
+
         // Most sought tracks (in stock at most stores)
         var mostSought = d.prepare("SELECT w.artist, w.title, w.year, COUNT(DISTINCT sr.store) as store_count FROM store_results sr JOIN wantlist w ON w.id = sr.wantlist_id WHERE sr.in_stock = 1 GROUP BY sr.wantlist_id ORDER BY store_count DESC LIMIT 15").all();
 
@@ -3448,6 +3514,7 @@ app.get('/api/health', function (req, res) {
             monitor: healthState,
             users: userSummary,
             storeStats: storeStats,
+            storeCanary: storeCanary,
             mostSought: mostSought,
             mostExpensive: mostExpensive,
             cheapestFinds: cheapestItems,
@@ -4246,6 +4313,19 @@ app.listen(PORT, function () {
             .catch(function(e) { console.error('[catalog-sync] Fatal error:', e.message); });
         // runCatalogMatch fires inside syncStaleStores after any sync completes
     }, DAILY_CHECK_INTERVAL);
+
+    // Stock-alert email digest — once per day, offset 30 min after the catalog
+    // cycle so freshly detected changes ride along. No-op without RESEND_API_KEY;
+    // dedupe via scan_changes.alerted_at makes repeat runs safe.
+    var emailAlerts = require('./lib/email-alerts');
+    setInterval(function () {
+        emailAlerts.sendStockAlerts()
+            .catch(function (e) { console.error('[email-alerts] Fatal:', e.message); });
+    }, DAILY_CHECK_INTERVAL);
+    setTimeout(function () {
+        emailAlerts.sendStockAlerts()
+            .catch(function (e) { console.error('[email-alerts] Startup fatal:', e.message); });
+    }, 35 * 60 * 1000);
 
     // Also run once on startup (after 5 min — gives manual scans priority window)
     setTimeout(function () {

@@ -8,14 +8,16 @@
 <!-- Open Graph / Social -->
 <meta property="og:title" content="Wax Digger — Find Your Vinyl Wantlist In Stock">
 <meta property="og:description" content="Search 12 record stores at once. Find what's in stock from your Discogs wantlist and build the cheapest cart — shipping included.">
-<meta property="og:image" content="https://waxdigger.ai/vinyl/img/brand/icon512.png">
+<meta property="og:image" content="https://waxdigger.ai/img/brand/og-card.jpg">
+<meta property="og:image:width" content="2400">
+<meta property="og:image:height" content="1260">
 <meta property="og:url" content="https://waxdigger.ai/vinyl/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Wax Digger">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Wax Digger — Find Your Vinyl Wantlist In Stock">
 <meta name="twitter:description" content="Search 12 record stores at once. Find what's in stock from your Discogs wantlist and build the cheapest cart — shipping included.">
-<meta name="twitter:image" content="https://waxdigger.ai/vinyl/img/brand/icon512.png">
+<meta name="twitter:image" content="https://waxdigger.ai/img/brand/og-card.jpg">
 <link rel="canonical" href="https://waxdigger.ai/vinyl/">
 <!-- PWA -->
 <link rel="icon" type="image/png" href="img/brand/logo-waxdigger.png">
@@ -107,24 +109,24 @@
 
 <!-- ═══ MOBILE BOTTOM TAB BAR ═══ -->
 <div class="mobile-tabs" id="mobileTabs">
-  <button class="mobile-tab active" data-view="cart" onclick="switchView('cart',null)">
-    <span class="mobile-tab-icon">🛒</span>
+  <button class="mobile-tab active" data-view="cart" onclick="switchView('cart',null)" aria-label="Cart">
+    <span class="mobile-tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/><path d="M3 4h2.4l2.2 11.2a1.6 1.6 0 0 0 1.6 1.3h7.9a1.6 1.6 0 0 0 1.6-1.3L20.5 8H6.2"/></svg></span>
     <span class="mobile-tab-label">Cart</span>
   </button>
-  <button class="mobile-tab" data-view="discover" onclick="switchView('discover',null)">
-    <span class="mobile-tab-icon">◎</span>
+  <button class="mobile-tab" data-view="discover" onclick="switchView('discover',null)" aria-label="Discover">
+    <span class="mobile-tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polygon points="14.8,9.2 13,14.8 9.2,14.8 11,9.2" fill="currentColor" stroke="none"/></svg></span>
     <span class="mobile-tab-label">Discover</span>
   </button>
-  <button class="mobile-tab" data-view="wantlist" onclick="switchView('wantlist',null)">
-    <span class="mobile-tab-icon">◈</span>
+  <button class="mobile-tab" data-view="wantlist" onclick="switchView('wantlist',null)" aria-label="Wantlist">
+    <span class="mobile-tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.6"/><path d="M12 3a9 9 0 0 1 9 9" opacity="0.45"/></svg></span>
     <span class="mobile-tab-label">Wantlist</span>
   </button>
-  <button class="mobile-tab" data-view="collection" onclick="switchView('collection',null)">
-    <span class="mobile-tab-icon">▦</span>
+  <button class="mobile-tab" data-view="collection" onclick="switchView('collection',null)" aria-label="My Collection">
+    <span class="mobile-tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V6"/><path d="M9 20V4"/><path d="M14 20V7"/><path d="M19 20V5"/><path d="M3 20h18"/></svg></span>
     <span class="mobile-tab-label">Collection</span>
   </button>
-  <button class="mobile-tab" data-view="profile" onclick="switchView('profile',null)">
-    <span class="mobile-tab-icon">◉</span>
+  <button class="mobile-tab" data-view="profile" onclick="switchView('profile',null)" aria-label="Profile">
+    <span class="mobile-tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.2" r="3.6"/><path d="M4.8 19.4a7.6 7.6 0 0 1 14.4 0"/></svg></span>
     <span class="mobile-tab-label">Profile</span>
   </button>
 </div>
@@ -275,8 +277,21 @@
 
     <div id="welcome" class="welcome" style="display:none">
       <div class="welcome-hero">
+        <div class="welcome-vinyl" aria-hidden="true">
+          <div class="welcome-vinyl-disc">
+            <div class="welcome-vinyl-sheen"></div>
+            <div class="welcome-vinyl-label"><img src="img/brand/logo-waxdigger.png" alt=""></div>
+          </div>
+        </div>
         <h2><span>Wax</span> Digger</h2>
-        <p class="welcome-sub">Search 12 stores. See what's in stock. Buy it cheaper.</p>
+        <p class="welcome-sub">Your entire Discogs wantlist, checked against 12 record stores — every day. See what's in stock, build the cheapest cart, dig deeper.</p>
+        <div class="welcome-proof">
+          <div class="welcome-proof-item"><strong>12</strong><span>stores scanned</span></div>
+          <div class="welcome-proof-sep"></div>
+          <div class="welcome-proof-item"><strong>17,000+</strong><span>records tracked</span></div>
+          <div class="welcome-proof-sep"></div>
+          <div class="welcome-proof-item"><strong>Daily</strong><span>restock checks</span></div>
+        </div>
       </div>
       <div class="welcome-actions">
         <button class="welcome-cta" onclick="handleConnectDiscogs()">
