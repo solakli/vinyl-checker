@@ -1,17 +1,23 @@
 :root {
-  --bg: #080808;
+  /* Surfaces: blue-black undertone + slightly lifted cards = depth instead of
+     flat gray-on-gray. Borders carry the same undertone so edges feel lit. */
+  --bg: #0a0a0d;
   --bg-elevated: #000;
-  --card: #111111;
-  --card-hover: #1a1a1a;
-  --border: #222;
-  --border-hover: #333;
+  --card: #121217;
+  --card-hover: #1a1a21;
+  --border: #25252d;
+  --border-hover: #3a3a46;
   --text: #fff;
   --text-sec: #d0d0d0;
   --text-muted: #aaa;   /* was #b0b0b0 — slightly warmer, same readability */
   --text-dim: #888;     /* new: for metadata that needs to step back but stay readable */
   --text-ghost: #666;   /* new: floor for the dimmest readable text */
-  --gold: #A8B8C8;
-  --gold-soft: rgba(168, 184, 200, 0.12);
+  /* Two-tone accent system: cool silver = brand & structure (logo, hero, CTAs),
+     warm champagne gold = interaction & value (hover, focus, active, prices).
+     The warm/cool contrast is what reads as "premium" — when gold was aliased
+     to silver the whole UI collapsed into monochrome. */
+  --gold: #c9a86a;
+  --gold-soft: rgba(201, 168, 106, 0.12);
   --silver: #A8B8C8;
   --silver-soft: rgba(168, 184, 200, 0.12);
   --red: #e05555;
@@ -555,7 +561,7 @@ body {
   padding: 28px 32px;
   margin: 20px 0 0;
   background: #0d0d0d;
-  border: 1px solid #1e1e1e;
+  border: 1px solid var(--border);
   border-radius: 12px;
 }
 .results-hero-body { display: flex; flex-direction: column; gap: 4px; }
@@ -602,7 +608,7 @@ body {
 /* ── In Stock By Store summary ── */
 .wl-store-summary {
   background: #0d0d0d;
-  border: 1px solid #1e1e1e;
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 20px 24px;
   margin: 16px 0 0;
@@ -1392,8 +1398,9 @@ body.light {
   --text: #000;
   --text-sec: #333;
   --text-muted: #666;
-  --gold: var(--silver);
-  --gold-soft: rgba(168, 184, 200, 0.06);
+  /* Light mode: darker bronze so the warm accent keeps contrast on white */
+  --gold: #9a7c45;
+  --gold-soft: rgba(154, 124, 69, 0.10);
   --hhv: #e05500;
   --deejay: #222;
   --phonica: #cc4444;
@@ -1630,7 +1637,7 @@ body.light .info-tip:hover { background: #333; border-color: #333; color: #fff; 
 
 .info-modal-content {
   position: relative;
-  background: #111;
+  background: var(--card);
   border: 1px solid #2a2a2a;
   border-radius: 12px;
   max-width: 460px;
@@ -1720,7 +1727,7 @@ body.light .info-tip:hover { background: #333; border-color: #333; color: #fff; 
 }
 .info-modal-body .info-tier-list li {
   padding: 8px 0;
-  border-top: 1px solid #1e1e1e;
+  border-top: 1px solid var(--border);
   font-size: 13px;
   display: flex;
   align-items: baseline;
@@ -3199,7 +3206,7 @@ body.light .opt-shipping-row { background: rgba(0,0,0,0.03); }
   align-items: center;
   padding: 0 24px;
   height: 56px;
-  background: #111;
+  background: var(--card);
   border-bottom: 1px solid #2a2a2a;
   position: sticky;
   top: 0;
@@ -3302,8 +3309,8 @@ body.light .opt-shipping-row { background: rgba(0,0,0,0.03); }
 }
 
 .card-v2 {
-  background: #111;
-  border: 1px solid #1e1e1e;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
   cursor: pointer;
@@ -3621,8 +3628,8 @@ body.light .opt-shipping-row { background: rgba(0,0,0,0.03); }
 }
 .sb-stat-box {
   flex: 1;
-  background: #111;
-  border: 1px solid #1e1e1e;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 14px 12px;
   text-align: center;
@@ -3649,7 +3656,7 @@ body.light .opt-shipping-row { background: rgba(0,0,0,0.03); }
 /* ── Sidebar cheapest finds ── */
 .sb-finds {
   background: #0d0d0d;
-  border: 1px solid #1e1e1e;
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 20px;
   margin-top: 12px;
@@ -3668,7 +3675,7 @@ body.light .opt-shipping-row { background: rgba(0,0,0,0.03); }
   align-items: center;
   gap: 10px;
   padding: 9px 0;
-  border-bottom: 1px solid #1e1e1e;
+  border-bottom: 1px solid var(--border);
   cursor: pointer;
   transition: background 0.12s;
   border-radius: 4px;
@@ -3718,7 +3725,7 @@ body.light .opt-shipping-row { background: rgba(0,0,0,0.03); }
 
 .sidebar-optimizer {
   background: #0d0d0d;
-  border: 1px solid #1e1e1e;
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 24px 20px;
 }
@@ -3915,6 +3922,7 @@ body.light .opt-shipping-row { background: rgba(0,0,0,0.03); }
 /* Light mode overrides for new elements */
 body.light .navbar { background: #f5f5f5; border-bottom-color: #ddd; }
 body.light .navbar-logo span:first-of-type { color: var(--silver); }
+body.light .navbar-logo-word { color: #111; }
 body.light .navbar-nav a { color: #555; }
 body.light .navbar-nav a:hover, body.light .navbar-nav a.active { color: #111; }
 body.light .app-sidebar .sidebar-optimizer { background: #f9f9f9; border-color: #e0e0e0; }
@@ -4241,7 +4249,7 @@ body.light .coming-soon-sub { color: #aaa !important; }
   border-radius: 4px;
   overflow: hidden;
   flex-shrink: 0;
-  background: #111;
+  background: var(--card);
 }
 .dash-find-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .dash-find-nothumb { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #444; font-size: 16px; }
@@ -4443,7 +4451,7 @@ body.light .dash-stat-label { color: #999; }
 .disc-art {
   width: 160px;
   height: 160px;
-  background: #111;
+  background: var(--card);
   position: relative;
   flex-shrink: 0;
   overflow: hidden;
@@ -4727,7 +4735,7 @@ body.light .disc-art-skel, body.light .disc-skel-line {
 /* ── Collection: Underground Score headline card ─────────────────────────── */
 .coll-gem-card {
   background: linear-gradient(180deg, #0e0e0e, #0a0a0a);
-  border: 1px solid #1e1e1e;
+  border: 1px solid var(--border);
   border-radius: 14px;
   padding: 22px 24px 20px;
   margin-bottom: 20px;
@@ -4912,8 +4920,8 @@ body.light .cgc-card-foot { border-top-color: #e0e0e0; color: #666; }
 
 /* ── Collection genre chart card ── */
 .coll-genre-chart {
-  background: #111;
-  border: 1px solid #1e1e1e;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 14px;
   padding: 24px 24px 20px;
   margin-bottom: 28px;
@@ -5007,7 +5015,7 @@ body.light .cgc-card-foot { border-top-color: #e0e0e0; color: #666; }
 .coll-art-wrap {
   width: 100%;
   aspect-ratio: 1;
-  background: #111;
+  background: var(--card);
   overflow: hidden;
   position: relative;
 }
@@ -5297,7 +5305,7 @@ body.light .wl-style-pill.active { background: rgba(168, 184, 200,0.12); color: 
 }
 .mobile-goldie-fab:active { transform: scale(0.92); box-shadow: 0 2px 8px rgba(168, 184, 200,0.4); }
 .mobile-goldie-fab.goldie-open {
-  background: #111;
+  background: var(--card);
   border: 2px solid var(--silver);
   box-shadow: 0 4px 16px rgba(168, 184, 200,0.3);
 }
@@ -5533,8 +5541,8 @@ body.light .mobile-goldie-fab { box-shadow: 0 4px 16px rgba(168, 184, 200,0.4); 
 
 /* ─── Store card ─── */
 .disc-store-card {
-  background: #111;
-  border: 1px solid #1e1e1e;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
   transition: border-color 0.15s;
@@ -5632,7 +5640,7 @@ body.light .mobile-goldie-fab { box-shadow: 0 4px 16px rgba(168, 184, 200,0.4); 
 /* ─── Expanded item list ─── */
 .disc-item-list {
   display: none;
-  border-top: 1px solid #1e1e1e;
+  border-top: 1px solid var(--border);
 }
 .disc-store-card.expanded .disc-item-list { display: block; }
 
@@ -5946,8 +5954,8 @@ body.light .disc-item-discogs-forsale { color: #aaa; }
 
 /* ─── Individual For You card ─── */
 .disc-fy-card {
-  background: #111;
-  border: 1px solid #1e1e1e;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
@@ -6322,8 +6330,8 @@ body.light .disc-wantlist-badge { color: #2d6a4f; background: rgba(255,255,255,0
 }
 
 .disc-dg-card {
-  background: #111;
-  border: 1px solid #1e1e1e;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
@@ -6561,8 +6569,8 @@ body.light .disc-fy-statline { color: #aaa; }
   display: flex;
   align-items: flex-start;
   gap: 28px;
-  background: #111;
-  border: 1px solid #1e1e1e;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 28px;
   margin-bottom: 24px;
@@ -6706,8 +6714,8 @@ body.light .disc-fy-statline { color: #aaa; }
 }
 
 .prof-section {
-  background: #111;
-  border: 1px solid #1e1e1e;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 18px 20px;
 }
@@ -7049,8 +7057,8 @@ body.light .prof-style-pill { background: #f5f5f5; border-color: #e5e5e5; color:
 
 /* ─── Profile: Diggers community panel ─── */
 .prof-diggers-section {
-  background: #111;
-  border: 1px solid #1e1e1e;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 18px 20px;
   margin-top: 20px;
@@ -7169,8 +7177,8 @@ body.light .prof-digger-why      { color: #b8960c; }
 
 /* ─── Profile: Collection panel ─────────────────────────────────────────── */
 .prof-coll-section {
-  background: #111;
-  border: 1px solid #1e1e1e;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 18px 20px;
   margin-top: 20px;
@@ -7400,8 +7408,8 @@ body.light .prof-stat-pill   { background: #f8f8f8; border-color: #e0e0e0; color
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  background: #111;
-  border: 1px solid #1e1e1e;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 14px 16px;
   cursor: pointer;
@@ -7502,8 +7510,8 @@ body.light .disc-digger-dim-val   { color: #bbb; }
   grid-template-columns: repeat(4, 1fr);
   gap: 1px;
   background: #1a1a1a;
-  border-top: 1px solid #1e1e1e;
-  border-bottom: 1px solid #1e1e1e;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   margin: 0 -1px;
 }
 .ti-col {
@@ -7833,7 +7841,7 @@ body.light .goldie-code { background: #fef9e7; color: #7a5e00; border-color: #f0
   padding: 6px 10px; border-bottom: 1px solid #2a2a2a; white-space: nowrap;
 }
 .goldie-table td {
-  padding: 5px 10px; border-bottom: 1px solid #1e1e1e; color: #ccc;
+  padding: 5px 10px; border-bottom: 1px solid var(--border); color: #ccc;
   vertical-align: middle;
 }
 .goldie-table tr:last-child td { border-bottom: none; }
@@ -8987,7 +8995,7 @@ body.light .ti-pct            { color: #777; }
   gap: 8px;
 }
 .disc-seller-row {
-  background: #111;
+  background: var(--card);
   border: 1px solid #222;
   border-radius: 10px;
   padding: 12px 16px;
@@ -9100,7 +9108,7 @@ body.light .disc-seller-thumb-ph { background: #f0f0f0; color: #ccc; }
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  background: #111;
+  background: var(--card);
   border: 1px solid #222;
   border-radius: 20px;
   padding: 6px 13px;
@@ -9155,7 +9163,7 @@ body.light .disc-seller-thumb-ph { background: #f0f0f0; color: #ccc; }
 .welcome-mp-block {
   margin-top: 20px;
   padding: 18px 20px;
-  border: 1px solid #1e1e1e;
+  border: 1px solid var(--border);
   border-radius: 10px;
   background: #0c0c0c;
   display: flex;
@@ -9195,7 +9203,7 @@ body.light .disc-seller-thumb-ph { background: #f0f0f0; color: #ccc; }
   white-space: nowrap;
   transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
-.welcome-discogs-btn:hover { color: var(--silver); border-color: #444; background: #111; }
+.welcome-discogs-btn:hover { color: var(--silver); border-color: #444; background: var(--card); }
 
 /* Light mode */
 body.light .welcome-store-chip { background: #f5f5f5; border-color: #e8e8e8; color: #666; }
@@ -9263,7 +9271,7 @@ body.light .disc-discogs-ext-link { color: #888; }
 .sidebar-ext-hint {
   margin-top: 18px;
   padding-top: 16px;
-  border-top: 1px solid #1e1e1e;
+  border-top: 1px solid var(--border);
 }
 
 .sidebar-ext-divider {
@@ -9412,7 +9420,7 @@ body.light .sidebar-ext-btn:hover { background: rgba(0,0,0,0.06); border-color: 
 }
 
 .card-skel {
-  background: #111;
+  background: var(--card);
   border: 1px solid #1a1a1a;
   border-radius: 12px;
   overflow: hidden;
@@ -10463,3 +10471,53 @@ body.light .cart-group { background:#fff; }
 body.light .cg-item-row:last-child { border-bottom:none; }
 body.light .cart-summary-bar { background:rgba(201,168,76,0.12); }
 body.light .caf-group { background:#f8f8f8; }
+
+/* ═══════════════════════════════════════════════════════════════
+   DEPTH & MATERIAL PASS (June 2026)
+   Surfaces were uniformly flat (#111 + same border everywhere).
+   This layer adds: ambient vignette, card elevation, inset top
+   highlight (simulates overhead light on a surface edge). Dark
+   theme only — light mode keeps clean flat-white material.
+   ═══════════════════════════════════════════════════════════════ */
+
+body:not(.light) {
+  background-image:
+    radial-gradient(1200px 500px at 50% -10%, rgba(168, 184, 200, 0.05), transparent 70%),
+    radial-gradient(900px 600px at 85% 110%, rgba(201, 168, 106, 0.035), transparent 70%);
+  background-attachment: fixed;
+}
+
+body:not(.light) .card-v2,
+body:not(.light) .prof-section,
+body:not(.light) .prof-stat-card,
+body:not(.light) .coll-gem-card,
+body:not(.light) .sb-stat-box,
+body:not(.light) .sb-finds,
+body:not(.light) .results-hero,
+body:not(.light) .wl-store-summary {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+body:not(.light) .card-v2:hover {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+body:not(.light) .modal-content {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 24px 80px rgba(0, 0, 0, 0.7);
+}
+
+/* Focus visibility — keyboard users get the gold ring everywhere */
+.scan-btn:focus-visible,
+.welcome-cta:focus-visible,
+.nav-link:focus-visible,
+.mobile-tab:focus-visible,
+.store-badge:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
