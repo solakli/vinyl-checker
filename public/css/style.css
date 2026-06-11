@@ -2366,10 +2366,12 @@ body.light .changes-details { border-top-color: rgba(0,0,0,0.06); }
   .timestamp { font-size: 9px; margin-bottom: 4px; }
   .controls { flex-direction: column; align-items: stretch; }
   .search-box { width: 100%; font-size: 12px; padding: 8px 12px; }
-  .username-input { width: 100%; font-size: 12px; padding: 8px 12px; }
-  .scan-btn { padding: 10px; font-size: 12px; }
-  .rescan-btn { padding: 8px; font-size: 11px; }
-  .scan-section { flex-direction: column; align-items: stretch; gap: 6px; margin-bottom: 4px; }
+  .username-input { flex: 1 1 130px; width: auto; min-width: 0; font-size: 12px; padding: 8px 12px; }
+  .scan-btn { padding: 10px 14px; font-size: 12px; white-space: nowrap; }
+  .rescan-btn { padding: 8px 10px; font-size: 11px; white-space: nowrap; }
+  /* Single compact row (input flexes, buttons hug) instead of a 3-row stack
+     that pushed results below the fold on phones */
+  .scan-section { flex-direction: row; flex-wrap: wrap; align-items: stretch; gap: 6px; margin-bottom: 4px; }
   .sort-select { font-size: 11px; padding: 6px 8px; }
   .grid { grid-template-columns: 1fr; }
   .theme-toggle { top: 10px; right: 16px; font-size: 9px; padding: 3px 8px; }
@@ -5222,7 +5224,9 @@ body.light .wl-style-pill.active { background: rgba(168, 184, 200,0.12); color: 
   bottom: 0;
   left: 0;
   right: 0;
-  height: 56px;
+  /* safe-area must ADD to the bar height, not eat into the fixed 56px —
+     otherwise notched iPhones squeeze icons+labels into ~22px and clip them */
+  height: calc(56px + env(safe-area-inset-bottom, 0px));
   background: #0d0d0d;
   border-top: 1px solid #222;
   z-index: 300;
