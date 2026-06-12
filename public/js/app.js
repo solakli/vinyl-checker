@@ -1630,6 +1630,16 @@ function navigateModal(direction) {
   }, 150);
 }
 
+// Listing URLs for releases opened from a recommendation chip — keyed by
+// discogs id so renderReleaseDetail can show a "Go to listing" CTA for
+// releases that aren't on the user's own wantlist.
+var _recListingUrls = {};
+
+function openRecDetail(discogsId, listingUrl) {
+  if (listingUrl) _recListingUrls[discogsId] = listingUrl;
+  openReleaseDetail(discogsId);
+}
+
 function openReleaseDetail(discogsId) {
   var overlay = document.getElementById('modalOverlay');
   var content = document.getElementById('modalBody');
@@ -1940,6 +1950,19 @@ function renderReleaseDetail(data, resultItem) {
         '<span class="arrow">&rarr;</span></a>';
     }
     html += '</div>';
+  }
+
+  // Opened from a recommendation chip: prominent CTA back to the listing the
+  // recommendation came from (Discogs seller item or store product page) —
+  // listen first, then buy without hunting for the listing again.
+  var recUrl = _recListingUrls[currentModalId];
+  if (recUrl) {
+    html += '<div class="modal-section modal-rec-cta-wrap">' +
+      '<a class="modal-rec-cta" href="' + escapeHtml(recUrl) + '" target="_blank" rel="noopener">' +
+        '🛒 Go to listing — add to cart' +
+        '<span class="arrow">&rarr;</span>' +
+      '</a>' +
+    '</div>';
   }
 
   // Stock history timeline (loaded async)
@@ -5404,12 +5427,19 @@ function renderCartView() {
           '<div class="cg-extras-label">'+extrasLabel+'</div>'+
           '<div class="caf-chips">'+
             cachedExtras.extras.map(function(e) {
-              var chip = '<span class="cg-extra-chip">';
+              // Clickable when we know the Discogs release: opens the detail
+              // card (tracklist + YouTube playback) so you can listen BEFORE
+              // jumping to the seller. The ↗ still deep-links to the listing.
+              var clickable = !!e.discogsId;
+              var chip = clickable
+                ? '<span class="cg-extra-chip cg-extra-clickable" onclick="openRecDetail('+e.discogsId+', \''+escapeAttr(e.url||'')+'\')" title="Preview & listen">'
+                : '<span class="cg-extra-chip">';
               if (e.thumb) chip += '<img class="cg-extra-thumb" src="'+escapeHtml(e.thumb)+'" loading="lazy" alt="" onerror="this.style.display=\'none\'">';
               chip += '<span class="cg-extra-info"><em>'+escapeHtml(e.artist||'')+'</em> '+escapeHtml(e.title||'')+'</span>';
+              if (clickable) chip += '<span class="cg-extra-play">▶</span>';
               if (e.condition) chip += '<span class="cg-extra-cond">'+escapeHtml(condAbbr(e.condition))+'</span>';
               if (e.priceStr)  chip += '<span class="cg-extra-price">'+escapeHtml(e.priceStr)+'</span>';
-              if (e.url) chip += '<a class="cg-extra-link" href="'+escapeHtml(e.url)+'" target="_blank" rel="noopener">↗</a>';
+              if (e.url) chip += '<a class="cg-extra-link" href="'+escapeHtml(e.url)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗</a>';
               chip += '</span>';
               return chip;
             }).join('')+

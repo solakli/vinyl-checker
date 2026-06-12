@@ -10373,6 +10373,43 @@ body.light .opt-pinned-hint { background: rgba(200,160,0,0.06); border-color: rg
 .cg-extra-link { color:var(--text-muted); text-decoration:none; font-size:10px; }
 .cg-extra-link:hover { color:var(--gold); }
 
+/* Clickable recommendation chip — opens the release card with playback */
+.cg-extra-clickable { cursor: pointer; transition: border-color 0.15s, background 0.15s, transform 0.15s; }
+.cg-extra-clickable:hover {
+  border-color: rgba(201, 168, 106, 0.5);
+  background: var(--gold-soft);
+  transform: translateY(-1px);
+}
+.cg-extra-play {
+  font-size: 8px;
+  color: var(--gold);
+  opacity: 0.75;
+  margin-left: 1px;
+}
+.cg-extra-clickable:hover .cg-extra-play { opacity: 1; }
+
+/* "Go to listing" CTA inside the release modal (recommendation flow) */
+.modal-rec-cta-wrap { padding: 0; }
+.modal-rec-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 13px 18px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: #16120a;
+  background: var(--gold);
+  border-radius: 8px;
+  text-decoration: none;
+  transition: filter 0.15s, transform 0.15s;
+}
+.modal-rec-cta:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.modal-rec-cta .arrow { font-size: 15px; }
+
 /* ── Auto-fill suggestions ───────────────────────────────────── */
 .cart-autofill-results { margin:16px 18px 18px; }
 .caf-header { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px; flex-wrap:wrap; gap:6px; }

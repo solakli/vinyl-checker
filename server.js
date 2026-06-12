@@ -4091,7 +4091,10 @@ app.get('/api/seller-extras/:username/:seller', function(req, res) {
                 year:      r.year,
                 priceStr:  r.priceStr,
                 url:       url,
-                condition: condition
+                condition: condition,
+                // Lets the UI open the release-detail card (tracklist + YouTube
+                // playback) before the user commits to visiting the seller page
+                discogsId: r.discogs_id || null
             };
         })});
     } catch(e) {
@@ -4116,7 +4119,8 @@ app.get('/api/store-extras/:username/:store', function(req, res) {
                 year:     r.year,
                 priceStr: r.priceStr,
                 url:      r.url,
-                score:    r._score
+                score:    r._score,
+                discogsId: r.discogs_id || null
             };
         })});
     } catch(e) {
