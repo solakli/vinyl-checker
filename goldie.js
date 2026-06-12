@@ -2049,6 +2049,36 @@ function toolGetGemIntelligence({ username, limit }) {
 
 // ─── get_store_extras ────────────────────────────────────────────────────────
 // Returns taste-matched in-stock items from other diggers at a given store.
+// Batch-resolve YouTube listen links for a set of extras rows (by discogs_id).
+// Primary source: streaming_metadata (32k+ enriched releases). Fallback:
+// release_details cache (populated whenever someone previews a release in-app).
+function attachListenLinks(d, rows) {
+    var ids = rows.map(function(r) { return r.discogs_id; }).filter(Boolean);
+    if (!ids.length) return {};
+    var ph = ids.map(function() { return '?'; }).join(',');
+    var ytMap = {};
+    try {
+        d.prepare('SELECT discogs_id, youtube_video_id FROM streaming_metadata' +
+                  ' WHERE discogs_id IN (' + ph + ') AND youtube_video_id IS NOT NULL').all(ids)
+            .forEach(function(r) { ytMap[r.discogs_id] = 'https://youtube.com/watch?v=' + r.youtube_video_id; });
+    } catch(e) {}
+    // Fallback for ids still missing: first video from cached release details
+    var missing = ids.filter(function(id) { return !ytMap[id]; });
+    if (missing.length) {
+        try {
+            var ph2 = missing.map(function() { return '?'; }).join(',');
+            d.prepare('SELECT discogs_id, data FROM release_details WHERE discogs_id IN (' + ph2 + ')').all(missing)
+                .forEach(function(r) {
+                    try {
+                        var vids = (JSON.parse(r.data || '{}').videos) || [];
+                        if (vids.length && vids[0].uri) ytMap[r.discogs_id] = vids[0].uri;
+                    } catch(e) {}
+                });
+        } catch(e) {}
+    }
+    return ytMap;
+}
+
 function toolGetStoreExtras({ username, store, limit }) {
     var d = db.getDb();
     var user = d.prepare('SELECT id FROM users WHERE username=? COLLATE NOCASE').get(username);
@@ -2066,6 +2096,7 @@ function toolGetStoreExtras({ username, store, limit }) {
         };
     }
 
+    var listenMap = attachListenLinks(d, extras);
     return {
         store: store,
         count: extras.length,
@@ -2079,10 +2110,11 @@ function toolGetStoreExtras({ username, store, limit }) {
                 year:        r.year,
                 price:       r.priceStr || null,
                 url:         r.url || null,
+                listen:      listenMap[r.discogs_id] || null,
                 taste_score: r._score
             };
         }),
-        tip: 'These records are in stock at ' + store + ' right now, wanted by other diggers, and match your taste. Use discogs_id with research_record for gem score, YouTube data, and DJ validation on any item before deciding.'
+        tip: 'These records are in stock at ' + store + ' right now, wanted by other diggers, and match your taste. The listen field is a direct YouTube link — share it when the user wants to hear a record. Use discogs_id with research_record for gem score and DJ validation.'
     };
 }
 
@@ -2105,6 +2137,7 @@ function toolGetSellerExtras({ username, seller, limit }) {
         };
     }
 
+    var listenMap = attachListenLinks(d, extras);
     return {
         seller: seller,
         count: extras.length,
@@ -2125,10 +2158,11 @@ function toolGetSellerExtras({ username, seller, limit }) {
                 condition:   condition,
                 ships_from:  r.ships_from || null,
                 url:         url,
+                listen:      listenMap[r.discogs_id] || null,
                 taste_score: r._score
             };
         }),
-        tip: 'These are other listings from ' + seller + ' on Discogs that match your taste. Adding them to your order maximizes shipping value — you\'re already paying to ship from this seller. Direct buy links included.'
+        tip: 'These are other listings from ' + seller + ' on Discogs that match your taste. Adding them to your order maximizes shipping value — you\'re already paying to ship from this seller. Direct buy links included; the listen field is a YouTube link to hear the record — share it when the user asks to listen.'
     };
 }
 
