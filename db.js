@@ -1581,6 +1581,11 @@ function updateUserDailyRescan(userId) {
     getDb().prepare('UPDATE users SET last_daily_rescan = ? WHERE id = ?').run(new Date().toISOString(), userId);
 }
 
+// Count of active wantlist items — used to skip browser scans for oversized wantlists
+function getActiveWantlistCount(userId) {
+    return getDb().prepare('SELECT COUNT(*) as c FROM wantlist WHERE user_id = ? AND active = 1').get(userId).c;
+}
+
 function getSessionLastSeen(token) {
     if (!token) return null;
     var row = getDb().prepare('SELECT last_seen FROM sessions WHERE token = ?').get(token);
@@ -2649,6 +2654,7 @@ module.exports = {
     stampCatalogMatch: stampCatalogMatch,
     getUsersDueForRescan: getUsersDueForRescan,
     updateUserDailyRescan: updateUserDailyRescan,
+    getActiveWantlistCount: getActiveWantlistCount,
     getSessionLastSeen: getSessionLastSeen,
     getStoreHistory: getStoreHistory,
     getItemHistory: getItemHistory,
